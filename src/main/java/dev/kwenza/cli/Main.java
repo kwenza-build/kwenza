@@ -45,7 +45,9 @@ public final class Main {
             return;
         }
         String command = args[0];
-        boolean update = Arrays.asList(args).subList(1, args.length).contains("--update");
+        List<String> flags = Arrays.asList(args).subList(1, args.length);
+        boolean update = flags.contains("--update");
+        boolean verbose = flags.contains("--verbose");
 
         Path projectRoot = Path.of("").toAbsolutePath();
         Path manifestPath = projectRoot.resolve("kwenza.toml");
@@ -66,7 +68,7 @@ public final class Main {
             case "check" -> doCheck(manifest, projectRoot, lockPath, localRepo, update);
             case "build" -> resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update);
             case "package" -> doPackage(manifest, projectRoot, lockPath, targetDir, localRepo, update);
-            case "run" -> doRun(manifest, projectRoot, lockPath, targetDir, localRepo, update);
+            case "run" -> doRun(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
             case "clean" -> doClean(targetDir);
             default -> {
                 printUsage();
@@ -148,7 +150,7 @@ public final class Main {
     }
 
     private static void doRun(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path targetDir,
-                               Path localRepo, boolean update) throws Exception {
+                               Path localRepo, boolean update, boolean verbose) throws Exception {
         if (manifest.mainClass == null) {
             throw new CliException("kwenza.toml has no [package] main-class set - required for `kwenza run`");
         }
@@ -168,7 +170,14 @@ public final class Main {
         command.add(classpath);
         command.add(manifest.mainClass);
 
-        Status.info("run: " + String.join(" ", command));
+        if (verbose) {
+            Status.info("run: " + String.join(" ", command));
+        } else {
+            int depCount = resolution.classpath().size();
+            String deps = depCount == 0 ? "" : " (+" + depCount + " dependency jar" + (depCount == 1 ? "" : "s") + ")";
+            Status.info("run: java -cp " + projectRoot.relativize(classes) + deps + " " + manifest.mainClass
+                    + "  [--verbose for the full command]");
+        }
         Process process = new ProcessBuilder(command).inheritIO().start();
         int exitCode = process.waitFor();
         if (exitCode != 0) {
@@ -217,7 +226,7 @@ public final class Main {
 
     private static void printUsage() {
         System.err.println("""
-                Usage: kwenza <command> [--update]
+                Usage: kwenza <command> [--update] [--verbose]
 
                 Commands:
                   build            resolve dependencies and compile
@@ -229,6 +238,7 @@ public final class Main {
 
                 Flags:
                   --update         force a full re-resolution against Maven Central
+                  --verbose        (run) print the full command, including every classpath jar
 
                 Environment:
                   KWENZA_REPO      override the local dependency cache (default: ~/.m2/repository)
