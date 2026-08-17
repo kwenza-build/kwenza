@@ -26,6 +26,10 @@ compiled classes and every resolved dependency jar on the classpath. Fails with 
 `main-class` isn't set in `kwenza.toml`. The subprocess inherits stdin/stdout/stderr, and kwenza
 exits with the same exit code the subprocess used.
 
+NOTE: kwenza's own status messages (`Resolving dependencies...`, `Compiled to ...`) print to
+*stderr*, not stdout — so `kwenza run`'s stdout is exactly what your program itself printed,
+nothing else. `kwenza run > out.txt` captures only your application's real output.
+
 === `kwenza package`
 
 Runs `build`, then writes `<output-dir>/<name>-<version>.jar` — a thin jar containing only your

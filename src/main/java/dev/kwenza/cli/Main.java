@@ -83,20 +83,20 @@ public final class Main {
 
         if (!update && existingLock.isFreshFor(manifest)) {
             if (!existingLock.entries.isEmpty()) {
-                System.out.println("Using locked dependencies (kwenza.lock)");
+                System.err.println("Using locked dependencies (kwenza.lock)");
             }
             Resolver.Resolution resolution = resolver.ensureFromLock(existingLock);
             Timing.mark("resolved (from lock)");
             return resolution;
         }
 
-        System.out.println("Resolving dependencies from Maven Central...");
+        System.err.println("Resolving dependencies from Maven Central...");
         List<Dependency> allDeps = new ArrayList<>();
         allDeps.addAll(manifest.dependencies.values());
         allDeps.addAll(manifest.devDependencies.values());
         Resolver.Resolution resolution = resolver.resolve(allDeps);
         resolution.lock().save(lockPath, KwenzaLock.hashDependencies(manifest));
-        System.out.println("Resolved " + resolution.artifacts().size() + " artifact(s) -> " + lockPath.getFileName());
+        System.err.println("Resolved " + resolution.artifacts().size() + " artifact(s) -> " + lockPath.getFileName());
         Timing.mark("resolved (network)");
         return resolution;
     }
@@ -113,7 +113,7 @@ public final class Main {
             if (!result.success) {
                 throw new CliException("Compilation failed");
             }
-            System.out.println("Check OK");
+            System.err.println("Check OK");
         } finally {
             deleteRecursively(scratch);
         }
@@ -133,7 +133,7 @@ public final class Main {
             throw new CliException("Compilation failed");
         }
         copyResources(projectRoot.resolve("src/main/resources"), mainClasses);
-        System.out.println("Compiled to " + projectRoot.relativize(mainClasses));
+        System.err.println("Compiled to " + projectRoot.relativize(mainClasses));
         return resolution;
     }
 
@@ -144,7 +144,7 @@ public final class Main {
         Path outputJar = targetDir.resolve(manifest.name + "-" + manifest.version + ".jar");
         JarPackager.packageThinJar(classes, outputJar, manifest.mainClass, resolution.classpath());
         Timing.mark("packaged");
-        System.out.println("Packaged " + projectRoot.relativize(outputJar));
+        System.err.println("Packaged " + projectRoot.relativize(outputJar));
     }
 
     private static void doRun(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path targetDir,
@@ -177,11 +177,11 @@ public final class Main {
 
     private static void doClean(Path targetDir) throws IOException {
         if (!Files.exists(targetDir)) {
-            System.out.println("Nothing to clean");
+            System.err.println("Nothing to clean");
             return;
         }
         deleteRecursively(targetDir);
-        System.out.println("Removed " + targetDir.getFileName() + "/");
+        System.err.println("Removed " + targetDir.getFileName() + "/");
     }
 
     private static void deleteRecursively(Path dir) throws IOException {
