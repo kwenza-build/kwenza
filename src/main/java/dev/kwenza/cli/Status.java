@@ -10,6 +10,7 @@ final class Status {
     private static final char ESC = 27;
     private static final String CYAN = ESC + "[36m";
     private static final String RED = ESC + "[31m";
+    private static final String GRAY = ESC + "[90m";
     private static final String RESET = ESC + "[0m";
     private static final boolean COLOR_ENABLED =
             System.console() != null && System.getenv("NO_COLOR") == null;
@@ -25,5 +26,10 @@ final class Status {
     /** Fatal errors reported by the CLI itself. */
     static void error(String message) {
         System.err.println(COLOR_ENABLED ? RED + message + RESET : message);
+    }
+
+    /** Extra, --verbose-only detail (e.g. one line per resolved dependency) - dimmer than info(). */
+    static void detail(String message) {
+        System.err.println(COLOR_ENABLED ? GRAY + message + RESET : message);
     }
 }

@@ -64,10 +64,10 @@ public final class Main {
                 : Path.of(System.getProperty("user.home"), ".m2", "repository");
 
         switch (command) {
-            case "resolve" -> resolve(manifest, lockPath, localRepo, update);
-            case "check" -> doCheck(manifest, projectRoot, lockPath, localRepo, update);
-            case "build" -> resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update);
-            case "package" -> doPackage(manifest, projectRoot, lockPath, targetDir, localRepo, update);
+            case "resolve" -> resolve(manifest, lockPath, localRepo, update, verbose);
+            case "check" -> doCheck(manifest, projectRoot, lockPath, localRepo, update, verbose);
+            case "build" -> resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+            case "package" -> doPackage(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
             case "run" -> doRun(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
             case "clean" -> doClean(targetDir);
             default -> {
@@ -77,8 +77,8 @@ public final class Main {
         }
     }
 
-    private static Resolver.Resolution resolve(KwenzaManifest manifest, Path lockPath, Path localRepo, boolean update)
-            throws IOException {
+    private static Resolver.Resolution resolve(KwenzaManifest manifest, Path lockPath, Path localRepo,
+                                                boolean update, boolean verbose) throws IOException {
         MavenRepository repo = MavenRepository.central(localRepo);
         Resolver resolver = new Resolver(repo);
         KwenzaLock existingLock = KwenzaLock.load(lockPath);
@@ -98,15 +98,22 @@ public final class Main {
         allDeps.addAll(manifest.devDependencies.values());
         Resolver.Resolution resolution = resolver.resolve(allDeps);
         resolution.lock().save(lockPath, KwenzaLock.hashDependencies(manifest));
+        if (verbose) {
+            for (Resolver.ResolvedArtifact artifact : resolution.artifacts()) {
+                boolean direct = artifact.requestedBy().contains("direct");
+                String via = direct ? "direct" : "via " + String.join(", ", artifact.requestedBy());
+                Status.detail("resolve:   " + artifact.moduleId() + ":" + artifact.version() + "  (" + via + ")");
+            }
+        }
         Status.info("resolve: " + resolution.artifacts().size() + " artifact(s) resolved -> " + lockPath.getFileName());
         Timing.mark("resolved (network)");
         return resolution;
     }
 
     /** Compile-only fast pass: does not touch the output directory, produces no artifact. */
-    private static void doCheck(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path localRepo, boolean update)
-            throws Exception {
-        Resolver.Resolution resolution = resolve(manifest, lockPath, localRepo, update);
+    private static void doCheck(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path localRepo,
+                                 boolean update, boolean verbose) throws Exception {
+        Resolver.Resolution resolution = resolve(manifest, lockPath, localRepo, update, verbose);
         Path scratch = Files.createTempDirectory("kwenza-check-");
         try {
             JavaCompilation.Result result = JavaCompilation.compile(
@@ -122,8 +129,9 @@ public final class Main {
     }
 
     private static Resolver.Resolution resolveAndCompile(KwenzaManifest manifest, Path projectRoot, Path lockPath,
-                                                          Path targetDir, Path localRepo, boolean update) throws Exception {
-        Resolver.Resolution resolution = resolve(manifest, lockPath, localRepo, update);
+                                                          Path targetDir, Path localRepo, boolean update,
+                                                          boolean verbose) throws Exception {
+        Resolver.Resolution resolution = resolve(manifest, lockPath, localRepo, update, verbose);
         List<Path> classpath = resolution.classpath();
 
         Path mainClasses = targetDir.resolve("classes");
@@ -140,8 +148,9 @@ public final class Main {
     }
 
     private static void doPackage(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path targetDir,
-                                   Path localRepo, boolean update) throws Exception {
-        Resolver.Resolution resolution = resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update);
+                                   Path localRepo, boolean update, boolean verbose) throws Exception {
+        Resolver.Resolution resolution =
+                resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
         Path classes = targetDir.resolve("classes");
         Path outputJar = targetDir.resolve(manifest.name + "-" + manifest.version + ".jar");
         JarPackager.packageThinJar(classes, outputJar, manifest.mainClass, resolution.classpath());
@@ -154,7 +163,8 @@ public final class Main {
         if (manifest.mainClass == null) {
             throw new CliException("kwenza.toml has no [package] main-class set - required for `kwenza run`");
         }
-        Resolver.Resolution resolution = resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update);
+        Resolver.Resolution resolution =
+                resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
         Path classes = targetDir.resolve("classes");
 
         List<String> classpathEntries = new ArrayList<>();
@@ -238,7 +248,9 @@ public final class Main {
 
                 Flags:
                   --update         force a full re-resolution against Maven Central
-                  --verbose        (run) print the full command, including every classpath jar
+                  --verbose        print extra detail: each dependency resolved (resolve/build/
+                                   check/package/run), and the full run command including every
+                                   classpath jar (run only)
 
                 Environment:
                   KWENZA_REPO      override the local dependency cache (default: ~/.m2/repository)

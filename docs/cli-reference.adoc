@@ -86,6 +86,23 @@ visually distinct from whatever your application itself prints. Color is automat
 when output isn't a real terminal (piped, redirected to a file) or when the
 https://no-color.org/[`NO_COLOR`] environment variable is set to any value.
 
+With `--verbose`, a real dependency resolution (a stale/missing lock, or `--update`) also prints
+one dimmed detail line per resolved artifact, in a third color (gray) distinct from both the
+regular cyan status lines and a running application's own output:
+
+[source]
+----
+resolve: fetching dependencies from Maven Central...
+resolve:   com.google.guava:guava:33.2.1-jre  (direct)
+resolve:   com.google.guava:failureaccess:1.0.2  (via com.google.guava:guava)
+resolve:   com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava  (via com.google.guava:guava)
+resolve: 7 artifact(s) resolved -> kwenza.lock
+----
+
+This only appears when dependencies are actually being fetched over the network — resolving from
+an already-fresh `kwenza.lock` has nothing per-artifact to show, so `--verbose` doesn't print
+anything extra in that case.
+
 == Flags
 
 [cols="1,3"]
@@ -97,8 +114,9 @@ https://no-color.org/[`NO_COLOR`] environment variable is set to any value.
 Valid alongside `build`, `check`, `run`, `package`, and `resolve`.
 
 |`--verbose`
-|Only affects `run`: prints the literal command being executed (full `java` binary path, every
-classpath entry) instead of the default compact one-liner.
+|Prints extra detail, see <<output>>: one line per resolved dependency during a real resolution
+(any command that resolves), and, for `run` specifically, the literal command being executed
+(full `java` binary path, every classpath entry) instead of the default compact one-liner.
 |===
 
 == Environment variables
