@@ -168,6 +168,7 @@ public final class Main {
         command.add(classpath);
         command.add(manifest.mainClass);
 
+        Status.info("run: " + String.join(" ", command));
         Process process = new ProcessBuilder(command).inheritIO().start();
         int exitCode = process.waitFor();
         if (exitCode != 0) {

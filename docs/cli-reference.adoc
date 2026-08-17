@@ -26,6 +26,12 @@ compiled classes and every resolved dependency jar on the classpath. Fails with 
 `main-class` isn't set in `kwenza.toml`. The subprocess inherits stdin/stdout/stderr, and kwenza
 exits with the same exit code the subprocess used.
 
+kwenza prints the exact command it's about to run — the `java` binary path, the full `-cp`
+classpath (every dependency jar plus the compiled classes directory), and the main class — as a
+`run: ...` status line before launching it. Nothing about `run` is hidden: there's no packaged
+jar involved (that's what `kwenza package` produces), just the classes directory and dependency
+jars directly on the classpath, and the printed command shows precisely that.
+
 NOTE: kwenza's own status messages (`resolve: ...`, `compile: ...`) print to *stderr*, not
 stdout — so `kwenza run`'s stdout is exactly what your program itself printed, nothing else.
 `kwenza run > out.txt` captures only your application's real output. See <<output>> below for how
