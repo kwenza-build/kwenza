@@ -59,6 +59,7 @@ group = "com.example"
 version = "0.1.0"
 java-version = "21"            # optional, defaults to "21"
 main-class = "com.example.Main"
+output-dir = "target"          # optional, defaults to "target" (Gradle users may prefer "build")
 
 [dependencies]
 guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }

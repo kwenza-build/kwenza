@@ -44,6 +44,14 @@ user-facing pitch and current command surface.
   option, matches how a lot of real shops actually deploy, avoids shading conflicts entirely.
   `--fat` is a deliberate Phase 2 addition (see below), not an oversight.
 
+- **Output directory defaults to `target`, and is deliberately overridable** (`[package]
+  output-dir`). Considered switching to something on-brand (`made/`, echoing the name's meaning)
+  but decided the output directory is one of the few places where matching an existing tool has
+  *zero* interop payoff — nothing outside kwenza ever reads it, unlike `src/main/java` (IDEs/humans
+  expect it) or `~/.m2/repository` (shared with real Maven/Gradle installs). Kept `target` to match
+  Maven/Cargo for now, but made it a one-line override precisely because there's no compatibility
+  reason to enforce it project-wide.
+
 - **Self-hosting.** Once kwenza could compile+package itself, it switched immediately to building
   itself with itself (`kwenza.toml` at the repo root has no dependencies). `bootstrap.sh` exists
   *only* for the very first jar (or disaster recovery) — day-to-day rebuilds go through

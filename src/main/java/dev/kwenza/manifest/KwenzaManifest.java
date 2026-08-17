@@ -16,16 +16,19 @@ public final class KwenzaManifest {
     public final String version;
     public final String javaVersion;
     public final String mainClass;
+    public final String outputDir;
     public final Map<String, Dependency> dependencies;
     public final Map<String, Dependency> devDependencies;
 
     private KwenzaManifest(String name, String group, String version, String javaVersion, String mainClass,
-                          Map<String, Dependency> dependencies, Map<String, Dependency> devDependencies) {
+                          String outputDir, Map<String, Dependency> dependencies,
+                          Map<String, Dependency> devDependencies) {
         this.name = name;
         this.group = group;
         this.version = version;
         this.javaVersion = javaVersion;
         this.mainClass = mainClass;
+        this.outputDir = outputDir;
         this.dependencies = dependencies;
         this.devDependencies = devDependencies;
     }
@@ -59,11 +62,12 @@ public final class KwenzaManifest {
         String version = requireString(pkg, "version");
         String javaVersion = pkg.containsKey("java-version") ? requireString(pkg, "java-version") : "21";
         String mainClass = pkg.containsKey("main-class") ? requireString(pkg, "main-class") : null;
+        String outputDir = pkg.containsKey("output-dir") ? requireString(pkg, "output-dir") : "target";
 
         Map<String, Dependency> dependencies = parseDependencies(root, "dependencies");
         Map<String, Dependency> devDependencies = parseDependencies(root, "dev-dependencies");
 
-        return new KwenzaManifest(name, group, version, javaVersion, mainClass, dependencies, devDependencies);
+        return new KwenzaManifest(name, group, version, javaVersion, mainClass, outputDir, dependencies, devDependencies);
     }
 
     @SuppressWarnings("unchecked")

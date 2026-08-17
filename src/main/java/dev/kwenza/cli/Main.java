@@ -55,7 +55,7 @@ public final class Main {
         KwenzaManifest manifest = KwenzaManifest.load(manifestPath);
         Timing.mark("manifest-loaded");
         Path lockPath = projectRoot.resolve("kwenza.lock");
-        Path targetDir = projectRoot.resolve("target");
+        Path targetDir = projectRoot.resolve(manifest.outputDir);
         String repoOverride = System.getenv("KWENZA_REPO");
         Path localRepo = repoOverride != null
                 ? Path.of(repoOverride)
@@ -101,7 +101,7 @@ public final class Main {
         return resolution;
     }
 
-    /** Compile-only fast pass: does not touch target/, produces no artifact. */
+    /** Compile-only fast pass: does not touch the output directory, produces no artifact. */
     private static void doCheck(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path localRepo, boolean update)
             throws Exception {
         Resolver.Resolution resolution = resolve(manifest, lockPath, localRepo, update);
@@ -181,7 +181,7 @@ public final class Main {
             return;
         }
         deleteRecursively(targetDir);
-        System.out.println("Removed target/");
+        System.out.println("Removed " + targetDir.getFileName() + "/");
     }
 
     private static void deleteRecursively(Path dir) throws IOException {
@@ -222,8 +222,8 @@ public final class Main {
                   build            resolve dependencies and compile
                   check            resolve and compile-only, no artifact
                   run              build and execute [package].main-class
-                  package          build and produce a thin jar in target/
-                  clean            remove the target/ directory
+                  package          build and produce a thin jar in the output directory
+                  clean            remove the output directory
                   resolve          refresh kwenza.lock explicitly
 
                 Flags:
