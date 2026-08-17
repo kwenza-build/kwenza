@@ -5,6 +5,14 @@
 Every kwenza command runs against the current working directory — there's no `--project <path>`
 flag (yet); `cd` into the project you want to build, same as Maven, Gradle, or Cargo.
 
+Multiple commands can be given in one invocation and run in the order given, e.g.
+`kwenza clean build run` or `kwenza build run`. Resolving and compiling only happen once per
+invocation no matter how many chained commands would each otherwise trigger them — `kwenza build
+run` resolves and compiles a single time, then `run` reuses that result instead of redoing it.
+`clean` correctly invalidates that: `kwenza build clean package` recompiles after the `clean`,
+it doesn't reuse the now-deleted output from the `build` earlier in the same chain. An unknown
+command anywhere in the list is rejected upfront, before any of the given commands run.
+
 == Commands
 
 === `kwenza build`

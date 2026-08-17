@@ -13,8 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 public final class Main {
@@ -38,14 +38,27 @@ public final class Main {
         System.exit(0);
     }
 
+    private static final Set<String> COMMANDS = Set.of("resolve", "check", "build", "package", "run", "clean");
+
     private static void run(String[] args) throws Exception {
-        if (args.length == 0) {
+        List<String> commands = new ArrayList<>();
+        List<String> flags = new ArrayList<>();
+        for (String arg : args) {
+            (arg.startsWith("--") ? flags : commands).add(arg);
+        }
+        if (commands.isEmpty()) {
             printUsage();
             System.exit(1);
             return;
         }
-        String command = args[0];
-        List<String> flags = Arrays.asList(args).subList(1, args.length);
+        for (String command : commands) {
+            if (!COMMANDS.contains(command)) {
+                Status.error("error: unknown command '" + command + "'");
+                printUsage();
+                System.exit(1);
+                return;
+            }
+        }
         boolean update = flags.contains("--update");
         boolean verbose = flags.contains("--verbose");
 
@@ -63,18 +76,26 @@ public final class Main {
                 ? Path.of(repoOverride)
                 : Path.of(System.getProperty("user.home"), ".m2", "repository");
 
-        switch (command) {
-            case "resolve" -> resolve(manifest, lockPath, localRepo, update, verbose);
-            case "check" -> doCheck(manifest, projectRoot, lockPath, localRepo, update, verbose);
-            case "build" -> resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
-            case "package" -> doPackage(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
-            case "run" -> doRun(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
-            case "clean" -> doClean(targetDir);
-            default -> {
-                printUsage();
-                System.exit(1);
+        // Shared across every command in this invocation, so e.g. `kwenza build run` resolves
+        // and compiles once, not once per command that happens to need it.
+        BuildState state = new BuildState();
+
+        for (String command : commands) {
+            switch (command) {
+                case "resolve" -> ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
+                case "check" -> doCheck(state, manifest, projectRoot, lockPath, localRepo, update, verbose);
+                case "build" -> ensureCompiled(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+                case "package" -> doPackage(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+                case "run" -> doRun(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+                case "clean" -> doClean(state, targetDir);
             }
         }
+    }
+
+    /** Resolution and compilation results, memoized across every command in a single invocation. */
+    private static final class BuildState {
+        Resolver.Resolution resolution;
+        boolean compiled;
     }
 
     private static Resolver.Resolution resolve(KwenzaManifest manifest, Path lockPath, Path localRepo,
@@ -110,10 +131,41 @@ public final class Main {
         return resolution;
     }
 
+    /** Resolves at most once per invocation - later calls in the same command chain reuse the result. */
+    private static Resolver.Resolution ensureResolved(BuildState state, KwenzaManifest manifest, Path lockPath,
+                                                       Path localRepo, boolean update, boolean verbose) throws IOException {
+        if (state.resolution == null) {
+            state.resolution = resolve(manifest, lockPath, localRepo, update, verbose);
+        }
+        return state.resolution;
+    }
+
+    /** Compiles at most once per invocation - later calls in the same command chain reuse the result. */
+    private static Resolver.Resolution ensureCompiled(BuildState state, KwenzaManifest manifest, Path projectRoot,
+                                                       Path lockPath, Path targetDir, Path localRepo, boolean update,
+                                                       boolean verbose) throws Exception {
+        Resolver.Resolution resolution = ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
+        if (state.compiled) {
+            return resolution;
+        }
+        Path mainClasses = targetDir.resolve("classes");
+        JavaCompilation.Result result = JavaCompilation.compile(
+                projectRoot.resolve("src/main/java"), mainClasses, resolution.classpath(), manifest.javaVersion);
+        Timing.mark("compiled");
+        printDiagnostics(result.diagnostics);
+        if (!result.success) {
+            throw new CliException("Compilation failed");
+        }
+        copyResources(projectRoot.resolve("src/main/resources"), mainClasses);
+        Status.info("compile: " + projectRoot.relativize(mainClasses));
+        state.compiled = true;
+        return resolution;
+    }
+
     /** Compile-only fast pass: does not touch the output directory, produces no artifact. */
-    private static void doCheck(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path localRepo,
-                                 boolean update, boolean verbose) throws Exception {
-        Resolver.Resolution resolution = resolve(manifest, lockPath, localRepo, update, verbose);
+    private static void doCheck(BuildState state, KwenzaManifest manifest, Path projectRoot, Path lockPath,
+                                 Path localRepo, boolean update, boolean verbose) throws Exception {
+        Resolver.Resolution resolution = ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
         Path scratch = Files.createTempDirectory("kwenza-check-");
         try {
             JavaCompilation.Result result = JavaCompilation.compile(
@@ -128,29 +180,10 @@ public final class Main {
         }
     }
 
-    private static Resolver.Resolution resolveAndCompile(KwenzaManifest manifest, Path projectRoot, Path lockPath,
-                                                          Path targetDir, Path localRepo, boolean update,
-                                                          boolean verbose) throws Exception {
-        Resolver.Resolution resolution = resolve(manifest, lockPath, localRepo, update, verbose);
-        List<Path> classpath = resolution.classpath();
-
-        Path mainClasses = targetDir.resolve("classes");
-        JavaCompilation.Result result = JavaCompilation.compile(
-                projectRoot.resolve("src/main/java"), mainClasses, classpath, manifest.javaVersion);
-        Timing.mark("compiled");
-        printDiagnostics(result.diagnostics);
-        if (!result.success) {
-            throw new CliException("Compilation failed");
-        }
-        copyResources(projectRoot.resolve("src/main/resources"), mainClasses);
-        Status.info("compile: " + projectRoot.relativize(mainClasses));
-        return resolution;
-    }
-
-    private static void doPackage(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path targetDir,
-                                   Path localRepo, boolean update, boolean verbose) throws Exception {
+    private static void doPackage(BuildState state, KwenzaManifest manifest, Path projectRoot, Path lockPath,
+                                   Path targetDir, Path localRepo, boolean update, boolean verbose) throws Exception {
         Resolver.Resolution resolution =
-                resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+                ensureCompiled(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
         Path classes = targetDir.resolve("classes");
         Path outputJar = targetDir.resolve(manifest.name + "-" + manifest.version + ".jar");
         JarPackager.packageThinJar(classes, outputJar, manifest.mainClass, resolution.classpath());
@@ -158,13 +191,13 @@ public final class Main {
         Status.info("package: " + projectRoot.relativize(outputJar));
     }
 
-    private static void doRun(KwenzaManifest manifest, Path projectRoot, Path lockPath, Path targetDir,
-                               Path localRepo, boolean update, boolean verbose) throws Exception {
+    private static void doRun(BuildState state, KwenzaManifest manifest, Path projectRoot, Path lockPath,
+                               Path targetDir, Path localRepo, boolean update, boolean verbose) throws Exception {
         if (manifest.mainClass == null) {
             throw new CliException("kwenza.toml has no [package] main-class set - required for `kwenza run`");
         }
         Resolver.Resolution resolution =
-                resolveAndCompile(manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+                ensureCompiled(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
         Path classes = targetDir.resolve("classes");
 
         List<String> classpathEntries = new ArrayList<>();
@@ -193,7 +226,10 @@ public final class Main {
         }
     }
 
-    private static void doClean(Path targetDir) throws IOException {
+    private static void doClean(BuildState state, Path targetDir) throws IOException {
+        // Whatever was compiled before this point in the chain is gone now - a later
+        // build/package/run in the same chain must recompile, not reuse stale state.
+        state.compiled = false;
         if (!Files.exists(targetDir)) {
             Status.info("clean: nothing to remove");
             return;
@@ -234,7 +270,11 @@ public final class Main {
 
     private static void printUsage() {
         System.err.println("""
-                Usage: kwenza <command> [--update] [--verbose]
+                Usage: kwenza <command> [<command> ...] [--update] [--verbose]
+
+                Multiple commands run in sequence, e.g. `kwenza clean build run` or
+                `kwenza build run`. Resolving and compiling only happens once per invocation,
+                even if several chained commands would each otherwise trigger it.
 
                 Commands:
                   build            resolve dependencies and compile

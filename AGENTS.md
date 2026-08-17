@@ -58,6 +58,15 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
   `bin/kwenza package`, not the bootstrap script. Don't reintroduce a permanent non-self-hosted
   build path.
 
+- **Multiple commands per invocation** (`kwenza build run`, `kwenza clean build run`) are memoized
+  within a single `BuildState` (`Main.java`) so a chain doesn't redo resolve/compile once per
+  command that happens to need it — `build run` resolves and compiles exactly once, not twice.
+  `clean` explicitly resets `state.compiled`, since it deletes the very output that memoization
+  would otherwise assume was still valid. If you add a new command that produces or consumes
+  build output, make sure it goes through `ensureResolved`/`ensureCompiled` rather than calling
+  `resolve`/`JavaCompilation.compile` directly, or chaining will silently redo work (or worse,
+  silently reuse stale output after a `clean`).
+
 - **Reproducible-by-default resolution.** `kwenza.lock` records a hash of the manifest's declared
   dependencies (`KwenzaLock.hashDependencies`); `build`/`run`/`package` reuse the lock and skip
   network resolution entirely unless that hash changed or `--update` is passed. This is the uv/Cargo
