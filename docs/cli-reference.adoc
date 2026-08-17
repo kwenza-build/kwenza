@@ -1,0 +1,96 @@
+= CLI Reference
+:toc:
+:toclevels: 2
+
+Every kwenza command runs against the current working directory — there's no `--project <path>`
+flag (yet); `cd` into the project you want to build, same as Maven, Gradle, or Cargo.
+
+== Commands
+
+=== `kwenza build`
+
+Resolves dependencies (from the lock if it's fresh, from Maven Central otherwise) and compiles
+`src/main/java` to `<output-dir>/classes`. Copies `src/main/resources` verbatim alongside the
+compiled classes, if that directory exists. Produces no packaged artifact.
+
+=== `kwenza check`
+
+Resolves and compiles the same way as `build`, but into a temporary directory that's deleted
+afterward — `<output-dir>/` is never touched. Useful as a fast "does this even compile" pass
+without disturbing anything already built.
+
+=== `kwenza run`
+
+Runs `build`, then executes `[package].main-class` in a fresh `java` subprocess, with the
+compiled classes and every resolved dependency jar on the classpath. Fails with a clear error if
+`main-class` isn't set in `kwenza.toml`. The subprocess inherits stdin/stdout/stderr, and kwenza
+exits with the same exit code the subprocess used.
+
+=== `kwenza package`
+
+Runs `build`, then writes `<output-dir>/<name>-<version>.jar` — a thin jar containing only your
+project's own classes/resources, with a `Class-Path` manifest entry pointing at the cached
+dependency jars (see link:architecture.adoc[Architecture]). Runnable directly:
+
+[source,bash]
+----
+kwenza package
+java -jar target/my-app-0.1.0.jar
+----
+
+=== `kwenza clean`
+
+Deletes the entire output directory (`target/` by default, or whatever `[package] output-dir` is
+set to). Reports "Nothing to clean" rather than erroring if it doesn't exist.
+
+=== `kwenza resolve`
+
+Refreshes `kwenza.lock` explicitly, without compiling or packaging anything. Mostly useful with
+`--update`, to intentionally pull newer dependency versions on your own schedule rather than as a
+side effect of some other command.
+
+== Flags
+
+[cols="1,3"]
+|===
+|Flag |Effect
+
+|`--update`
+|Forces a full re-resolution against Maven Central, ignoring `kwenza.lock` even if it looks fresh.
+Valid alongside `build`, `check`, `run`, `package`, and `resolve`.
+|===
+
+== Environment variables
+
+[cols="1,3"]
+|===
+|Variable |Effect
+
+|`KWENZA_REPO`
+|Overrides the local dependency cache directory (default: `~/.m2/repository`). Used internally by
+link:../benchmarks/hello-world/run.sh[`benchmarks/hello-world/run.sh`] to keep benchmark runs
+fully isolated from your real Maven cache, but it's a generally useful override on its own — e.g.
+for CI, or keeping multiple unrelated cache states around.
+
+|`KWENZA_TIMING`
+|Set to any value to print a phase-timing breakdown to stderr: JVM bootstrap time, then the
+elapsed time between each of manifest-load / resolve / compile / package. Distinguishes JVM
+startup overhead (invisible to a shell-level wall-clock timer) from time spent in kwenza's own
+logic — see link:architecture.adoc[Architecture] for how this was used to diagnose kwenza's
+own cold-start cost.
+|===
+
+Example `KWENZA_TIMING` output:
+
+[source]
+----
+Using locked dependencies (kwenza.lock)
+Compiled to target/classes
+Packaged target/hello-world-0.1.0.jar
+[timing] jvm-bootstrap-to-main: 20ms
+[timing] main-entry -> manifest-loaded: 3ms
+[timing] manifest-loaded -> resolved (from lock): 111ms
+[timing] resolved (from lock) -> compiled: 275ms
+[timing] compiled -> packaged: 4ms
+[timing] main-entry -> packaged (total): 395ms
+----

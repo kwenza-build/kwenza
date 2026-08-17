@@ -1,0 +1,135 @@
+= Architecture
+:toc:
+:toclevels: 2
+
+How kwenza actually works, for anyone curious or debugging something. For *why* it's built this
+way rather than some other way, see link:../AGENTS.md[AGENTS.md] — this page is the "how," that
+one's the "why."
+
+== Dependency resolution
+
+kwenza resolves against Maven Central using the exact same GAV-to-URL mapping Maven itself uses:
+
+[source]
+----
+{repo}/{group with dots replaced by slashes}/{artifact}/{version}/{artifact}-{version}.jar
+----
+
+For each dependency, kwenza fetches and parses the POM — including `<dependencyManagement>`/BOM
+`<scope>import</scope>` entries and `<parent>` inheritance — because a large share of real Central
+artifacts (anything using a BOM: Jackson, Spring, etc.) rely on these for their own transitive
+versions to resolve correctly. Property placeholders (`${some.property}`) are substituted using
+the merged property set from the POM itself, its parent chain, and a handful of implicit Maven
+properties (`project.version` and similar).
+
+=== Version mediation
+
+Conflicts are resolved with Maven's own *nearest-wins* strategy — the version closest to the
+project root in the dependency graph wins, with a project's own directly-declared version always
+taking precedence over anything discovered transitively. This was a deliberate choice over
+semver-based unification (the Cargo/npm approach): Central artifacts don't reliably follow semver,
+and the ecosystem's own POMs already assume nearest-wins/BOM-override semantics — unifying by
+semver instead would silently produce different resolutions than Maven/Gradle do for the same
+dependency graph.
+
+=== Fetching and caching
+
+POMs for an entire resolution "level" (see below) are fetched concurrently, then winning JARs are
+downloaded concurrently too — POMs before JARs, not interleaved, since a POM's contents determine
+which JARs are even needed. Downloaded JARs are verified against Maven Central's published
+`.sha1` checksum before being trusted.
+
+Everything lands in `~/.m2/repository`, byte-for-byte Maven's own local repository layout. This
+isn't just convention-following: kwenza and any existing Maven or Gradle installation on the same
+machine share one warm cache, verified for real during development (kwenza builds have picked up
+artifacts an existing Maven install had already cached, and vice versa). `KWENZA_REPO` overrides
+this location when needed — see link:cli-reference.adoc[CLI Reference].
+
+=== The resolution algorithm, roughly
+
+1. Start with the project's direct dependencies at depth 0.
+2. Process one depth level at a time. Within a level, the first-declared occurrence of a module
+   wins over later ones at the same depth; a module already resolved at a shallower depth is left
+   alone (nearest-wins).
+3. For each level's winners, fetch POMs concurrently, apply `<dependencyManagement>`/BOM-derived
+   versions to any dependency that omits an explicit version, and enqueue the next level.
+4. Once no new modules appear, download every winning module's JAR concurrently and verify
+   checksums.
+5. Write `kwenza.lock` (see link:manifest-reference.adoc[Manifest Reference] for its format).
+
+== Reproducibility model
+
+`kwenza.lock` records a hash of the manifest's declared dependencies. Every `build`/`run`/`package`
+reuses the lock and skips network resolution entirely as long as that hash still matches — no
+"lockfile looks stale, hope the version range is still fine" ambiguity the way Maven's own
+re-resolution can have. A changed `kwenza.toml`, or an explicit `--update`, triggers a full
+re-resolution and rewrites the lock. This is the uv/Cargo "lockfile wins by default" pattern,
+not Maven's "always consult the network, hope the range is stable" one.
+
+== Compilation
+
+In-process, via `javax.tools.JavaCompiler` — no subprocess `javac` spawned. Before compiling,
+kwenza checks the requested `[package] java-version` against the JDK actually running it
+(`javac --release N` can never target a release newer than its own JDK) and fails fast with a
+specific message rather than letting a cryptic javac error surface. See
+link:manifest-reference.adoc[Manifest Reference] for details.
+
+== Packaging
+
+A thin jar by default: your project's own compiled classes and resources, plus a `Class-Path`
+manifest entry listing every resolved dependency jar's location in the local cache. No shading,
+no uber-jar class conflicts, and the result runs directly with `java -jar`. A `--fat` uber-jar
+option is planned but not yet built (see link:../AGENTS.md[AGENTS.md] for what's deliberately
+Phase 2).
+
+== Zero external dependencies
+
+kwenza itself depends on nothing outside the JDK — including a small hand-rolled TOML parser
+(`dev.kwenza.toml.Toml`) rather than pulling one in. This is a hard constraint, not a preference:
+kwenza has to be able to bootstrap (`bootstrap.sh`) without Maven Central being reachable or
+another build tool already working. Only JDK built-ins are used throughout:
+`java.net.http.HttpClient` for downloads, `javax.tools.JavaCompiler` for compilation,
+`java.util.zip.JarOutputStream` for packaging.
+
+== Self-hosting
+
+Once kwenza could compile and package itself, it switched immediately to building itself with
+itself — its own `kwenza.toml` has no dependencies. `bootstrap.sh` (plain `javac`/`jar`) exists
+only for the very first jar, or disaster recovery; day-to-day rebuilds go through
+`bin/kwenza package`.
+
+== Why kwenza has no daemon (and what that costs)
+
+Unlike Gradle, kwenza launches a fresh JVM on every single invocation rather than keeping a
+persistent daemon process warm. This was measured directly, using the phase-timing diagnostics
+described in link:cli-reference.adoc[CLI Reference] (`KWENZA_TIMING=1`):
+
+* kwenza's own resolve/compile/package logic is fast and consistent — around 400ms total for a
+  trivial single-file project, every single run, with no meaningful variance.
+* A cold JVM running kwenza has to class-load roughly 10x more classes than a bare `java -version`
+  (~3,800 vs ~380) — mostly `javax.tools`/javac's own compiler internals, `java.xml`'s DOM parser,
+  and `java.net.http`, none of which are covered by the JDK's default Class Data Sharing archive.
+  That's an unavoidable ~350-400ms cost on every invocation, invisible to kwenza's own internal
+  timing since it happens before `main()` is even reached.
+
+That's the direct, quantified reason Gradle's warm daemon edges out kwenza on tiny projects
+despite kwenza's simpler internals — and why a custom AppCDS archive for kwenza's own class
+footprint is flagged in link:../AGENTS.md[AGENTS.md] as a real future optimization, not yet built.
+
+== Project layout
+
+----
+kwenza/
+  kwenza.toml, kwenza.lock      # kwenza's own manifest (it has no dependencies of its own)
+  bootstrap.sh                  # first-ever build, before kwenza can build itself
+  bin/kwenza                    # wrapper script - put this on your PATH
+  src/main/java/dev/kwenza/
+    cli/                        # command dispatch (build/check/run/package/clean/resolve)
+    manifest/                   # kwenza.toml + kwenza.lock models
+    toml/                       # hand-rolled TOML parser
+    resolver/                   # Maven Central resolution, POM parsing, mediation, local cache
+    compiler/                   # javax.tools.JavaCompiler wrapper + JDK compatibility check
+    packager/                   # MANIFEST.MF + thin-jar writer
+  examples/hello-world/         # a small real project using kwenza (Guava dependency)
+  benchmarks/hello-world/       # timed kwenza vs Maven vs Gradle comparison
+----

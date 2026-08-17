@@ -1,0 +1,151 @@
+= Manifest Reference
+:toc:
+:toclevels: 2
+
+Every field in `kwenza.toml`, and the `kwenza.lock` format it produces. For a narrative
+walkthrough instead, see link:getting-started.adoc[Getting Started].
+
+== `[package]`
+
+[cols="1,1,3"]
+|===
+|Field |Required? |Meaning
+
+|`name`
+|No — defaults to the containing directory's name
+|The artifact's name. Used to name the packaged jar: `<output-dir>/<name>-<version>.jar`.
+
+|`group`
+|Yes
+|The Maven group ID, e.g. `com.example`. Combined with `name` and `version` for the project's own
+identity (not used for dependency resolution, which is per-dependency — see below).
+
+|`version`
+|Yes
+|The project's version, e.g. `0.1.0`. Any string is accepted; kwenza doesn't currently enforce
+semver.
+
+|`java-version`
+|No — defaults to `"21"`
+|Passed straight to `javac --release`. kwenza checks this against the JDK actually running it
+before compiling — see <<java-version-compat>>.
+
+|`main-class`
+|No — required only for `kwenza run` and for a runnable `kwenza package` jar
+|Fully-qualified class name with a `public static void main(String[])`. Written to the packaged
+jar's `Main-Class` manifest attribute.
+
+|`output-dir`
+|No — defaults to `"target"`
+|Where build output goes (`<output-dir>/classes`, `<output-dir>/<name>-<version>.jar`). Override
+if you'd rather match Gradle's `build`, or anything else. See link:architecture.adoc[Architecture]
+for why this one field was left freely overridable while most of kwenza's other conventions
+deliberately aren't.
+|===
+
+[source,toml]
+----
+[package]
+name = "my-app"                  # optional
+group = "com.example"
+version = "0.1.0"
+java-version = "21"               # optional
+main-class = "com.example.Main"   # optional, required for `run`
+output-dir = "target"             # optional
+----
+
+[[java-version-compat]]
+=== JDK compatibility checking
+
+`javac --release N` can never target a release newer than the JDK actually running it. kwenza
+checks this itself before compiling and fails fast with a specific message
+(`kwenza is running on JDK 21, but [package] java-version = "25" requires JDK 25 or newer...`)
+rather than letting a cryptic javac error surface. The running JDK can be *newer* than
+`java-version` — that's the normal case, not an error.
+
+== `[dependencies]` and `[dev-dependencies]`
+
+Each entry maps an alias to a Maven coordinate:
+
+[source,toml]
+----
+[dependencies]
+guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
+
+[dev-dependencies]
+junit = { module = "org.junit.jupiter:junit-jupiter", version = "5.10.2" }
+----
+
+[cols="1,3"]
+|===
+|Key |Meaning
+
+|(the table key, e.g. `guava`)
+|A local alias — currently just a label; it doesn't yet affect classpath ordering or generated
+accessors.
+
+|`module`
+|`"group:artifact"` — exactly two segments, colon-separated.
+
+|`version`
+|An exact version string. kwenza doesn't currently support version ranges (`[1.0,2.0)`-style
+Maven ranges) or `LATEST`/`RELEASE` — pin an exact version.
+|===
+
+This is deliberately the same shape as Gradle's `libs.versions.toml` version catalogs
+(`module = "group:artifact"`, `version.ref` conventions aside) — the notation Java developers
+already know, rather than inventing new syntax.
+
+`[dependencies]` vs `[dev-dependencies]` mirrors Cargo, replacing Maven's `<scope>test</scope>`:
+dev-dependencies are resolved and put on the classpath for local development, but never leak into
+a consumer's transitive graph the way a `compile`/default-scope Maven dependency would.
+
+== `kwenza.lock`
+
+Written by dependency resolution, read by every subsequent `build`/`run`/`package`/`check` unless
+it's stale or `--update` is passed. Safe to commit — that's the point (see
+link:architecture.adoc[Architecture] for the reproducibility model).
+
+[source,toml]
+----
+manifest-hash = "fcd7b2cea55e61ce18d4af7feecbc79f9e100e5c256c0e7784bc54dcb6427ee4"
+
+[[resolved]]
+module = "com.google.guava:guava"
+version = "33.2.1-jre"
+sha256 = "452b2d9787b7d366fa8cf5ed9a1c40404542d05effa7a598da03bbbbb76d9f31"
+requested-by = ["direct"]
+
+[[resolved]]
+module = "com.google.guava:failureaccess"
+version = "1.0.2"
+sha256 = "8a8f81cf9b359e3f6dfa691a1e776985c061ef2f223c9b2c80753e1b458e8064"
+requested-by = ["com.google.guava:guava"]
+----
+
+[cols="1,3"]
+|===
+|Field |Meaning
+
+|`manifest-hash` (top-level)
+|A hash of every declared dependency (both tables). If this doesn't match the current
+`kwenza.toml`, the lock is considered stale and a full re-resolution runs automatically — no
+separate "lockfile out of date" error to chase down.
+
+|`module`
+|The resolved artifact's `group:artifact`.
+
+|`version`
+|The exact version that won mediation for this module (see
+link:architecture.adoc[Architecture] for how conflicts are resolved).
+
+|`sha256`
+|A checksum of the downloaded jar, computed by kwenza itself — independent of (and in addition
+to) the `.sha1` Maven Central already publishes, which is verified at download time regardless of
+the lockfile.
+
+|`requested-by`
+|Which module(s) pulled this one in transitively, or `["direct"]` if it's declared directly in
+`kwenza.toml`. Diagnostic only — not consumed by kwenza itself (yet — see the deferred `kwenza
+tree` command in link:../AGENTS.md[AGENTS.md]).
+|===

@@ -1,0 +1,114 @@
+= kwenza
+:toc:
+:toclevels: 2
+
+_"kwenza" — isiXhosa for "to make."_
+
+A simpler, more declarative build tool for the JVM. Where Maven and Gradle carry decades of
+flexibility (XML lifecycles, a Groovy/Kotlin scripting DSL, plugin ecosystems), kwenza aims to
+stay small and inert: your `kwenza.toml` is data, not a program, and the tool has exactly one way
+to do each thing.
+
+It's still fully interoperable with the existing Java ecosystem: real transitive dependency
+resolution against Maven Central, a local cache that's byte-for-byte your existing
+`~/.m2/repository`, and the standard `src/main/java` directory layout. Existing Java tooling,
+IDEs, and caches keep working.
+
+The name is deliberately not Java-specific — the door's left open for kwenza to grow support for
+other JVM languages (Kotlin, say) later without an awkward rename.
+
+== Status
+
+*Working now:* dependency resolution, compilation, packaging, running, and a lockfile — the full
+inner loop for a single-module Java project.
+
+*Not built yet* (tracked as a deliberate Phase 2, not oversights): running tests (JUnit), a
+`--fat` uber-jar option, multi-module workspaces, a `[scripts]` task runner, and an `--offline`
+mode. See link:AGENTS.md[AGENTS.md] for the reasoning behind what's in and out of scope so far.
+
+== Quick start
+
+kwenza builds itself, so the very first jar has to come from a plain `javac`/`jar` bootstrap
+script:
+
+[source,bash]
+----
+git clone <this-repo> && cd kwenza
+./bootstrap.sh              # produces target/kwenza-bootstrap.jar
+bin/kwenza package          # from here on, kwenza rebuilds itself using itself
+----
+
+Put `bin/` on your `PATH` so `kwenza` is just a command, then, in any project directory
+containing a `kwenza.toml`:
+
+[source,bash]
+----
+kwenza build      # resolve dependencies + compile
+kwenza run        # build + execute [package].main-class
+kwenza package    # build + produce a runnable thin jar
+----
+
+See link:docs/getting-started.adoc[Getting Started] for the full walkthrough, including a
+from-scratch new project.
+
+== Documentation
+
+* link:docs/getting-started.adoc[Getting Started] — install, `PATH` setup, your first project
+* link:docs/manifest-reference.adoc[Manifest Reference] — every `kwenza.toml` field, `kwenza.lock`
+  format
+* link:docs/cli-reference.adoc[CLI Reference] — every command, flag, and environment variable
+* link:docs/architecture.adoc[Architecture] — how resolution, compilation, and packaging actually
+  work
+* link:AGENTS.md[AGENTS.md] — design decisions and trade-offs, for contributors (human or AI)
+
+== Benchmarks
+
+link:benchmarks/hello-world[`benchmarks/hello-world`] times kwenza against Maven and Gradle
+building the same trivial app, using fully isolated dependency caches so it's safe to re-run
+anytime:
+
+[source,bash]
+----
+cd benchmarks/hello-world
+./run.sh cold     # wipe caches, time one real-network-fetch build per tool
+./run.sh warm 10  # ensure caches are populated, time N clean rebuilds
+./run.sh both 5   # (default) cold pass, then a warm loop
+----
+
+Illustrative results on one machine (single-file project, so this mostly measures fixed tool
+overhead, not compile-at-scale throughput):
+
+[cols="1,1,1,1"]
+|===
+|Scenario |kwenza |Maven |Gradle
+
+|Cold (real network fetch)
+|~1s
+|~12-14s
+|~12-13s
+
+|Warm median
+|~0.75s
+|~1.8s
+|~0.7s footnote:[Gradle's first warm run pays its daemon's startup cost (~1-4s); it's faster than
+kwenza once the daemon is warm, since kwenza launches a fresh JVM on every invocation. That's a
+known, deliberate trade-off, not a bug — see link:AGENTS.md[AGENTS.md].]
+|===
+
+== Contributing
+
+Commit messages follow https://www.conventionalcommits.org/[Conventional Commits]
+(`feat: ...`, `fix(resolver): ...`, `feat(cli)!: ...` for breaking changes). This is enforced by
+a `commit-msg` hook — activate it once per clone with:
+
+[source,bash]
+----
+git config core.hooksPath .githooks
+----
+
+TIP: That's a plain shell script, not `commitlint` — no reason to pull Node.js/npm into a project
+whose whole point is having as few moving parts as possible.
+
+== License
+
+MIT — see link:LICENSE[LICENSE].

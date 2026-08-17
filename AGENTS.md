@@ -7,8 +7,8 @@ conversation that designed it. If you're about to change something and find your
 ## What this is
 
 A simpler, declarative build tool for the JVM: TOML manifest, real Maven Central dependency
-resolution, Maven-compatible local cache and JAR conventions. See [README.md](README.md) for the
-user-facing pitch and current command surface.
+resolution, Maven-compatible local cache and JAR conventions. See [README.adoc](README.adoc) for
+the user-facing pitch and current command surface, and [docs/](docs/) for the full manual.
 
 ## Design decisions and why
 

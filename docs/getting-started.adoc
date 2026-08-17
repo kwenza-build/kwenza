@@ -1,0 +1,121 @@
+= Getting Started
+:toc:
+:toclevels: 2
+:source-highlighter: none
+
+This walks through installing kwenza and building your first project. For the full field-by-field
+manifest schema, see link:manifest-reference.adoc[Manifest Reference]; for every command and flag,
+see link:cli-reference.adoc[CLI Reference].
+
+== Prerequisites
+
+* A JDK, not just a JRE (kwenza compiles in-process via `javax.tools.JavaCompiler`, which needs a
+  full JDK).
+* JDK 21 or newer to run kwenza itself. kwenza's own `kwenza.toml` targets `java-version = "21"`,
+  and its own compiled classes require a JDK at least that new to load at all.
+
+TIP: Projects *you build with* kwenza can target an older `java-version` than the JDK running
+kwenza — the constraint is only that the running JDK must be at least as new as whatever
+`java-version` is requested. See link:architecture.adoc[Architecture] for why.
+
+== Installing kwenza
+
+kwenza is self-hosting — once it exists, it rebuilds itself using itself. That means the very
+first jar has to come from somewhere else: a small `bootstrap.sh` script using plain `javac`/`jar`.
+
+[source,bash]
+----
+git clone <this-repo> && cd kwenza
+./bootstrap.sh
+----
+
+This produces `target/kwenza-bootstrap.jar`. From here on, use kwenza to rebuild itself instead of
+re-running `bootstrap.sh`:
+
+[source,bash]
+----
+bin/kwenza package
+----
+
+`bootstrap.sh` only exists for this first build (or disaster recovery) — day-to-day, `bin/kwenza
+package` is how kwenza's own source changes get rebuilt.
+
+=== Put it on your `PATH`
+
+[source,bash]
+----
+echo 'export PATH="$PWD/bin:$PATH"' >> ~/.zshrc   # or wherever your shell profile lives
+----
+
+Restart your shell (or `source` the file), and `kwenza` is now just a command, usable from any
+project directory.
+
+== Your first project
+
+Create a new directory with a `kwenza.toml`:
+
+[source,bash]
+----
+mkdir hello && cd hello
+mkdir -p src/main/java/com/example
+----
+
+[source,toml]
+----
+# kwenza.toml
+[package]
+group = "com.example"
+version = "0.1.0"
+main-class = "com.example.Main"
+
+[dependencies]
+guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
+----
+
+NOTE: `name` was left out deliberately — it defaults to the containing directory's name (`hello`,
+here). See link:manifest-reference.adoc[Manifest Reference] for every field and its default.
+
+[source,java]
+----
+// src/main/java/com/example/Main.java
+package com.example;
+
+import com.google.common.collect.ImmutableList;
+
+public final class Main {
+    public static void main(String[] args) {
+        ImmutableList<String> items = ImmutableList.of("hello", "from", "kwenza");
+        System.out.println(String.join(" ", items));
+    }
+}
+----
+
+Then:
+
+[source,bash]
+----
+kwenza run
+----
+
+The first run resolves `guava` and its transitive dependencies from Maven Central, caches them at
+`~/.m2/repository`, writes `kwenza.lock`, compiles, and executes `com.example.Main`. Every
+subsequent `kwenza run`/`build`/`package` reuses the lock — no network access — until
+`kwenza.toml`'s dependencies actually change, or you pass `--update`.
+
+To produce a runnable jar instead of just executing in place:
+
+[source,bash]
+----
+kwenza package
+java -jar target/hello-0.1.0.jar
+----
+
+== Where to go next
+
+* A complete, working example (this same walkthrough, already set up) lives at
+  link:../examples/hello-world[`examples/hello-world`].
+* link:manifest-reference.adoc[Manifest Reference] covers every `kwenza.toml` field and the
+  `kwenza.lock` format.
+* link:cli-reference.adoc[CLI Reference] covers every command, flag, and environment variable.
+* link:architecture.adoc[Architecture] explains how resolution, compilation, and packaging work
+  under the hood.
