@@ -4,7 +4,7 @@
 
 _"kwenza" — isiXhosa for "to make."_
 
-A simpler, more declarative build tool for the JVM. Where Maven and Gradle carry decades of
+A simple, declarative build tool for the JVM. Where Maven and Gradle carry decades of
 flexibility (XML lifecycles, a Groovy/Kotlin scripting DSL, plugin ecosystems), kwenza aims to
 stay small and inert: your `kwenza.toml` is data, not a program, and the tool has exactly one way
 to do each thing.
