@@ -65,35 +65,11 @@ from-scratch new project.
 
 link:benchmarks/hello-world[`benchmarks/hello-world`] times kwenza against Maven and Gradle
 building the same trivial app, using fully isolated dependency caches so it's safe to re-run
-anytime:
-
-[source,bash]
-----
-cd benchmarks/hello-world
-./run.sh cold     # wipe caches, time one real-network-fetch build per tool
-./run.sh warm 10  # ensure caches are populated, time N clean rebuilds
-./run.sh both 5   # (default) cold pass, then a warm loop
-----
-
-Illustrative results on one machine (single-file project, so this mostly measures fixed tool
-overhead, not compile-at-scale throughput):
-
-[cols="1,1,1,1"]
-|===
-|Scenario |kwenza |Maven |Gradle
-
-|Cold (real network fetch)
-|~1s
-|~12-14s
-|~12-13s
-
-|Warm median
-|~0.75s
-|~1.8s
-|~0.7s footnote:[Gradle's first warm run pays its daemon's startup cost (~1-4s); it's faster than
-kwenza once the daemon is warm, since kwenza launches a fresh JVM on every invocation. That's a
-known, deliberate trade-off, not a bug — see link:AGENTS.md[AGENTS.md].]
-|===
+anytime (`./run.sh cold|warm|both`). Latest results: kwenza resolves cold roughly 12x faster than
+Maven/Gradle, and beats Maven warm too — though Gradle's persistent daemon edges out kwenza once
+it's warm, a known trade-off of kwenza launching a fresh JVM per invocation rather than keeping
+one running. See the link:benchmarks/hello-world/README.adoc[benchmark's own README] for the full
+numbers, methodology, and how to read them honestly.
 
 == Contributing
 

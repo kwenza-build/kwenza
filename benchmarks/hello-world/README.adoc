@@ -1,0 +1,80 @@
+= hello-world benchmark
+:toc:
+:toclevels: 2
+
+Times kwenza against Maven and Gradle building the exact same trivial app — same
+`com.example.Main`, same single Maven Central dependency (Guava), same Java 21 target. One
+scenario among what `benchmarks/` is meant to hold over time; this is the first and simplest
+(single file, one dependency), not the only one planned.
+
+== Layout
+
+[source]
+----
+hello-world/
+  kwenza/     kwenza.toml + src, using the tool being benchmarked
+  maven/      pom.xml + src, with the Maven wrapper (./mvnw) committed
+  gradle/     build.gradle.kts + src, with the Gradle wrapper (./gradlew) committed
+  run.sh      the actual timed comparison
+  .cache/     isolated dependency caches (gitignored, regenerated on demand)
+----
+
+Both wrappers are committed so anyone cloning this repo can run the Maven/Gradle sides without
+either tool pre-installed — same reasoning as `bin/kwenza` needing nothing but a JDK.
+
+== Running it
+
+[source,bash]
+----
+./run.sh cold       # wipe .cache/, time one real-network-fetch build per tool
+./run.sh warm 10    # ensure .cache/ is populated (auto-priming if empty), time N clean rebuilds
+./run.sh both 5     # (default) cold pass, then a warm loop reusing what it just populated
+----
+
+`.cache/` (`kwenza-m2/`, `maven-m2/`, `gradle-home/`) is fully isolated from your real `~/.m2` and
+`~/.gradle` — every run uses `KWENZA_REPO`, Maven's `-Dmaven.repo.local`, and a scoped
+`GRADLE_USER_HOME` respectively, so this is safe to re-run anytime without touching your actual
+dependency caches. `cold` mode genuinely wipes `.cache/` first (both the dependency caches and
+Gradle's `caches`/`daemon` dirs) — it deliberately leaves Gradle's own downloaded *distribution*
+alone, since re-fetching a ~120MB tool binary isn't part of what's being measured.
+
+== Latest results
+
+One machine, one run — treat as illustrative, not a formal benchmark:
+
+[cols="1,1,1,1"]
+|===
+|Scenario |kwenza |Maven |Gradle
+
+|Cold (real network fetch)
+|1.04s
+|12.21s
+|12.66s
+
+|Warm median (5 runs)
+|0.77s
+|1.75s
+|0.66s footnote:[First warm run cost 3.79s (daemon cold-start); runs 2-5 settled to ~0.65-0.66s
+once the daemon was warm.]
+|===
+
+== Reading these numbers honestly
+
+This is a one-file project, so it mostly measures **fixed tool overhead** — JVM startup, class
+loading, dependency resolution machinery — not compile-at-scale throughput. A real multi-module
+project would tell a different story, especially around Gradle's incremental build and
+up-to-date checks, which this scenario doesn't exercise at all (there's nothing to incrementally
+rebuild in a single file).
+
+Three things this benchmark *has* established, each verified directly rather than assumed:
+
+* **kwenza's cold-fetch speed is real**, not a fluke of a warm OS cache — its concurrent
+  POM-then-JAR resolution genuinely outpaces Maven/Gradle's more sequential resolvers by roughly
+  12x here.
+* **kwenza's own logic is fast and stable** — phase-timing diagnostics (`KWENZA_TIMING=1`) show
+  ~400ms total for resolve+compile+package, every run, with no meaningful variance.
+* **Gradle's daemon is *why* it wins warm**, not because kwenza is doing anything wrong — kwenza
+  launches a fresh JVM per invocation and has to cold-load ~10x more classes than a bare
+  `java -version` (`javac` internals, XML parsing, HTTP client), a cost a warm daemon simply
+  doesn't pay. See link:../../AGENTS.md[AGENTS.md] for the full investigation and why this is a
+  known, deliberate trade-off rather than something to "fix" reflexively.
