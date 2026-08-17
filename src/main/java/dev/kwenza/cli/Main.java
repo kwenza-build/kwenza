@@ -102,7 +102,7 @@ public final class Main {
             for (Resolver.ResolvedArtifact artifact : resolution.artifacts()) {
                 boolean direct = artifact.requestedBy().contains("direct");
                 String via = direct ? "direct" : "via " + String.join(", ", artifact.requestedBy());
-                Status.detail("resolve:   " + artifact.moduleId() + ":" + artifact.version() + "  (" + via + ")");
+                Status.detail("  " + artifact.moduleId() + ":" + artifact.version() + "  (" + via + ")");
             }
         }
         Status.info("resolve: " + resolution.artifacts().size() + " artifact(s) resolved -> " + lockPath.getFileName());
@@ -180,13 +180,11 @@ public final class Main {
         command.add(classpath);
         command.add(manifest.mainClass);
 
+        int depCount = resolution.classpath().size();
+        String deps = depCount == 0 ? "" : " (+" + depCount + " dependency jar" + (depCount == 1 ? "" : "s") + ")";
+        Status.info("run: java -cp " + projectRoot.relativize(classes) + deps + " " + manifest.mainClass);
         if (verbose) {
-            Status.info("run: " + String.join(" ", command));
-        } else {
-            int depCount = resolution.classpath().size();
-            String deps = depCount == 0 ? "" : " (+" + depCount + " dependency jar" + (depCount == 1 ? "" : "s") + ")";
-            Status.info("run: java -cp " + projectRoot.relativize(classes) + deps + " " + manifest.mainClass
-                    + "  [--verbose for the full command]");
+            Status.detail("  " + String.join(" ", command));
         }
         Process process = new ProcessBuilder(command).inheritIO().start();
         int exitCode = process.waitFor();

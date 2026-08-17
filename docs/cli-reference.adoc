@@ -33,15 +33,16 @@ one-liner (relative classes path, dependency jars summarized as a count):
 
 [source]
 ----
-run: java -cp target/classes (+7 dependency jars) com.example.Main  [--verbose for the full command]
+run: java -cp target/classes (+7 dependency jars) com.example.Main
 ----
 
-Pass `--verbose` for the literal command actually executed — full `java` binary path and every
-classpath entry:
+Pass `--verbose` to *also* print the literal command actually executed — full `java` binary path
+and every classpath entry — as an indented detail line underneath:
 
 [source]
 ----
-run: /path/to/jdk/bin/java -cp target/classes:/home/you/.m2/repository/.../guava-33.2.1-jre.jar:... com.example.Main
+run: java -cp target/classes (+7 dependency jars) com.example.Main
+  /path/to/jdk/bin/java -cp target/classes:/home/you/.m2/repository/.../guava-33.2.1-jre.jar:... com.example.Main
 ----
 
 NOTE: kwenza's own status messages (`resolve: ...`, `compile: ...`) print to *stderr*, not
@@ -88,20 +89,23 @@ https://no-color.org/[`NO_COLOR`] environment variable is set to any value.
 
 With `--verbose`, a real dependency resolution (a stale/missing lock, or `--update`) also prints
 one dimmed detail line per resolved artifact, in a third color (gray) distinct from both the
-regular cyan status lines and a running application's own output:
+regular cyan status lines and a running application's own output. Detail lines are indented but
+not re-labeled with a task name — the cyan line immediately above already establishes the
+context:
 
 [source]
 ----
 resolve: fetching dependencies from Maven Central...
-resolve:   com.google.guava:guava:33.2.1-jre  (direct)
-resolve:   com.google.guava:failureaccess:1.0.2  (via com.google.guava:guava)
-resolve:   com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava  (via com.google.guava:guava)
+  com.google.guava:guava:33.2.1-jre  (direct)
+  com.google.guava:failureaccess:1.0.2  (via com.google.guava:guava)
+  com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava  (via com.google.guava:guava)
 resolve: 7 artifact(s) resolved -> kwenza.lock
 ----
 
 This only appears when dependencies are actually being fetched over the network — resolving from
 an already-fresh `kwenza.lock` has nothing per-artifact to show, so `--verbose` doesn't print
-anything extra in that case.
+anything extra in that case. `run --verbose` follows the same pattern: the usual cyan summary
+line, then the full command as an unlabeled gray detail line underneath (see `kwenza run` above).
 
 == Flags
 
