@@ -88,17 +88,39 @@ accessors.
 |`"group:artifact"` — exactly two segments, colon-separated.
 
 |`version`
-|An exact version string. kwenza doesn't currently support version ranges (`[1.0,2.0)`-style
-Maven ranges) or `LATEST`/`RELEASE` — pin an exact version.
+|Either an exact version string, or `{ ref = "alias" }` pointing into <<versions,`[versions]`>>.
+kwenza doesn't currently support version ranges (`[1.0,2.0)`-style Maven ranges) or
+`LATEST`/`RELEASE` — pin an exact version either way.
 |===
 
 This is deliberately the same shape as Gradle's `libs.versions.toml` version catalogs
-(`module = "group:artifact"`, `version.ref` conventions aside) — the notation Java developers
-already know, rather than inventing new syntax.
+(`module = "group:artifact"`, `version.ref` included) — the notation Java developers already
+know, rather than inventing new syntax.
 
 `[dependencies]` vs `[dev-dependencies]` mirrors Cargo, replacing Maven's `<scope>test</scope>`:
 dev-dependencies are resolved and put on the classpath for local development, but never leak into
 a consumer's transitive graph the way a `compile`/default-scope Maven dependency would.
+
+[[versions]]
+== `[versions]`
+
+An optional table of shared version strings, referenced from `[dependencies]`/`[dev-dependencies]`
+with `version.ref` instead of repeating the literal version everywhere:
+
+[source,toml]
+----
+[versions]
+guava = "33.2.1-jre"
+
+[dependencies]
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+----
+
+`version.ref = "guava"` is TOML dotted-key shorthand for `version = { ref = "guava" }` — both
+forms parse identically. Useful for keeping related artifacts (e.g. several modules from the same
+project) pinned to one version in one place. A `version.ref` pointing at a key that doesn't exist
+in `[versions]` is a manifest error, reported before any resolution is attempted. Like plain
+`version` strings, `[versions]` entries must be exact versions, not ranges.
 
 == `kwenza.lock`
 

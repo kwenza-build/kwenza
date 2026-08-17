@@ -18,6 +18,13 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
   kept as inert data with no scripting/plugin DSL — that's the actual thing making Maven/Gradle
   builds hard to reason about, not their XML/Groovy syntax per se.
 
+- **`[versions]` + `version.ref`** mirrors Gradle's version catalogs exactly (same `version.ref`
+  dotted-key syntax, not a kwenza-invented alternative), for the same reason as the dependency
+  notation above — zero new syntax for anyone already using Gradle catalogs. Kept intentionally
+  simple: only plain version strings in `[versions]`, no Gradle-style rich version objects
+  (`strictly`/`prefer`/`reject`) — kwenza doesn't support version ranges at all yet, so there'd be
+  nothing for the extra richness to actually do.
+
 - **Nearest-wins version mediation, not semver unification.** Central artifacts don't reliably
   follow semver, and the ecosystem's POMs already assume Maven's own nearest-wins/BOM-override
   semantics. `dependencyManagement`/BOM `<scope>import</scope>` and `<parent>` inheritance are

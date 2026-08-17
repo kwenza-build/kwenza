@@ -64,14 +64,35 @@ public final class KwenzaManifest {
         String mainClass = pkg.containsKey("main-class") ? requireString(pkg, "main-class") : null;
         String outputDir = pkg.containsKey("output-dir") ? requireString(pkg, "output-dir") : "target";
 
-        Map<String, Dependency> dependencies = parseDependencies(root, "dependencies");
-        Map<String, Dependency> devDependencies = parseDependencies(root, "dev-dependencies");
+        Map<String, String> versions = parseVersions(root);
+        Map<String, Dependency> dependencies = parseDependencies(root, "dependencies", versions);
+        Map<String, Dependency> devDependencies = parseDependencies(root, "dev-dependencies", versions);
 
         return new KwenzaManifest(name, group, version, javaVersion, mainClass, outputDir, dependencies, devDependencies);
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Dependency> parseDependencies(Map<String, Object> root, String tableName) {
+    private static Map<String, String> parseVersions(Map<String, Object> root) {
+        Map<String, String> result = new LinkedHashMap<>();
+        Object raw = root.get("versions");
+        if (raw == null) {
+            return result;
+        }
+        if (!(raw instanceof Map)) {
+            throw new IllegalArgumentException("[versions] must be a table");
+        }
+        for (Map.Entry<String, Object> e : ((Map<String, Object>) raw).entrySet()) {
+            if (!(e.getValue() instanceof String)) {
+                throw new IllegalArgumentException("[versions]." + e.getKey() + " must be a plain string version");
+            }
+            result.put(e.getKey(), (String) e.getValue());
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Dependency> parseDependencies(Map<String, Object> root, String tableName,
+                                                              Map<String, String> versions) {
         Map<String, Dependency> result = new LinkedHashMap<>();
         Object raw = root.get(tableName);
         if (raw == null) {
@@ -87,7 +108,7 @@ public final class KwenzaManifest {
             }
             Map<String, Object> entry = (Map<String, Object>) e.getValue();
             String module = requireString(entry, "module");
-            String depVersion = requireString(entry, "version");
+            String depVersion = resolveVersion(e.getKey(), entry, versions);
             int colon = module.indexOf(':');
             if (colon < 0 || module.indexOf(':', colon + 1) >= 0) {
                 throw new IllegalArgumentException("Dependency module '" + module + "' must be in 'group:artifact' form");
@@ -97,6 +118,31 @@ public final class KwenzaManifest {
             result.put(e.getKey(), new Dependency(e.getKey(), depGroup, depArtifact, depVersion));
         }
         return result;
+    }
+
+    /** Accepts either version = "1.2.3" directly, or version.ref = "alias" pointing into [versions]. */
+    @SuppressWarnings("unchecked")
+    private static String resolveVersion(String alias, Map<String, Object> entry, Map<String, String> versions) {
+        Object versionValue = entry.get("version");
+        if (versionValue instanceof String s) {
+            return s;
+        }
+        if (versionValue instanceof Map) {
+            Map<String, Object> versionTable = (Map<String, Object>) versionValue;
+            Object refValue = versionTable.get("ref");
+            if (!(refValue instanceof String ref)) {
+                throw new IllegalArgumentException(
+                        "Dependency '" + alias + "' has a 'version' table but no string 'ref' key");
+            }
+            String resolved = versions.get(ref);
+            if (resolved == null) {
+                throw new IllegalArgumentException("Dependency '" + alias + "' references version.ref = \"" + ref
+                        + "\", but [versions] has no such key");
+            }
+            return resolved;
+        }
+        throw new IllegalArgumentException(
+                "Dependency '" + alias + "' needs a 'version' (a string, or { ref = \"...\" } into [versions])");
     }
 
     private static String requireString(Map<String, Object> table, String key) {
