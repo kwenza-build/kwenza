@@ -98,16 +98,11 @@ known, deliberate trade-off, not a bug — see link:AGENTS.md[AGENTS.md].]
 == Contributing
 
 Commit messages follow https://www.conventionalcommits.org/[Conventional Commits]
-(`feat: ...`, `fix(resolver): ...`, `feat(cli)!: ...` for breaking changes). This is enforced by
-a `commit-msg` hook — activate it once per clone with:
-
-[source,bash]
-----
-git config core.hooksPath .githooks
-----
-
-TIP: That's a plain shell script, not `commitlint` — no reason to pull Node.js/npm into a project
-whose whole point is having as few moving parts as possible.
+(`feat: ...`, `fix(resolver): ...`, `feat(cli)!: ...` for breaking changes). This isn't enforced by
+tooling — a hook would only run for contributors who'd manually activated it (git never tracks
+`.git/config`, so there's no way to ship that automatically without either relying on Node/Python
+tooling or having `bootstrap.sh` reach beyond its actual job of bootstrapping the build), which
+makes unenforced-but-inconsistent worse than just stating the convention. Follow it by hand.
 
 == License
 

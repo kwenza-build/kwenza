@@ -100,10 +100,12 @@ close most of this gap — flagged as a real future optimization, intentionally 
   `target/` has no working jar at all.
 - `KWENZA_REPO` (dependency cache override) and `KWENZA_TIMING` (phase-timing diagnostics to
   stderr) are real, documented features — see README — not just benchmark plumbing.
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), enforced by
-  `.githooks/commit-msg` (a plain shell script, not `commitlint` — deliberately no Node.js/npm
-  dependency for a project whose whole point is minimal moving parts). Activate with
-  `git config core.hooksPath .githooks`.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — by
+  convention, not tooling-enforced. A `commit-msg` hook was tried and dropped: git never tracks
+  `.git/config`, so `core.hooksPath` can't ship "on by default" for every clone without either a
+  Node/Python dependency (Husky, pre-commit) or `bootstrap.sh` reaching beyond its actual job of
+  bootstrapping the build. Unenforced-for-some-contributors was judged worse than not enforced at
+  all, so it's just a documented convention now.
 
 ## Verification
 
