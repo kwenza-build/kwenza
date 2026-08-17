@@ -1,0 +1,13 @@
+# Build output (kwenza, Maven, and Gradle all rebuild these from source)
+/target/
+**/target/
+**/build/
+
+# Gradle project-local state - benchmarks always use an isolated GRADLE_USER_HOME instead
+**/.gradle/
+
+# Isolated, regenerable dependency caches used by benchmarks/*/run.sh
+benchmarks/*/.cache/
+
+# macOS
+.DS_Store

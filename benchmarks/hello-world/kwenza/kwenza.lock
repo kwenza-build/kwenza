@@ -1,0 +1,44 @@
+manifest-hash = "fcd7b2cea55e61ce18d4af7feecbc79f9e100e5c256c0e7784bc54dcb6427ee4"
+
+[[resolved]]
+module = "com.google.guava:guava"
+version = "33.2.1-jre"
+sha256 = "452b2d9787b7d366fa8cf5ed9a1c40404542d05effa7a598da03bbbbb76d9f31"
+requested-by = ["direct"]
+
+[[resolved]]
+module = "com.google.guava:failureaccess"
+version = "1.0.2"
+sha256 = "8a8f81cf9b359e3f6dfa691a1e776985c061ef2f223c9b2c80753e1b458e8064"
+requested-by = ["com.google.guava:guava"]
+
+[[resolved]]
+module = "com.google.guava:listenablefuture"
+version = "9999.0-empty-to-avoid-conflict-with-guava"
+sha256 = "b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99"
+requested-by = ["com.google.guava:guava"]
+
+[[resolved]]
+module = "com.google.code.findbugs:jsr305"
+version = "3.0.2"
+sha256 = "766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
+requested-by = ["com.google.guava:guava"]
+
+[[resolved]]
+module = "org.checkerframework:checker-qual"
+version = "3.42.0"
+sha256 = "ccaedd33af0b7894d9f2f3b644f4d19e43928e32902e61ac4d10777830f5aac7"
+requested-by = ["com.google.guava:guava"]
+
+[[resolved]]
+module = "com.google.errorprone:error_prone_annotations"
+version = "2.26.1"
+sha256 = "de25f2d9a2156529bd765f51d8efdfc0dfa7301e04efb9cc75b7f10cf5d0e0fb"
+requested-by = ["com.google.guava:guava"]
+
+[[resolved]]
+module = "com.google.j2objc:j2objc-annotations"
+version = "3.0.0"
+sha256 = "88241573467ddca44ffd4d74aa04c2bbfd11bf7c17e0c342c94c9de7a70a7c64"
+requested-by = ["com.google.guava:guava"]
+

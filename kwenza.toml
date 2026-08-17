@@ -1,0 +1,10 @@
+[package]
+name = "kwenza"
+group = "dev.kwenza"
+version = "0.1.0"
+java-version = "21"
+main-class = "dev.kwenza.cli.Main"
+
+[dependencies]
+
+[dev-dependencies]

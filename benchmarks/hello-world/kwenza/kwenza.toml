@@ -1,0 +1,11 @@
+[package]
+name = "hello-world"
+group = "com.example"
+version = "0.1.0"
+java-version = "21"
+main-class = "com.example.Main"
+
+[dependencies]
+guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
+
+[dev-dependencies]

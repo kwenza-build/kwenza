@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Runs kwenza against whatever project directory you invoke it from, using the
+# jar built alongside this script. Prefers the self-hosted target/kwenza-<version>.jar,
+# falling back to target/kwenza-bootstrap.jar before the tool can build itself yet.
+set -euo pipefail
+
+# Resolve the script's real location even if invoked through a symlink
+# (e.g. `ln -s ~/Dev/kwenza/bin/kwenza /usr/local/bin/kwenza`).
+src="${BASH_SOURCE[0]}"
+while [ -h "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ $src != /* ]] && src="$dir/$src"
+done
+BIN_DIR="$(cd -P "$(dirname "$src")" && pwd)"
+KWENZA_HOME="$(dirname "$BIN_DIR")"
+
+JAR="$(ls "$KWENZA_HOME"/target/kwenza-[0-9]*.jar 2>/dev/null | tail -1)"
+if [ -z "${JAR:-}" ]; then
+    JAR="$KWENZA_HOME/target/kwenza-bootstrap.jar"
+fi
+
+if [ ! -f "$JAR" ]; then
+    echo "error: no kwenza jar found in $KWENZA_HOME/target" >&2
+    echo "Run '$KWENZA_HOME/bootstrap.sh' once to build it." >&2
+    exit 1
+fi
+
+exec java -jar "$JAR" "$@"
