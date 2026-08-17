@@ -26,9 +26,10 @@ compiled classes and every resolved dependency jar on the classpath. Fails with 
 `main-class` isn't set in `kwenza.toml`. The subprocess inherits stdin/stdout/stderr, and kwenza
 exits with the same exit code the subprocess used.
 
-NOTE: kwenza's own status messages (`Resolving dependencies...`, `Compiled to ...`) print to
-*stderr*, not stdout — so `kwenza run`'s stdout is exactly what your program itself printed,
-nothing else. `kwenza run > out.txt` captures only your application's real output.
+NOTE: kwenza's own status messages (`resolve: ...`, `compile: ...`) print to *stderr*, not
+stdout — so `kwenza run`'s stdout is exactly what your program itself printed, nothing else.
+`kwenza run > out.txt` captures only your application's real output. See <<output>> below for how
+kwenza's own messages are formatted and colored.
 
 === `kwenza package`
 
@@ -45,13 +46,27 @@ java -jar target/my-app-0.1.0.jar
 === `kwenza clean`
 
 Deletes the entire output directory (`target/` by default, or whatever `[package] output-dir` is
-set to). Reports "Nothing to clean" rather than erroring if it doesn't exist.
+set to). Reports `clean: nothing to remove` rather than erroring if it doesn't exist.
 
 === `kwenza resolve`
 
 Refreshes `kwenza.lock` explicitly, without compiling or packaging anything. Mostly useful with
 `--update`, to intentionally pull newer dependency versions on your own schedule rather than as a
 side effect of some other command.
+
+[[output]]
+== Output
+
+kwenza's own status messages always print to stderr, one per task, prefixed with the task's
+name (`resolve: ...`, `compile: ...`, `package: ...`, `check: ...`, `clean: ...`) — including when
+a command implicitly chains several tasks, e.g. `kwenza run` resolving and compiling before it
+executes anything. This keeps a multi-task command's progress legible at a glance, and keeps
+`kwenza run`'s stdout as pure application output (see the `run` note above).
+
+When stdout is an actual terminal, these messages print in cyan (errors in red) so they're
+visually distinct from whatever your application itself prints. Color is automatically suppressed
+when output isn't a real terminal (piped, redirected to a file) or when the
+https://no-color.org/[`NO_COLOR`] environment variable is set to any value.
 
 == Flags
 
@@ -88,9 +103,9 @@ Example `KWENZA_TIMING` output:
 
 [source]
 ----
-Using locked dependencies (kwenza.lock)
-Compiled to target/classes
-Packaged target/hello-world-0.1.0.jar
+resolve: using locked dependencies (kwenza.lock)
+compile: target/classes
+package: target/hello-world-0.1.0.jar
 [timing] jvm-bootstrap-to-main: 20ms
 [timing] main-entry -> manifest-loaded: 3ms
 [timing] manifest-loaded -> resolved (from lock): 111ms
