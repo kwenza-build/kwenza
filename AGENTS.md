@@ -100,6 +100,10 @@ close most of this gap — flagged as a real future optimization, intentionally 
   `target/` has no working jar at all.
 - `KWENZA_REPO` (dependency cache override) and `KWENZA_TIMING` (phase-timing diagnostics to
   stderr) are real, documented features — see README — not just benchmark plumbing.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), enforced by
+  `.githooks/commit-msg` (a plain shell script, not `commitlint` — deliberately no Node.js/npm
+  dependency for a project whose whole point is minimal moving parts). Activate with
+  `git config core.hooksPath .githooks`.
 
 ## Verification
 

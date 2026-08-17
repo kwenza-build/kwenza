@@ -136,6 +136,19 @@ overhead, not compile-at-scale throughput):
 the daemon is warm, since kwenza launches a fresh JVM on every invocation. That's a known,
 deliberate trade-off, not a bug — see [AGENTS.md](AGENTS.md).
 
+## Contributing
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat: ...`, `fix(resolver): ...`, `feat(cli)!: ...` for breaking changes). This is enforced by
+a `commit-msg` hook — activate it once per clone with:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+(A plain shell script, not `commitlint` — no reason to pull Node.js/npm into a project whose whole
+point is having as few moving parts as possible.)
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
