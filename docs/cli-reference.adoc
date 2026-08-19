@@ -52,6 +52,43 @@ stdout — so `kwenza run`'s stdout is exactly what your program itself printed,
 `kwenza run > out.txt` captures only your application's real output. See <<output>> below for how
 kwenza's own messages are formatted and colored.
 
+[[kwenza-test]]
+=== `kwenza test`
+
+Runs `build`, then compiles `src/test/java` to `<output-dir>/test-classes` (a separate directory
+from `<output-dir>/classes`, mirroring Maven's `target/test-classes`) and copies
+`src/test/resources` alongside it, if that directory exists. Then runs the tests by forking a
+`java` subprocess for `org.junit.platform.console.ConsoleLauncher execute
+--scan-classpath=<output-dir>/test-classes`, with the compiled main and test classes plus every
+resolved dependency (both `[dependencies]` and `[dev-dependencies]`) on its classpath.
+
+This needs a dev-dependency that provides the `org.junit.platform.console.ConsoleLauncher` class —
+`org.junit.platform:junit-platform-console-standalone` is the one that bundles it together with
+the launcher and every JUnit engine, see link:manifest-reference.adoc[Manifest Reference]. kwenza
+doesn't care which JUnit Platform *engine* ends up running your tests (Jupiter, Vintage, or a
+third-party one) — the console launcher discovers whatever's on the classpath itself. A test
+library that isn't a JUnit Platform engine (Mockito, AssertJ, ...) needs no kwenza-side support at
+all: it's a normal dev-dependency, resolved onto the test classpath like anything else.
+
+Tests run in their own forked JVM, not inside kwenza's own process — the same reason `run` forks
+for the user's application. This matters in practice: it's what lets Mockito's inline mock maker
+self-attach its Java agent, or a test call `System.exit()`, without either affecting kwenza itself.
+
+An empty or missing `src/test/java` runs zero tests and exits `0`, the same "nothing to do isn't an
+error" behavior as an empty `src/main/java` under `build`. A real test failure exits non-zero, and
+kwenza exits with that same code.
+
+kwenza prints a `test: ...` summary line before running, same style as `run`:
+
+[source]
+----
+test: java -cp target/classes:target/test-classes (+9 dependency jars) ConsoleLauncher
+----
+
+The console launcher's own report (which test classes ran, pass/fail detail, a final summary) is
+JUnit's own output, printed directly to stdout — kwenza doesn't reformat or parse it. `--verbose`
+adds the literal command as a gray detail line underneath, exactly like `run --verbose`.
+
 === `kwenza package`
 
 Runs `build`, then writes `<output-dir>/<name>-<version>.jar` — a thin jar containing only your
@@ -79,7 +116,8 @@ side effect of some other command.
 == Output
 
 kwenza's own status messages always print to stderr, one per task, prefixed with the task's
-name (`resolve: ...`, `compile: ...`, `package: ...`, `clean: ...`) — including when
+name (`resolve: ...`, `compile: ...`, `test: ...`, `package: ...`, `clean: ...`) —
+including when
 a command implicitly chains several tasks, e.g. `kwenza run` resolving and compiling before it
 executes anything. This keeps a multi-task command's progress legible at a glance, and keeps
 `kwenza run`'s stdout as pure application output (see the `run` note above).
@@ -106,8 +144,9 @@ resolve: 7 artifact(s) resolved -> kwenza.lock
 
 This only appears when dependencies are actually being fetched over the network — resolving from
 an already-fresh `kwenza.lock` has nothing per-artifact to show, so `--verbose` doesn't print
-anything extra in that case. `run --verbose` follows the same pattern: the usual cyan summary
-line, then the full command as an unlabeled gray detail line underneath (see `kwenza run` above).
+anything extra in that case. `run --verbose` and `test --verbose` follow the same pattern: the
+usual cyan summary line either way, then the full command as an unlabeled gray detail line
+underneath (see `kwenza run` and `kwenza test` above).
 
 == Flags
 
@@ -117,12 +156,13 @@ line, then the full command as an unlabeled gray detail line underneath (see `kw
 
 |`--update`
 |Forces a full re-resolution against Maven Central, ignoring `kwenza.lock` even if it looks fresh.
-Valid alongside `build`, `run`, `package`, and `resolve`.
+Valid alongside `build`, `test`, `run`, `package`, and `resolve`.
 
 |`--verbose`
 |Prints extra detail, see <<output>>: one line per resolved dependency during a real resolution
-(any command that resolves), and, for `run` specifically, the literal command being executed
-(full `java` binary path, every classpath entry) instead of the default compact one-liner.
+(any command that resolves), and, for `run` and `test` specifically, the literal command being
+executed (full `java` binary path, every classpath entry) instead of the default compact
+one-liner.
 |===
 
 == Environment variables

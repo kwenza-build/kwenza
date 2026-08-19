@@ -38,7 +38,8 @@ public final class Main {
         System.exit(0);
     }
 
-    private static final Set<String> COMMANDS = Set.of("resolve", "build", "package", "run", "clean");
+    private static final Set<String> COMMANDS =
+            Set.of("resolve", "build", "test", "package", "run", "clean");
 
     private static void run(String[] args) throws Exception {
         List<String> commands = new ArrayList<>();
@@ -84,6 +85,7 @@ public final class Main {
             switch (command) {
                 case "resolve" -> ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
                 case "build" -> ensureCompiled(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+                case "test" -> doTest(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
                 case "package" -> doPackage(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
                 case "run" -> doRun(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
                 case "clean" -> doClean(state, targetDir);
@@ -93,8 +95,10 @@ public final class Main {
 
     /** Resolution and compilation results, memoized across every command in a single invocation. */
     private static final class BuildState {
-        Resolver.Resolution resolution;
+        Resolver.Resolution resolution;      // dependencies + dev-dependencies merged, backed by kwenza.lock
+        Resolver.Resolution mainResolution;   // dependencies only - derived locally, never hits the network on its own
         boolean compiled;
+        boolean testCompiled;
     }
 
     private static Resolver.Resolution resolve(KwenzaManifest manifest, Path lockPath, Path localRepo,
@@ -139,11 +143,28 @@ public final class Main {
         return state.resolution;
     }
 
+    /**
+     * Resolves the dependencies-only subset, used for everything that ends up on a shipped
+     * artifact's classpath (build/package/run) so dev-dependencies never leak into it.
+     * Never touches the network on its own: {@code ensureResolved} above has already guaranteed
+     * every POM/jar it needs is in the local cache, since dependencies is a subset of
+     * dependencies + dev-dependencies.
+     */
+    private static Resolver.Resolution ensureMainResolved(BuildState state, KwenzaManifest manifest, Path lockPath,
+                                                          Path localRepo, boolean update, boolean verbose) throws IOException {
+        ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
+        if (state.mainResolution == null) {
+            Resolver resolver = new Resolver(MavenRepository.central(localRepo));
+            state.mainResolution = resolver.resolve(manifest.dependencies.values());
+        }
+        return state.mainResolution;
+    }
+
     /** Compiles at most once per invocation - later calls in the same command chain reuse the result. */
     private static Resolver.Resolution ensureCompiled(BuildState state, KwenzaManifest manifest, Path projectRoot,
                                                        Path lockPath, Path targetDir, Path localRepo, boolean update,
                                                        boolean verbose) throws Exception {
-        Resolver.Resolution resolution = ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
+        Resolver.Resolution resolution = ensureMainResolved(state, manifest, lockPath, localRepo, update, verbose);
         if (state.compiled) {
             return resolution;
         }
@@ -158,6 +179,39 @@ public final class Main {
         copyResources(projectRoot.resolve("src/main/resources"), mainClasses);
         Status.info("compile: " + projectRoot.relativize(mainClasses));
         state.compiled = true;
+        return resolution;
+    }
+
+    /**
+     * Compiles at most once per invocation - later calls in the same command chain reuse the
+     * result. Needs both scopes on the classpath (main code and test code alike may reference
+     * either), so it uses {@code ensureResolved} (the merged resolution), not
+     * {@code ensureMainResolved}.
+     */
+    private static Resolver.Resolution ensureTestCompiled(BuildState state, KwenzaManifest manifest, Path projectRoot,
+                                                          Path lockPath, Path targetDir, Path localRepo, boolean update,
+                                                          boolean verbose) throws Exception {
+        ensureCompiled(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+        Resolver.Resolution resolution = ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
+        if (state.testCompiled) {
+            return resolution;
+        }
+        Path mainClasses = targetDir.resolve("classes");
+        Path testClasses = targetDir.resolve("test-classes");
+        List<Path> testClasspath = new ArrayList<>();
+        testClasspath.add(mainClasses);
+        testClasspath.addAll(resolution.classpath());
+        JavaCompilation.Result result = JavaCompilation.compile(
+                projectRoot.resolve("src/test/java"), testClasses, testClasspath, manifest.javaVersion);
+        Timing.mark("test-compiled");
+        printDiagnostics(result.diagnostics);
+        if (!result.success) {
+            throw new CliException("Test compilation failed");
+        }
+        Files.createDirectories(testClasses);
+        copyResources(projectRoot.resolve("src/test/resources"), testClasses);
+        Status.info("compile: " + projectRoot.relativize(testClasses));
+        state.testCompiled = true;
         return resolution;
     }
 
@@ -207,10 +261,55 @@ public final class Main {
         }
     }
 
+    private static void doTest(BuildState state, KwenzaManifest manifest, Path projectRoot, Path lockPath,
+                                Path targetDir, Path localRepo, boolean update, boolean verbose) throws Exception {
+        Resolver.Resolution resolution =
+                ensureTestCompiled(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
+        Path classes = targetDir.resolve("classes");
+        Path testClasses = targetDir.resolve("test-classes");
+
+        List<String> classpathEntries = new ArrayList<>();
+        classpathEntries.add(classes.toString());
+        classpathEntries.add(testClasses.toString());
+        for (Path jar : resolution.classpath()) {
+            classpathEntries.add(jar.toString());
+        }
+        String classpath = String.join(java.io.File.pathSeparator, classpathEntries);
+
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        command.add("-cp");
+        command.add(classpath);
+        command.add("org.junit.platform.console.ConsoleLauncher");
+        command.add("execute");
+        command.add("--scan-classpath=" + testClasses);
+
+        int depCount = resolution.classpath().size();
+        String deps = depCount == 0 ? "" : " (+" + depCount + " dependency jar" + (depCount == 1 ? "" : "s") + ")";
+        Status.info("test: java -cp " + projectRoot.relativize(classes) + ":" + projectRoot.relativize(testClasses)
+                + deps + " ConsoleLauncher");
+        if (verbose) {
+            Status.detail("  " + String.join(" ", command));
+        }
+        // A forked JVM, not an in-process call into the launcher API: keeps kwenza itself free of
+        // any JUnit/Mockito classes (no compile-time dependency, nothing to reflect against), and
+        // isolates kwenza's own process from a test calling System.exit() or Mockito's inline mock
+        // maker self-attaching a Java agent - the same reason Surefire and Gradle's test workers fork.
+        Process process = new ProcessBuilder(command).inheritIO().start();
+        int exitCode = process.waitFor();
+        if (exitCode == 0) {
+            Status.info("test: passed");
+        } else {
+            Status.error("test: failed (exit " + exitCode + ")");
+            System.exit(exitCode);
+        }
+    }
+
     private static void doClean(BuildState state, Path targetDir) throws IOException {
         // Whatever was compiled before this point in the chain is gone now - a later
         // build/package/run in the same chain must recompile, not reuse stale state.
         state.compiled = false;
+        state.testCompiled = false;
         if (!Files.exists(targetDir)) {
             Status.info("clean: nothing to remove");
             return;
@@ -259,6 +358,9 @@ public final class Main {
 
                 Commands:
                   build            resolve dependencies and compile
+                  test             build, compile src/test/java, and run it via the JUnit
+                                   Platform Console Launcher (needs a dev-dependency that
+                                   provides org.junit.platform.console.ConsoleLauncher)
                   run              build and execute [package].main-class
                   package          build and produce a thin jar in the output directory
                   clean            remove the output directory
@@ -267,8 +369,8 @@ public final class Main {
                 Flags:
                   --update         force a full re-resolution against Maven Central
                   --verbose        print extra detail: each dependency resolved (resolve/build/
-                                   package/run), and the full run command including every
-                                   classpath jar (run only)
+                                   package/run/test), and the full run/test command
+                                   including every classpath jar (run/test only)
 
                 Environment:
                   KWENZA_REPO      override the local dependency cache (default: ~/.m2/repository)

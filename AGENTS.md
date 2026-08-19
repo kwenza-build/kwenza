@@ -88,6 +88,44 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
   a prominent AI-tooling brand of the same name) specifically because it's *not* Java-specific,
   leaving room for kwenza to grow support for other JVM languages later without a rename.
 
+- **`kwenza test` forks a JVM to run tests, the same as `run` does for the user's app** — it does
+  *not* call the JUnit Platform's launcher API in-process. Two reasons: it keeps kwenza's own
+  process free of any JUnit/Mockito classes (nothing to compile against, nothing to reflect
+  against, consistent with "zero external dependencies for kwenza itself" above), and it isolates
+  kwenza itself from a test calling `System.exit()` or Mockito's inline mock maker self-attaching a
+  Java agent (already a JDK21+ warning; later JDKs may restrict it further) — the same reason
+  Maven Surefire and Gradle's test workers both fork rather than running in the build's own JVM.
+  Forking doesn't mean giving up parallelism inside a single test run: JUnit Platform's own
+  `junit.jupiter.execution.parallel.*` configuration (auto-discovered from a
+  `junit-platform.properties` file, which `kwenza test` copies from `src/test/resources` alongside
+  the compiled test classes, same as `build` already does for `src/main/resources`) works today
+  with zero kwenza-specific flags — see `examples/word-counter` for a working example. Running
+  disjoint *shards* of a suite across several forked JVMs at once is a different, larger feature,
+  deliberately deferred (see below).
+
+- **No test-framework plugin system.** `kwenza test` always drives
+  `org.junit.platform.console.ConsoleLauncher`, full stop — there's no kwenza-side mechanism for
+  swapping in a different test runner. This isn't a gap: the JUnit Platform itself already
+  discovers whichever test *engine* (Jupiter, Vintage, or a third-party one) is on the classpath via
+  `ServiceLoader`, the same mechanism Maven's Surefire (provider auto-detection) and Gradle
+  (`useJUnitPlatform()`) both lean on. Supporting another JVM test framework is a matter of it
+  shipping a JUnit Platform engine and the user declaring it as a dev-dependency — never a reason
+  to build a plugin system of kwenza's own, consistent with the manifest staying data, not a
+  program.
+
+- **`resolve()` still merges `[dependencies]` and `[dev-dependencies]` into one `Resolution` for
+  `kwenza.lock`, but `build`/`package`/`run` now use a second, dependencies-only
+  resolution** (`ensureMainResolved` in `Main.java`) so dev-dependencies (JUnit, Mockito, ...)
+  never leak onto a shipped artifact's classpath. This is a pragmatic fix, not the "real" one:
+  Maven/Gradle tag a single resolved graph with per-node scope membership, which would mean
+  teaching `Resolver.java`'s `Node`/`ResolvedArtifact` about which root set (`dependencies` vs.
+  `devDependencies`) each artifact is reachable from. `ensureMainResolved` sidesteps that by
+  re-running `Resolver.resolve` with just the main deps — cheap in practice because
+  `MavenRepository` already caches every POM/jar it fetches to `~/.m2`, so the second pass never
+  touches the network on its own, but it is real duplicated in-memory graph mediation work per
+  invocation. Worth revisiting with proper scope-tagging if that ever shows up in profiling, or if
+  `[workspace]` multi-module support (also deferred) ends up needing the same distinction anyway.
+
 - **`kwenza check` (a compile-only pass into a scratch directory, no artifact) was added, then
   removed.** It was modeled on `cargo check`, but the reason `cargo check` earns its keep doesn't
   carry over: it exists because `rustc` codegen is slow enough that skipping it is a real, distinct
@@ -99,12 +137,14 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
 
 ## Explicitly deferred (Phase 2 — not oversights, don't "helpfully" half-implement these)
 
-- `kwenza test` + JUnit Platform Console Launcher integration
 - `kwenza tree` (dependency tree display)
 - `--fat` uber-jar packaging
 - `[workspace]` multi-module support
 - `[scripts]` task runner
 - `--offline` mode
+- `kwenza test` parallelism (`--test-threads` / multi-process sharding across several forked
+  JVMs, the equivalent of Gradle's `maxParallelForks` or Surefire's `forkCount`) — see the
+  "`kwenza test` forks a JVM..." decision above for what's already possible today without it.
 
 ## Known, deliberate trade-off: no daemon
 
@@ -134,12 +174,19 @@ close most of this gap — flagged as a real future optimization, intentionally 
 
 ## Verification
 
-There's no automated test suite yet (that's part of Phase 2). Until then:
+There's no automated test suite for kwenza itself yet. Until then:
 
 - [`examples/hello-world`](examples/hello-world) — a small real project (one Maven Central
-  dependency) used as a manual end-to-end smoke test.
+  dependency) used as a manual end-to-end smoke test for resolve/compile/package/run.
+- [`examples/word-counter`](examples/word-counter) — a small library (no `main-class`) with real
+  JUnit 5 and Mockito tests, used as the manual end-to-end smoke test for `kwenza test`
+  specifically: dev-dependency resolution, `src/test/java` compilation, and that main/test
+  classpath scoping actually holds (`kwenza package` on it must not embed JUnit/Mockito).
 - [`benchmarks/hello-world`](benchmarks/hello-world/run.sh) — safe to re-run anytime
   (`cold`/`warm`/`both` modes), uses fully isolated caches under `.cache/`, never touches your real
   `~/.m2` or `~/.gradle`.
 - Any change to the resolver, compiler, or packager should be manually verified against
-  `examples/hello-world` (`kwenza clean && kwenza run`) before being considered done.
+  `examples/hello-world` (`kwenza clean && kwenza run`) before being considered done. Any change
+  touching `kwenza test`, dev-dependency resolution, or main/test classpath scoping should
+  additionally be verified against `examples/word-counter` (`kwenza clean && kwenza test`, and a
+  `kwenza package` check that its jar's `Class-Path` doesn't include JUnit/Mockito).

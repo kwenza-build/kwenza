@@ -44,6 +44,7 @@ containing a `kwenza.toml`:
 [source,bash]
 ----
 kwenza build      # resolve dependencies + compile
+kwenza test       # build + compile src/test/java + run it via the JUnit Platform Console Launcher
 kwenza run        # build + execute [package].main-class
 kwenza package    # build + produce a runnable thin jar
 ----

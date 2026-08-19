@@ -73,7 +73,8 @@ Each entry maps an alias to a Maven coordinate:
 guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
 
 [dev-dependencies]
-junit = { module = "org.junit.jupiter:junit-jupiter", version = "5.10.2" }
+junit-console = { module = "org.junit.platform:junit-platform-console-standalone", version = "6.1.3" }
+mockito = { module = "org.mockito:mockito-core", version = "5.23.0" }
 ----
 
 [cols="1,3"]
@@ -98,8 +99,17 @@ This is deliberately the same shape as Gradle's `libs.versions.toml` version cat
 know, rather than inventing new syntax.
 
 `[dependencies]` vs `[dev-dependencies]` mirrors Cargo, replacing Maven's `<scope>test</scope>`:
-dev-dependencies are resolved and put on the classpath for local development, but never leak into
-a consumer's transitive graph the way a `compile`/default-scope Maven dependency would.
+dev-dependencies are resolved and put on the test-only classpath (`kwenza test`), never on the
+main/`run`/`package` classpath, and never leak into a consumer's transitive graph the way a
+`compile`/default-scope Maven dependency would.
+
+`kwenza test` specifically needs `org.junit.platform:junit-platform-console-standalone` (or
+another dependency providing the same `org.junit.platform.console.ConsoleLauncher` class) as a
+dev-dependency — plain `org.junit.jupiter:junit-jupiter` isn't enough on its own, since that
+artifact has the JUnit 5 API and engine but not the console launcher. Anything else you add as a
+dev-dependency (Mockito above, AssertJ, ...) needs no kwenza-side support at all — it's just
+another jar on the test classpath. See link:cli-reference.adoc#kwenza-test[`kwenza test`] for how
+it's actually invoked.
 
 [[versions]]
 == `[versions]`
@@ -124,7 +134,7 @@ in `[versions]` is a manifest error, reported before any resolution is attempted
 
 == `kwenza.lock`
 
-Written by dependency resolution, read by every subsequent `build`/`run`/`package` unless
+Written by dependency resolution, read by every subsequent `build`/`run`/`package`/`test` unless
 it's stale or `--update` is passed. Safe to commit — that's the point (see
 link:architecture.adoc[Architecture] for the reproducibility model).
 
