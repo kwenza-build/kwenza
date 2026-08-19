@@ -124,12 +124,18 @@ kwenza/
   bootstrap.sh                  # first-ever build, before kwenza can build itself
   bin/kwenza                    # wrapper script - put this on your PATH
   src/main/java/dev/kwenza/
-    cli/                        # command dispatch (build/test/run/package/clean/resolve)
+    cli/                        # argument parsing, top-level dispatch into commands/
+    commands/                   # BuildState + one class per CLI command (build/test/run/package/clean/resolve)
     manifest/                   # kwenza.toml + kwenza.lock models
     toml/                       # hand-rolled TOML parser
     resolver/                   # Maven Central resolution, POM parsing, mediation, local cache
     compiler/                   # javax.tools.JavaCompiler wrapper + JDK compatibility check
     packager/                   # MANIFEST.MF + thin-jar writer
-  examples/hello-world/         # a small real project using kwenza (Guava dependency)
-  benchmarks/hello-world/       # timed kwenza vs Maven vs Gradle comparison
+  examples/
+    hello-world/                # a small real project using kwenza (Guava dependency)
+    junit-word-count/           # a small library with JUnit 5 + Mockito tests (kwenza test smoke test)
+    testng-calculator/          # proves a third-party JUnit Platform engine (TestNG) works as a dev-dependency
+  benchmarks/
+    Bench.java                  # shared harness: timed kwenza vs Maven vs Gradle, per scenario
+    hello-world/, word-counter/  # benchmark scenarios (kwenza/maven/gradle variants per scenario)
 ----
