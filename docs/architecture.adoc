@@ -124,7 +124,7 @@ kwenza/
   bootstrap.sh                  # first-ever build, before kwenza can build itself
   bin/kwenza                    # wrapper script - put this on your PATH
   src/main/java/dev/kwenza/
-    cli/                        # command dispatch (build/check/run/package/clean/resolve)
+    cli/                        # command dispatch (build/run/package/clean/resolve)
     manifest/                   # kwenza.toml + kwenza.lock models
     toml/                       # hand-rolled TOML parser
     resolver/                   # Maven Central resolution, POM parsing, mediation, local cache

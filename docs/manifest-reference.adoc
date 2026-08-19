@@ -124,7 +124,7 @@ in `[versions]` is a manifest error, reported before any resolution is attempted
 
 == `kwenza.lock`
 
-Written by dependency resolution, read by every subsequent `build`/`run`/`package`/`check` unless
+Written by dependency resolution, read by every subsequent `build`/`run`/`package` unless
 it's stale or `--update` is passed. Safe to commit — that's the point (see
 link:architecture.adoc[Architecture] for the reproducibility model).
 

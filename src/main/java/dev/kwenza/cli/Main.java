@@ -38,7 +38,7 @@ public final class Main {
         System.exit(0);
     }
 
-    private static final Set<String> COMMANDS = Set.of("resolve", "check", "build", "package", "run", "clean");
+    private static final Set<String> COMMANDS = Set.of("resolve", "build", "package", "run", "clean");
 
     private static void run(String[] args) throws Exception {
         List<String> commands = new ArrayList<>();
@@ -83,7 +83,6 @@ public final class Main {
         for (String command : commands) {
             switch (command) {
                 case "resolve" -> ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
-                case "check" -> doCheck(state, manifest, projectRoot, lockPath, localRepo, update, verbose);
                 case "build" -> ensureCompiled(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
                 case "package" -> doPackage(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
                 case "run" -> doRun(state, manifest, projectRoot, lockPath, targetDir, localRepo, update, verbose);
@@ -160,24 +159,6 @@ public final class Main {
         Status.info("compile: " + projectRoot.relativize(mainClasses));
         state.compiled = true;
         return resolution;
-    }
-
-    /** Compile-only fast pass: does not touch the output directory, produces no artifact. */
-    private static void doCheck(BuildState state, KwenzaManifest manifest, Path projectRoot, Path lockPath,
-                                 Path localRepo, boolean update, boolean verbose) throws Exception {
-        Resolver.Resolution resolution = ensureResolved(state, manifest, lockPath, localRepo, update, verbose);
-        Path scratch = Files.createTempDirectory("kwenza-check-");
-        try {
-            JavaCompilation.Result result = JavaCompilation.compile(
-                    projectRoot.resolve("src/main/java"), scratch, resolution.classpath(), manifest.javaVersion);
-            printDiagnostics(result.diagnostics);
-            if (!result.success) {
-                throw new CliException("Compilation failed");
-            }
-            Status.info("check: OK");
-        } finally {
-            deleteRecursively(scratch);
-        }
     }
 
     private static void doPackage(BuildState state, KwenzaManifest manifest, Path projectRoot, Path lockPath,
@@ -278,7 +259,6 @@ public final class Main {
 
                 Commands:
                   build            resolve dependencies and compile
-                  check            resolve and compile-only, no artifact
                   run              build and execute [package].main-class
                   package          build and produce a thin jar in the output directory
                   clean            remove the output directory
@@ -287,7 +267,7 @@ public final class Main {
                 Flags:
                   --update         force a full re-resolution against Maven Central
                   --verbose        print extra detail: each dependency resolved (resolve/build/
-                                   check/package/run), and the full run command including every
+                                   package/run), and the full run command including every
                                    classpath jar (run only)
 
                 Environment:

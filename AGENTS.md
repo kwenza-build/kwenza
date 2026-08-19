@@ -88,6 +88,15 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
   a prominent AI-tooling brand of the same name) specifically because it's *not* Java-specific,
   leaving room for kwenza to grow support for other JVM languages later without a rename.
 
+- **`kwenza check` (a compile-only pass into a scratch directory, no artifact) was added, then
+  removed.** It was modeled on `cargo check`, but the reason `cargo check` earns its keep doesn't
+  carry over: it exists because `rustc` codegen is slow enough that skipping it is a real, distinct
+  speedup over `cargo build`. `javac` doesn't have that gap — kwenza's own compile step is already
+  fast — so a separate check-only command was solving a problem kwenza doesn't have, just because
+  another tool's ecosystem has a command with that name. The `check` name is free again for
+  something that would actually earn it — Checkstyle-style verification is the leading candidate —
+  but that would be a different feature, not a resurrection of this one.
+
 ## Explicitly deferred (Phase 2 — not oversights, don't "helpfully" half-implement these)
 
 - `kwenza test` + JUnit Platform Console Launcher integration

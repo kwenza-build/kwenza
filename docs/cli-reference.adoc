@@ -21,12 +21,6 @@ Resolves dependencies (from the lock if it's fresh, from Maven Central otherwise
 `src/main/java` to `<output-dir>/classes`. Copies `src/main/resources` verbatim alongside the
 compiled classes, if that directory exists. Produces no packaged artifact.
 
-=== `kwenza check`
-
-Resolves and compiles the same way as `build`, but into a temporary directory that's deleted
-afterward — `<output-dir>/` is never touched. Useful as a fast "does this even compile" pass
-without disturbing anything already built.
-
 === `kwenza run`
 
 Runs `build`, then executes `[package].main-class` in a fresh `java` subprocess, with the
@@ -85,7 +79,7 @@ side effect of some other command.
 == Output
 
 kwenza's own status messages always print to stderr, one per task, prefixed with the task's
-name (`resolve: ...`, `compile: ...`, `package: ...`, `check: ...`, `clean: ...`) — including when
+name (`resolve: ...`, `compile: ...`, `package: ...`, `clean: ...`) — including when
 a command implicitly chains several tasks, e.g. `kwenza run` resolving and compiling before it
 executes anything. This keeps a multi-task command's progress legible at a glance, and keeps
 `kwenza run`'s stdout as pure application output (see the `run` note above).
@@ -123,7 +117,7 @@ line, then the full command as an unlabeled gray detail line underneath (see `kw
 
 |`--update`
 |Forces a full re-resolution against Maven Central, ignoring `kwenza.lock` even if it looks fresh.
-Valid alongside `build`, `check`, `run`, `package`, and `resolve`.
+Valid alongside `build`, `run`, `package`, and `resolve`.
 
 |`--verbose`
 |Prints extra detail, see <<output>>: one line per resolved dependency during a real resolution
