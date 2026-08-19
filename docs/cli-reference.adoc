@@ -59,24 +59,38 @@ Runs `build`, then compiles `src/test/java` to `<output-dir>/test-classes` (a se
 from `<output-dir>/classes`, mirroring Maven's `target/test-classes`) and copies
 `src/test/resources` alongside it, if that directory exists. Then runs the tests by forking a
 `java` subprocess for `org.junit.platform.console.ConsoleLauncher execute
---scan-classpath=<output-dir>/test-classes`, with the compiled main and test classes plus every
-resolved dependency (both `[dependencies]` and `[dev-dependencies]`) on its classpath.
+--scan-classpath=<output-dir>/test-classes --disable-banner`, with the compiled main and test
+classes plus every resolved dependency (both `[dependencies]` and `[dev-dependencies]`) on its
+classpath.
 
 This needs a dev-dependency that provides the `org.junit.platform.console.ConsoleLauncher` class —
 `org.junit.platform:junit-platform-console-standalone` is the one that bundles it together with
 the launcher and every JUnit engine, see link:manifest-reference.adoc[Manifest Reference]. kwenza
 doesn't care which JUnit Platform *engine* ends up running your tests (Jupiter, Vintage, or a
 third-party one) — the console launcher discovers whatever's on the classpath itself. A test
-library that isn't a JUnit Platform engine (Mockito, AssertJ, ...) needs no kwenza-side support at
-all: it's a normal dev-dependency, resolved onto the test classpath like anything else.
+library that isn't a JUnit Platform engine (Mockito, AssertJ, ...) is a normal dev-dependency,
+resolved onto the test classpath like anything else — with one exception: if
+`org.mockito:mockito-core` resolves, its jar is loaded as an explicit `-javaagent` on the forked
+JVM, rather than letting Mockito's inline mock maker self-attach after the JVM has already
+started. Self-attaching already prints a warning on JDK 21+ and is headed for removal in a later
+JDK (see Mockito's own docs, linked from that warning) — loading it explicitly up front avoids the
+warning entirely, and needs no configuration from you.
 
 Tests run in their own forked JVM, not inside kwenza's own process — the same reason `run` forks
-for the user's application. This matters in practice: it's what lets Mockito's inline mock maker
-self-attach its Java agent, or a test call `System.exit()`, without either affecting kwenza itself.
+for the user's application. This matters in practice: it isolates kwenza itself from a test
+calling `System.exit()`, and means Mockito's agent (whether self-attached or, as above, explicitly
+loaded) only ever touches the test JVM, never kwenza's own.
 
 An empty or missing `src/test/java` runs zero tests and exits `0`, the same "nothing to do isn't an
-error" behavior as an empty `src/main/java` under `build`. A real test failure exits non-zero, and
-kwenza exits with that same code.
+error" behavior as an empty `src/main/java` under `build` — kwenza checks this itself, before ever
+spawning a subprocess, rather than delegating to the console launcher: a project with no test
+dependencies at all (e.g. `examples/hello-world`) has nothing on its classpath able to load
+`ConsoleLauncher` in the first place, and would otherwise fail with a raw
+`ClassNotFoundException` instead of a clean no-op. If `src/test/java` *does* compile to real test
+classes but no dev-dependency provides `ConsoleLauncher`, that's treated differently — a genuine
+misconfiguration, not "nothing to do" — and fails fast with a message naming the dev-dependency to
+add, rather than either silently reporting no tests or surfacing that same raw
+`ClassNotFoundException`. A real test failure exits non-zero, and kwenza exits with that same code.
 
 kwenza prints a `test: ...` summary line before running, same style as `run`:
 

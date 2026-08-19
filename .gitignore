@@ -3,6 +3,10 @@
 **/target/
 **/build/
 
+# kwenza's own bootstrap jar (bootstrap.sh) - regenerable, kept outside target/ on purpose so
+# `kwenza clean` never deletes it
+/.bootstrap/
+
 # Gradle project-local state - benchmarks always use an isolated GRADLE_USER_HOME instead
 **/.gradle/
 

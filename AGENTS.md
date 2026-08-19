@@ -69,6 +69,15 @@ specific decision and its specific reasoning; that one is for the pattern.
   `bin/kwenza package`, not the bootstrap script. Don't reintroduce a permanent non-self-hosted
   build path.
 
+- **`bootstrap.sh` writes to `.bootstrap/`, not `target/`.** It originally didn't - and that was a
+  real inconsistency with the line above, not just an inconvenience: `kwenza clean` (correctly, by
+  its own contract) deletes `target/` entirely, which meant the *disaster-recovery* jar was itself
+  a casualty of the thing it's supposed to recover from, forcing a manual re-run of `bootstrap.sh`
+  after every `kwenza clean` on this repo. `bin/kwenza` still prefers the self-hosted
+  `target/kwenza-<version>.jar` and only falls back to `.bootstrap/kwenza-bootstrap.jar` when
+  that's missing, so this changes nothing about normal usage - it just means the fallback actually
+  survives the one command most likely to need it.
+
 - **Multiple commands per invocation** (`kwenza build run`, `kwenza clean build run`) are memoized
   within a single `BuildState` (`Main.java`) so a chain doesn't redo resolve/compile once per
   command that happens to need it — `build run` resolves and compiles exactly once, not twice.
@@ -96,9 +105,21 @@ specific decision and its specific reasoning; that one is for the pattern.
   *not* call the JUnit Platform's launcher API in-process. Two reasons: it keeps kwenza's own
   process free of any JUnit/Mockito classes (nothing to compile against, nothing to reflect
   against, consistent with "zero external dependencies for kwenza itself" above), and it isolates
-  kwenza itself from a test calling `System.exit()` or Mockito's inline mock maker self-attaching a
-  Java agent (already a JDK21+ warning; later JDKs may restrict it further) — the same reason
-  Maven Surefire and Gradle's test workers both fork rather than running in the build's own JVM.
+  kwenza itself from a test calling `System.exit()` — the same reason Maven Surefire and Gradle's
+  test workers both fork rather than running in the build's own JVM.
+- **If `org.mockito:mockito-core` resolves, `kwenza test` loads it as an explicit `-javaagent` on
+  the forked test JVM**, rather than letting Mockito's inline mock maker self-attach after the JVM
+  has already started. Self-attaching already warns on JDK21+ and Mockito's own docs (linked from
+  that warning) say it stops working entirely in a future JDK — explicit loading is the documented
+  fix, and mockito-core's own jar is already a valid agent jar (its manifest declares
+  `Premain-Class`), so no extra artifact or configuration is needed from the user. This is a real
+  fix for any kwenza user with Mockito as a dev-dependency, not just kwenza's own dogfooding.
+  Loading any agent this way makes the JVM print an unrelated, harmless
+  `Sharing is only supported for boot loader classes because bootstrap classpath has been
+  appended` notice - that's Class Data Sharing noting its startup-class archive doesn't cover
+  whatever the agent appended to the boot classpath, universal to any Java agent that does this,
+  not fixable without `-Xshare:off` (which would trade away CDS for the *entire* test JVM just to
+  silence one line) - not worth chasing.
   Forking doesn't mean giving up parallelism inside a single test run: JUnit Platform's own
   `junit.jupiter.execution.parallel.*` configuration (auto-discovered from a
   `junit-platform.properties` file, which `kwenza test` copies from `src/test/resources` alongside
@@ -106,6 +127,20 @@ specific decision and its specific reasoning; that one is for the pattern.
   with zero kwenza-specific flags — see `examples/word-counter` for a working example. Running
   disjoint *shards* of a suite across several forked JVMs at once is a different, larger feature,
   deliberately deferred (see below).
+
+- **`kwenza test` checks for compiled test classes and a `ConsoleLauncher`-providing
+  dev-dependency itself, before ever spawning a subprocess** (`TestCommand.hasAnyCompiledTestClasses`/
+  `hasConsoleLauncher`) — found the hard way: `examples/hello-world` has no test dependencies at
+  all, so its classpath has nothing able to load `ConsoleLauncher`, and running `kwenza test`
+  there surfaced a raw `Error: Could not find or load main class
+  org.junit.platform.console.ConsoleLauncher` instead of the intended "nothing to do" no-op. The
+  two checks are deliberately different outcomes, not the same one: zero compiled test classes is
+  "nothing to do" (`test: no tests found`, exit 0, matching `build`'s empty-`src/main/java`
+  behavior) regardless of whether a launcher is even resolvable; real test classes with no
+  launcher dev-dependency is a genuine misconfiguration and fails fast with a specific message
+  naming the fix, per "fail fast, with a specific and actionable message" in
+  docs/design-principles.adoc — silently saying "no tests found" there would hide a real mistake
+  instead of catching it.
 
 - **No test-framework plugin system.** `kwenza test` always drives
   `org.junit.platform.console.ConsoleLauncher`, full stop — there's no kwenza-side mechanism for
@@ -149,6 +184,21 @@ specific decision and its specific reasoning; that one is for the pattern.
   tool's ecosystem has a command with that name. The `check` name is free again for something that
   would actually earn it — Checkstyle-style verification is the leading candidate, see "Future
   ideas" below — but that would be a different feature, not a resurrection of this one.
+
+- **`Main.java` split into `BuildState` + one class per CLI command** (`BuildCommand`,
+  `ResolveCommand`, `PackageCommand`, `RunCommand`, `TestCommand`, `CleanCommand`). It used to do
+  everything itself — arg parsing, dispatch, the resolve/compile memoization state, and every
+  command's full logic — as ~300 lines of private static methods, which isn't testable at a sane
+  seam. `BuildState` is the deep module here: a small interface
+  (`ensureResolved`/`ensureMainResolved`/`ensureCompiled`/`ensureTestCompiled`/`invalidate`) hiding
+  all the resolve/compile/memoization/lock-freshness logic, constructed once per invocation and
+  shared across whichever commands are chained. Each `*Command` is a thin, independently testable
+  `run(BuildState, ...)`. `RunCommand`/`TestCommand` throw a
+  `CommandFailedException` (carrying just an exit code) instead of calling `System.exit` directly
+  when their spawned subprocess fails, since the subprocess has already printed whatever it needed
+  to via `inheritIO()` — `Main` propagates that code silently from one place, rather than every
+  command deciding on its own to terminate the process. `Main` itself is now just: parse args,
+  build one `BuildState`, dispatch each command in the chain to its class.
 
 ## Explicitly deferred (Phase 2 — not oversights, don't "helpfully" half-implement these)
 
@@ -269,8 +319,34 @@ close most of this gap — flagged as a real future optimization, intentionally 
 
 ## Conventions
 
-- Package structure: `dev.kwenza.{cli,manifest,toml,resolver,compiler,packager}`, one clear
-  responsibility per package.
+- Package structure: `dev.kwenza.{cli,commands,manifest,toml,resolver,compiler,packager}`, one
+  clear responsibility per package. `cli` is deliberately thin - argv/flag parsing, dispatch,
+  top-level exception-to-exit-code translation, and `ConsoleReporter` (`Main.java`, no tests of
+  its own - there's nothing left in it worth testing at its own seam). `commands` is where that
+  dispatches to: `BuildState` (the deep module - resolve/compile/memoization behind a small
+  interface) and one class per CLI command (`BuildCommand`, `TestCommand`, `PackageCommand`,
+  `RunCommand`, `CleanCommand`, `ResolveCommand`), plus the `Reporter` interface, `Timing`, and
+  `CliException`/`CommandFailedException` it and `cli` both need. Dependency direction is one-way,
+  `cli` → `commands` → {`resolver`,`compiler`,`packager`,`manifest`}: `commands` never depends
+  back on `cli`, deliberately, so it stays testable and reusable independent of argv parsing.
+
+- **`Status` (static, printed directly to stderr) became `Reporter` (an interface) +
+  `ConsoleReporter` (the real, console-specific implementation).** `BuildState` and the
+  `*Command` classes had genuinely CLI-specific code baked in - not argv parsing, but ANSI colors
+  and `System.console()` terminal detection, real console I/O all the same. `Reporter` (in
+  `commands`, next to what depends on it) is the seam; `ConsoleReporter` (in `cli`, where the
+  concrete "is this a real terminal" decision actually belongs) is the one production adapter,
+  constructed once in `Main` and threaded through `BuildState`'s constructor to every command.
+  Tests inject `Mockito.mock(Reporter.class)` instead - void methods do nothing by default, so
+  it's silent without needing to redirect `System.err` (the `QuietConsole` JUnit extension this
+  replaced), and any test that cares what got reported can `verify(...)` on it instead of
+  string-matching captured output. `CliException`/`CommandFailedException` didn't need to move
+  anywhere for this - they were already plain data (a message, an exit code) with no console
+  coupling of their own; they stay in `commands` simply because that's where they're thrown from,
+  which `cli.Main` (the catcher) imports from - same one-way dependency as everything else here.
+  `Timing` still writes to stderr directly and hasn't had the same treatment - it's a no-op unless
+  `KWENZA_TIMING` is set, so it never caused the test-noise problem this was solving; worth the
+  same treatment later if that changes, not urgent now.
 - Rebuild via self-hosting: `cd kwenza && bin/kwenza package`. Only reach for `bootstrap.sh` if
   `target/` has no working jar at all.
 - `KWENZA_REPO` (dependency cache override) and `KWENZA_TIMING` (phase-timing diagnostics to
@@ -281,10 +357,33 @@ close most of this gap — flagged as a real future optimization, intentionally 
   Node/Python dependency (Husky, pre-commit) or `bootstrap.sh` reaching beyond its actual job of
   bootstrapping the build. Unenforced-for-some-contributors was judged worse than not enforced at
   all, so it's just a documented convention now.
+- New work follows TDD: agree the seam under test before writing anything (don't test unconfirmed
+  internals), red before green, one seam/one test/one minimal change per cycle - not writing a pile
+  of tests before any of the matching implementation exists. Mock only real external-API
+  boundaries (`MavenRepository` for the network, `Reporter` for console output - never kwenza's
+  own domain collaborators). See `src/test/java` for the shape this takes in practice, one test
+  class per module mirroring the main package layout.
+- Tests that call `BuildState`/the `*Command` classes directly and in-process pass
+  `Mockito.mock(Reporter.class)` (via `CommandTestSupport.newState`) rather than a real
+  `ConsoleReporter` - a mock's void methods do nothing by default, so status lines
+  (`reporter.info/error/detail(...)`) never print into the outer `kwenza test` run's own console,
+  indistinguishable from real build activity happening at the top level otherwise.
+  `RunCommand`/`TestCommand` separately accept an explicit `ProcessBuilder.Redirect` (defaulting
+  to `INHERIT` for real CLI use; tests pass `DISCARD`) for the same reason, one level down at the
+  real subprocess they spawn - muting `Reporter` doesn't touch that subprocess's own console
+  report, a different stream entirely.
+- `@Tag("integration")` marks the only two test classes that spawn a real OS subprocess
+  (`RunCommandTest`, `TestCommandTest`) - genuinely slower and more moving parts than everything
+  else, which stays in-process (real `javac`/zip I/O, or `MavenRepository` mocked) even where it
+  isn't mocked. `kwenza test` doesn't filter by tag yet - it's metadata for now, not wired to a
+  flag, since nobody's hit a real need to run just one subset.
 
 ## Verification
 
-There's no automated test suite for kwenza itself yet. Until then:
+kwenza tests itself: `bin/kwenza test` runs a real JUnit 5 suite under `src/test/java`, mirroring
+the main package layout one test class per module (`toml/TomlTest`, `resolver/ResolverTest`,
+`commands/BuildStateTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
+pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test`. Beyond that:
 
 - [`examples/hello-world`](examples/hello-world) — a small real project (one Maven Central
   dependency) used as a manual end-to-end smoke test for resolve/compile/package/run.

@@ -29,8 +29,9 @@ git clone <this-repo> && cd kwenza
 ./bootstrap.sh
 ----
 
-This produces `target/kwenza-bootstrap.jar`. From here on, use kwenza to rebuild itself instead of
-re-running `bootstrap.sh`:
+This produces `.bootstrap/kwenza-bootstrap.jar` — deliberately outside `target/`, so a later
+`kwenza clean` on this repo never deletes it. From here on, use kwenza to rebuild itself instead
+of re-running `bootstrap.sh`:
 
 [source,bash]
 ----
@@ -38,7 +39,10 @@ bin/kwenza package
 ----
 
 `bootstrap.sh` only exists for this first build (or disaster recovery) — day-to-day, `bin/kwenza
-package` is how kwenza's own source changes get rebuilt.
+package` is how kwenza's own source changes get rebuilt. `bin/kwenza` prefers the self-hosted
+`target/kwenza-<version>.jar` and only falls back to the bootstrap jar when that's missing (e.g.
+right after `kwenza clean`), so you should never need to run `bootstrap.sh` a second time on the
+same checkout.
 
 === Put it on your `PATH`
 

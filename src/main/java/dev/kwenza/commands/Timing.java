@@ -1,4 +1,4 @@
-package dev.kwenza.cli;
+package dev.kwenza.commands;
 
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
@@ -9,7 +9,7 @@ import java.util.List;
  * Distinguishes JVM bootstrap (process start to main() entry, which a shell-level
  * wall-clock timer can't see) from time spent in each build phase.
  */
-final class Timing {
+public final class Timing {
     static final boolean ENABLED = System.getenv("KWENZA_TIMING") != null;
 
     private static final long JVM_START_EPOCH_MILLIS = ManagementFactory.getRuntimeMXBean().getStartTime();
@@ -23,16 +23,16 @@ final class Timing {
     }
 
     /** No-op body - calling this forces the class to load (and its static fields to capture "now") at this call site. */
-    static void init() {
+    public static void init() {
     }
 
-    static void mark(String label) {
+    public static void mark(String label) {
         if (!ENABLED) return;
         labels.add(label);
         marks.add(System.nanoTime());
     }
 
-    static void report() {
+    public static void report() {
         if (!ENABLED) return;
         long jvmBootstrapMs = MAIN_ENTRY_EPOCH_MILLIS - JVM_START_EPOCH_MILLIS;
         System.err.printf("[timing] jvm-bootstrap-to-main: %dms%n", jvmBootstrapMs);

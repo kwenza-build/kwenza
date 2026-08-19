@@ -34,7 +34,7 @@ script:
 [source,bash]
 ----
 git clone <this-repo> && cd kwenza
-./bootstrap.sh              # produces target/kwenza-bootstrap.jar
+./bootstrap.sh              # produces .bootstrap/kwenza-bootstrap.jar (outside target/, survives `kwenza clean`)
 bin/kwenza package          # from here on, kwenza rebuilds itself using itself
 ----
 

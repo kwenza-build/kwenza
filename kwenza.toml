@@ -8,3 +8,5 @@ main-class = "dev.kwenza.cli.Main"
 [dependencies]
 
 [dev-dependencies]
+junit-console = { module = "org.junit.platform:junit-platform-console-standalone", version = "6.1.3" }
+mockito = { module = "org.mockito:mockito-core", version = "5.23.0" }
