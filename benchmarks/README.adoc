@@ -1,0 +1,92 @@
+= Benchmarks
+:toc:
+:toclevels: 2
+
+Timed comparisons of kwenza against Maven and Gradle, across a growing set of real scenarios.
+Every scenario times the exact same source across all three tools; only the manifest format
+differs (`kwenza.toml` / `pom.xml` / `build.gradle.kts`), because that's the whole point.
+
+== Running it
+
+One shared harness, `Bench.java`, run from this directory:
+
+[source,bash]
+----
+java Bench.java                          # every scenario, both cold and warm
+java Bench.java hello-world              # one scenario, both cold and warm
+java Bench.java word-counter cold        # one scenario, cold only
+java Bench.java word-counter warm 10     # one scenario, warm only, 10 clean rebuilds
+----
+
+`Bench.java` is a single-file Java program (JEP 330 - `java Bench.java ...` compiles and runs it
+directly, no build step) rather than a shell script: this repo already has more benchmark logic
+than a shell script comfortably holds once there's more than one scenario and more than one
+per-tool operation to time, and it's already a Java codebase. It replaces the older
+per-scenario `run.sh`.
+
+`cold` mode wipes each scenario's isolated `.cache/` first and times one real-network-fetch run
+per tool; `warm` mode primes the caches (if needed), then times `N` clean rebuilds per tool and
+reports min/median; `both` (the default) does cold then warm. `.cache/` (`kwenza-m2/`, `maven-m2/`,
+`gradle-home/`) is fully isolated from your real `~/.m2`/`~/.gradle` per scenario, via
+`KWENZA_REPO`, Maven's `-Dmaven.repo.local`, and a scoped `GRADLE_USER_HOME` — safe to re-run
+anytime. `cold` mode leaves Gradle's downloaded wrapper *distribution* alone (re-fetching a
+~120MB tool binary isn't part of what's measured).
+
+`package` always means compile+package only, for every tool — Maven's `package` and Gradle's
+`build` both run the test phase first by default, which would silently make "package" include
+test execution for those two but not for kwenza. So `package` here is Maven's
+`package -Dmaven.test.skip=true` and Gradle's `assemble` (neither depends on `test`), and `test`
+is its own separate, explicitly-timed operation wherever a scenario has one.
+
+== Scenarios
+
+[cols="1,2,1"]
+|===
+|Scenario |What it measures |Operations
+
+|link:hello-world[`hello-world`]
+|Fixed per-invocation tool overhead on a trivial one-file app: JVM startup, class loading,
+dependency resolution machinery.
+|`package`
+
+|link:word-counter[`word-counter`]
+|The same, plus `kwenza test` vs. `mvn test` vs. `gradle test` — a small library with real JUnit 5
+and Mockito tests, not a throwaway.
+|`package`, `test`
+|===
+
+== One copy of the source, not three
+
+Every tool variant's `src/` is a symlink into the corresponding `examples/*` project
+(`benchmarks/hello-world/kwenza/src -> ../../../examples/hello-world/src`, and likewise for
+`maven`/`gradle` and for `word-counter`) — never a copy. This isn't cosmetic: `examples/hello-world`
+and its benchmark copy had already silently diverged (different printed message) before this
+convention existed, discovered by just diffing them. Symlinking makes that class of drift
+structurally impossible instead of something to remember to keep in sync by hand.
+
+Deliberately **not** shared: the manifest (`kwenza.toml`/`pom.xml`/`build.gradle.kts`),
+`kwenza.lock`, and build output. Maven and Gradle need their own manifest format anyway, so
+there's nothing to share there beyond a couple of dependency coordinates — small, low drift risk,
+unlike full source files. And a `cold` run has to delete `kwenza.lock` to force a genuine
+re-resolution as part of what it measures; if that lock file were the same file as the example's
+(via a directory-level symlink instead of a `src`-only one), every cold benchmark run would delete
+and regenerate the example's own committed lockfile as a side effect. Keeping the manifest/lock
+local to each benchmark variant avoids that entirely.
+
+Wrapper infrastructure (`mvnw`/`.mvn/`, `gradlew`/`gradle/wrapper/`) is committed per scenario, not
+shared or symlinked — that's normal, generic, tool-generated boilerplate every real Maven/Gradle
+project commits its own copy of, with no authored content and no drift risk. Each new scenario's
+wrapper files are copied from an existing one so the Maven/Gradle *versions* being benchmarked stay
+identical across scenarios.
+
+== Adding a scenario
+
+1. Add the real project under `examples/` first, if it doesn't already exist there as a kwenza
+   example — `benchmarks/` never originates source, only times it.
+2. Create `<scenario>/{kwenza,maven,gradle}/`, each with its own manifest (matching the example's
+   dependencies) and a `src` symlink into the example, as above. Copy wrapper files from an
+   existing scenario rather than regenerating them.
+3. Add a `ScenarioSpec` entry to `Bench.java`'s `SCENARIOS` list with the operations that scenario
+   should time.
+4. Run `java Bench.java <scenario> cold` once to generate and commit `kwenza.lock` for the kwenza
+   variant.

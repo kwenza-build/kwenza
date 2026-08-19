@@ -64,13 +64,15 @@ from-scratch new project.
 
 == Benchmarks
 
-link:benchmarks/hello-world[`benchmarks/hello-world`] times kwenza against Maven and Gradle
-building the same trivial app, using fully isolated dependency caches so it's safe to re-run
-anytime (`./run.sh cold|warm|both`). Latest results: kwenza resolves cold roughly 12x faster than
-Maven/Gradle, and beats Maven warm too — though Gradle's persistent daemon edges out kwenza once
-it's warm, a known trade-off of kwenza launching a fresh JVM per invocation rather than keeping
-one running. See the link:benchmarks/hello-world/README.adoc[benchmark's own README] for the full
-numbers, methodology, and how to read them honestly.
+link:benchmarks[`benchmarks/`] times kwenza against Maven and Gradle across a growing set of real
+scenarios (a trivial app, a small library with real JUnit 5/Mockito tests, more over time), using
+fully isolated dependency caches so it's safe to re-run anytime (`java benchmarks/Bench.java`, no
+build step). Latest hello-world results: kwenza resolves cold roughly 12x faster than Maven/Gradle,
+and beats Maven warm too — though Gradle's persistent daemon edges out kwenza once it's warm, a
+known trade-off of kwenza launching a fresh JVM per invocation rather than keeping one running.
+See link:benchmarks/README.adoc[`benchmarks/README.adoc`] for how to run it, and
+link:benchmarks/hello-world/README.adoc[that scenario's own README] for the full numbers,
+methodology, and how to read them honestly.
 
 == Contributing
 

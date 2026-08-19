@@ -12,31 +12,33 @@ scenario among what `benchmarks/` is meant to hold over time; this is the first 
 [source]
 ----
 hello-world/
-  kwenza/     kwenza.toml + src, using the tool being benchmarked
-  maven/      pom.xml + src, with the Maven wrapper (./mvnw) committed
-  gradle/     build.gradle.kts + src, with the Gradle wrapper (./gradlew) committed
-  run.sh      the actual timed comparison
+  kwenza/     kwenza.toml + src (symlink -> ../../../examples/hello-world/src)
+  maven/      pom.xml + src (same symlink), with the Maven wrapper (./mvnw) committed
+  gradle/     build.gradle.kts + src (same symlink), with the Gradle wrapper (./gradlew) committed
   .cache/     isolated dependency caches (gitignored, regenerated on demand)
 ----
 
-Both wrappers are committed so anyone cloning this repo can run the Maven/Gradle sides without
-either tool pre-installed — same reasoning as `bin/kwenza` needing nothing but a JDK.
+`src` is a symlink into link:../../examples/hello-world[`examples/hello-world`] for every tool
+variant, not a copy — see link:../README.adoc[`benchmarks/README.adoc`] for why. Both wrappers are
+committed so anyone cloning this repo can run the Maven/Gradle sides without either tool
+pre-installed — same reasoning as `bin/kwenza` needing nothing but a JDK.
 
 == Running it
 
+The actual timed comparison is the shared `benchmarks/Bench.java` harness, run from the
+`benchmarks/` directory:
+
 [source,bash]
 ----
-./run.sh cold       # wipe .cache/, time one real-network-fetch build per tool
-./run.sh warm 10    # ensure .cache/ is populated (auto-priming if empty), time N clean rebuilds
-./run.sh both 5     # (default) cold pass, then a warm loop reusing what it just populated
+cd ../
+java Bench.java hello-world cold       # wipe .cache/, time one real-network-fetch build per tool
+java Bench.java hello-world warm 10    # ensure .cache/ is populated, time N clean rebuilds
+java Bench.java hello-world both 5     # (default) cold pass, then a warm loop
 ----
 
-`.cache/` (`kwenza-m2/`, `maven-m2/`, `gradle-home/`) is fully isolated from your real `~/.m2` and
-`~/.gradle` — every run uses `KWENZA_REPO`, Maven's `-Dmaven.repo.local`, and a scoped
-`GRADLE_USER_HOME` respectively, so this is safe to re-run anytime without touching your actual
-dependency caches. `cold` mode genuinely wipes `.cache/` first (both the dependency caches and
-Gradle's `caches`/`daemon` dirs) — it deliberately leaves Gradle's own downloaded *distribution*
-alone, since re-fetching a ~120MB tool binary isn't part of what's being measured.
+See link:../README.adoc[`benchmarks/README.adoc`] for the full harness usage, including running
+every scenario together (`java Bench.java all`). `.cache/` (`kwenza-m2/`, `maven-m2/`,
+`gradle-home/`) is fully isolated from your real `~/.m2` and `~/.gradle`, same as before.
 
 == Latest results
 

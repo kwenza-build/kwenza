@@ -35,8 +35,8 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
   kwenza-specific cache dir). This means kwenza and any existing Maven/Gradle install share one warm
   cache, verified for real during development (a `kwenza build` picked up artifacts an existing
   Maven install had already cached, and vice versa). `KWENZA_REPO` overrides this when needed
-  (added for safe, isolated benchmarking — see `benchmarks/*/run.sh` — but it's a generally useful
-  override, not benchmark-only).
+  (added for safe, isolated benchmarking — see `benchmarks/Bench.java` — but it's a generally
+  useful override, not benchmark-only).
 
 - **Zero external dependencies for kwenza itself**, including a hand-rolled TOML parser
   (`dev.kwenza.toml.Toml`) rather than pulling one in. kwenza has to be able to bootstrap without
@@ -126,6 +126,16 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
   invocation. Worth revisiting with proper scope-tagging if that ever shows up in profiling, or if
   `[workspace]` multi-module support (also deferred) ends up needing the same distinction anyway.
 
+- **`benchmarks/*/{kwenza,maven,gradle}/src` are symlinks into the matching `examples/*/src`, never
+  copies.** Found the hard way: `examples/hello-world` and its benchmark copy had already silently
+  diverged (different printed message) before this convention existed. Symlinking the source tree
+  makes that class of drift structurally impossible rather than something to remember to keep in
+  sync by hand. Deliberately scoped to `src/` only — the manifest
+  (`kwenza.toml`/`pom.xml`/`build.gradle.kts`) and `kwenza.lock` stay local per benchmark variant,
+  because a `cold` benchmark run has to delete `kwenza.lock` to force a real re-resolution as part
+  of what it measures, and a directory-level symlink would make that delete the example's own
+  committed lockfile as a side effect. See `benchmarks/README.adoc` for the full convention.
+
 - **`kwenza check` (a compile-only pass into a scratch directory, no artifact) was added, then
   removed.** It was modeled on `cargo check`, but the reason `cargo check` earns its keep doesn't
   carry over: it exists because `rustc` codegen is slow enough that skipping it is a real, distinct
@@ -182,9 +192,9 @@ There's no automated test suite for kwenza itself yet. Until then:
   JUnit 5 and Mockito tests, used as the manual end-to-end smoke test for `kwenza test`
   specifically: dev-dependency resolution, `src/test/java` compilation, and that main/test
   classpath scoping actually holds (`kwenza package` on it must not embed JUnit/Mockito).
-- [`benchmarks/hello-world`](benchmarks/hello-world/run.sh) — safe to re-run anytime
-  (`cold`/`warm`/`both` modes), uses fully isolated caches under `.cache/`, never touches your real
-  `~/.m2` or `~/.gradle`.
+- [`benchmarks/`](benchmarks/README.adoc) (`java Bench.java`) — safe to re-run anytime
+  (`cold`/`warm`/`both` modes, per scenario or all of them), uses fully isolated caches under each
+  scenario's `.cache/`, never touches your real `~/.m2` or `~/.gradle`.
 - Any change to the resolver, compiler, or packager should be manually verified against
   `examples/hello-world` (`kwenza clean && kwenza run`) before being considered done. Any change
   touching `kwenza test`, dev-dependency resolution, or main/test classpath scoping should

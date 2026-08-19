@@ -1,0 +1,38 @@
+= word-counter benchmark
+:toc:
+:toclevels: 2
+
+Times kwenza against Maven and Gradle building *and testing* the same small library — same
+`WordCounter`/`WordFilter`, same real JUnit 5 test and Mockito test, same Java 21 target, no
+`main-class` (it's a library, not an app). See link:../README.adoc[`benchmarks/README.adoc`] for
+how to actually run it and the general harness conventions.
+
+== Layout
+
+[source]
+----
+word-counter/
+  kwenza/     kwenza.toml + src (symlink -> ../../../examples/word-counter/src)
+  maven/      pom.xml + src (same symlink), Maven wrapper committed
+  gradle/     build.gradle.kts + src (same symlink), Gradle wrapper committed
+  .cache/     isolated dependency caches (gitignored, regenerated on demand)
+----
+
+== Why this scenario exists
+
+`hello-world` only measures `package` — fixed tool overhead on a trivial app with no tests. This
+scenario adds `test` specifically: `kwenza test` forks a JVM to run
+`org.junit.platform.console.ConsoleLauncher`, while Maven's Surefire and Gradle's test workers do
+the equivalent through their own plugin machinery. All three are doing comparable work (resolve
+JUnit/Mockito, compile `src/test/java`, execute two real tests), which is what makes the
+comparison meaningful rather than an artifact of one tool doing less.
+
+One dependency-declaration wrinkle worth knowing if you're comparing the manifests directly:
+kwenza needs `org.junit.platform:junit-platform-console-standalone` specifically (it bundles the
+`ConsoleLauncher` class kwenza actually invokes), while Maven and Gradle drive the JUnit Platform
+Launcher API through their own plugin code and only need `org.junit.jupiter:junit-jupiter` — plus,
+for Gradle specifically, an explicit `testRuntimeOnly("org.junit.platform:junit-platform-launcher")`,
+which it doesn't pull in transitively the way Maven's Surefire provider resolution does. This is a
+real difference between how the three tools integrate with the same underlying JUnit Platform, not
+an inconsistency to "fix" - see link:../../AGENTS.md[AGENTS.md]'s "No test-framework plugin
+system" decision for why kwenza's side of this is shaped the way it is.

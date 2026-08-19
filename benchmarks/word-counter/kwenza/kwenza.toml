@@ -1,0 +1,12 @@
+[package]
+name = "word-counter"
+group = "com.example.wordcounter"
+version = "0.1.0"
+java-version = "21"
+
+[dependencies]
+guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
+
+[dev-dependencies]
+junit-console = { module = "org.junit.platform:junit-platform-console-standalone", version = "6.1.3" }
+mockito = { module = "org.mockito:mockito-core", version = "5.23.0" }

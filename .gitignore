@@ -6,7 +6,7 @@
 # Gradle project-local state - benchmarks always use an isolated GRADLE_USER_HOME instead
 **/.gradle/
 
-# Isolated, regenerable dependency caches used by benchmarks/*/run.sh
+# Isolated, regenerable dependency caches used by benchmarks/Bench.java
 benchmarks/*/.cache/
 
 # macOS
