@@ -65,6 +65,9 @@ public final class Toml {
             }
             throw new TomlParseException("Key '" + last + "' is not a table");
         }
+        if (existing != null) {
+            throw new TomlParseException("Key '" + last + "' is not a table");
+        }
         Map<String, Object> table = new LinkedHashMap<>();
         parent.put(last, table);
         return table;
