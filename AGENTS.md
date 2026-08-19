@@ -12,6 +12,10 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
 
 ## Design decisions and why
 
+For the higher-level principles these decisions keep falling out of, see
+[docs/design-principles.adoc](docs/design-principles.adoc). This section stays the place for the
+specific decision and its specific reasoning; that one is for the pattern.
+
 - **TOML, with Gradle-version-catalog-style dependency notation** (`module = "group:artifact"`,
   `version = "..."`) — this is the exact shape Java developers already know from
   `libs.versions.toml`, so there's nothing new to learn for that part. The manifest is deliberately
@@ -140,10 +144,11 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
   removed.** It was modeled on `cargo check`, but the reason `cargo check` earns its keep doesn't
   carry over: it exists because `rustc` codegen is slow enough that skipping it is a real, distinct
   speedup over `cargo build`. `javac` doesn't have that gap — kwenza's own compile step is already
-  fast — so a separate check-only command was solving a problem kwenza doesn't have, just because
-  another tool's ecosystem has a command with that name. The `check` name is free again for
-  something that would actually earn it — Checkstyle-style verification is the leading candidate —
-  but that would be a different feature, not a resurrection of this one.
+  fast (see "Fast is not a trade-off to apologize for" in docs/design-principles.adoc) — so a
+  separate check-only command was solving a problem kwenza doesn't have, just because another
+  tool's ecosystem has a command with that name. The `check` name is free again for something that
+  would actually earn it — Checkstyle-style verification is the leading candidate, see "Future
+  ideas" below — but that would be a different feature, not a resurrection of this one.
 
 ## Explicitly deferred (Phase 2 — not oversights, don't "helpfully" half-implement these)
 
@@ -155,6 +160,101 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
 - `kwenza test` parallelism (`--test-threads` / multi-process sharding across several forked
   JVMs, the equivalent of Gradle's `maxParallelForks` or Surefire's `forkCount`) — see the
   "`kwenza test` forks a JVM..." decision above for what's already possible today without it.
+
+## Also on the radar (surfaced later, not yet triaged against the above)
+
+- **`--project <path>`** — every command currently only operates on the current working directory
+  (see `docs/cli-reference.adoc`'s opening line). Small and standalone; a plausible easy first PR.
+- **AppCDS for kwenza's own cold-start** — see "Known, deliberate trade-off: no daemon" below. A
+  quantified, already-scoped performance item, not a new investigation.
+- **Checksum verification fails open, not closed.** `MavenRepository.fetchJarAsync` silently skips
+  `.sha1` verification if fetching the checksum itself fails (`.exceptionally(ex -> null)`), and
+  `kwenza.lock`'s per-entry `sha256` is written but never read back anywhere — `ensureFromLock`
+  trusts a cached jar from `~/.m2/repository` with no verification at all. See "Secure by default"
+  in docs/design-principles.adoc. A real gap to close (fail closed by default, actually verify
+  cache hits against the lock), not a speculative future feature.
+- **Annotation-processor discovery is uncontrolled.** `JavaCompilation` invokes `javac` without
+  `-proc:none`, so whether a processor bundled in a resolved dependency runs automatically during
+  `kwenza build` depends on the running JDK's own default behavior — not a deliberate kwenza
+  decision either way yet. Worth resolving explicitly once extensibility gets designed for real.
+
+## Future ideas (unprioritized, not yet scoped)
+
+Bigger and vaguer than anything above — these haven't been triaged, sized, or committed to. Don't
+treat absence from "Explicitly deferred" as "not planned," and don't treat presence here as "will
+definitely happen." See [docs/design-principles.adoc](docs/design-principles.adoc) for the
+principles these should be weighed against once any of them gets scoped for real.
+
+Delivery & distribution
+- First-class Docker/OCI image output as a `[package]` target, alongside thin/fat jar — containers,
+  not zips or tarballs, are the primary way most people actually ship applications now.
+- Publishing to Maven-compatible registries (Central, private/custom registries), including auth —
+  the publish-side mirror of the existing consume-side `KWENZA_REPO` override.
+
+Developer experience
+- IDE support: IntelliJ IDEA and Eclipse integration, flagged as important to land relatively
+  early rather than as a late nice-to-have.
+- `kwenza new` — scaffold a new project quickly.
+- A `kwenza.dev` website (domain already owned) — simple to start.
+- Lean on version managers (asdf, mise, sdkman) for "which kwenza/JDK for this project" instead of
+  a per-project wrapper script/jar the way Gradle and Maven each ship one — the cargo/rustup and
+  dotnet model of feeling bundled with the platform rather than vendored per-repo.
+- Semver-and-dependency-resolution semantics that feel intuitive to developers already fluent in
+  Maven/Gradle's model, including SNAPSHOT-style pre-release handling.
+- **Open question: minimum supported Java version.** Some future features imply a floor — JPMS
+  support (below) doesn't make sense below Java 9, for instance — but wide adoption, including by
+  older projects, pulls toward supporting Java 8 or earlier. Genuinely undecided, and the two pulls
+  are in real tension rather than easily split; needs a deliberate choice, not a default.
+- **Maybe: an auto-migration tool from Maven/Gradle projects.** Attractive if it works, but real
+  Maven/Gradle builds lean heavily on plugin-specific and DSL-scripted customization that has no
+  clean data-shaped equivalent in kwenza (see "the manifest is data" in
+  docs/design-principles.adoc) — unclear whether the achievable subset (straightforward POMs/build
+  scripts) is worth the effort relative to how much real-world usage actually stays that simple.
+  Parked as an idea, not a commitment.
+
+Extensibility
+- A `build-dependencies`-style mechanism (Cargo-inspired) for custom build-time logic — explicitly
+  *not* Cargo's `build.rs` arbitrary-scripting model. See "Extensibility through JVM discovery" in
+  docs/design-principles.adoc for the leading shape (annotation processors,
+  `ServiceLoader`-discovered participants resolved as ordinary dependencies).
+- Builtin support for standard, commonly-expected Java tooling that's painful to wire up in
+  Gradle/Maven — Checkstyle is the concrete example. A plausible future home for the `check`
+  command name (see the removed-`check` decision above) once actually built — a different feature
+  from the `check` that was removed, not a resurrection of it.
+
+Compiler & language
+- Official Java Platform Module System (`module-info.java`) support, done properly rather than
+  bolted on — Maven and Gradle both predate JPMS and never fully absorbed it into their own
+  multi-module systems, a real opportunity for kwenza to differentiate. Distinct axis from
+  `[workspace]` (module boundaries vs. multiple manifests in one repo) — they compose, they don't
+  substitute for each other.
+- Multi-JVM-language support (Kotlin, Scala, ...) — see "Multi-JVM-language support is a real
+  direction" in docs/design-principles.adoc. Java-first: a real direction, not near-term work.
+
+Performance
+- Incremental compilation — a real unknown, and potentially in tension with the current in-process
+  `javax.tools.JavaCompiler`-only decision, since that API doesn't give a source-level dependency
+  graph for free the way Gradle's own incremental compiler (or Eclipse's ECJ, which IDEs use) does.
+  Instrument first (extend `KWENZA_TIMING`) before deciding whether to build one — same
+  evidence-first method as the no-daemon finding below.
+- Watch mode (compile + test on file change) — a plausible differentiator versus the JS ecosystem's
+  watch tooling, but needs *some* long-lived warm process to be fast enough to be worth it. If ever
+  built, that's an explicit, opt-in, dev-loop-only exception to "no daemon," not a reversal of it
+  for normal one-shot builds.
+
+Validation strategy
+- Retool real, complex, dependency-light Java projects with kwenza manifests as a stress test, in
+  increasing order of difficulty: https://github.com/aeron-io/agrona[agrona] (no deps, likely
+  single module) → https://github.com/aeron-io/simple-binary-encoding[SBE] (adds a real dependency
+  plus codegen) → https://github.com/aeron-io/aeron[aeron] (adds multi-module, so this one is
+  blocked on `[workspace]` landing first — doubling as its acceptance test). Vert.x/Spring are a
+  much later, much larger stretch goal (custom Gradle plugins, heavy codegen) once the tool is
+  further along.
+- Mechanical note for if/when the above gets tried via git submodules: kwenza currently has no
+  source-directory override (`src/main/java` is fixed, unlike the overridable `output-dir`), so a
+  `kwenza.toml` outside a pristine upstream submodule checkout can't yet point back into that
+  submodule's sources — either add that override, or accept tracking a fork/branch instead of the
+  pristine upstream repo.
 
 ## Known, deliberate trade-off: no daemon
 

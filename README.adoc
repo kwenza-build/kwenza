@@ -60,6 +60,8 @@ from-scratch new project.
 * link:docs/cli-reference.adoc[CLI Reference] — every command, flag, and environment variable
 * link:docs/architecture.adoc[Architecture] — how resolution, compilation, and packaging actually
   work
+* link:docs/design-principles.adoc[Design Principles] — the handful of principles kwenza's design
+  decisions keep falling out of
 * link:AGENTS.md[AGENTS.md] — design decisions and trade-offs, for contributors (human or AI)
 
 == Benchmarks
