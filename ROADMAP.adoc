@@ -89,6 +89,13 @@ in AGENTS.md).
 
 == Milestone 3: kwenza.dev and the 0.1.0 release
 
+* [ ] *Research the site design and brand.* This doesn't depend on any code, so it can run in
+  parallel with anything above. Survey well-regarded dev-tool sites (language toolchains, build
+  tools, CLIs) for what makes a clean, simple landing page and docs experience, and pick a
+  direction for kwenza.dev. kwenza also needs an icon and brand: a logo mark that works as a
+  favicon, GitHub org avatar and README header, plus a small palette and type choice.
+  _Done when:_ a research write-up with a recommended direction is in the repo, and the icon is
+  chosen and committed as SVG.
 * [ ] *Docs site with Antora.* Restructure `docs/` into an Antora component
   (`docs/antora.yml`, `modules/ROOT/pages/`, nav file). The content is already AsciiDoc, so this
   is mostly moving files and fixing `link:` xrefs. Build it in CI and publish to GitHub Pages
