@@ -1,0 +1,427 @@
+= Maven CLI Reference (Research)
+:toc:
+:toclevels: 2
+
+This is research output for a maintainer, not a decision record — nothing here has been folded into
+link:../../AGENTS.md[AGENTS.md] or link:../design-principles.adoc[design-principles.adoc] yet, and
+this file doesn't modify either.
+
+== Scope: what this document is, and isn't
+
+link:gradle-maven-feature-analysis.adoc[`gradle-maven-feature-analysis.adoc`] already covers Maven's
+and Gradle's *build models* in depth — the fixed lifecycle-phase list, how plugin goals bind to
+phases, Gradle's task DAG, and the plugin/extension mechanics behind each. That document's section 1
+("Task graphs and build lifecycle/phases") is the place to read for what a phase or a goal *means*.
+This document does not repeat any of that.
+
+What's covered here instead is narrower and purely mechanical: the actual flags `mvn` itself parses
+off the command line — the options documented on Maven's own
+https://maven.apache.org/ref/current/maven-embedder/cli.html[CLI Options reference] (equivalent to
+running `mvn --help`) — independent of which lifecycle phase or goal ends up running. `mvn -T 4 -am
+-pl module-a install` is one lifecycle invocation (`install`, plus everything before it) modified by
+three CLI options (`-T`, `-am`, `-pl`); this document is about those three, not about what `install`
+does.
+
+== kwenza's current CLI surface, for reference
+
+Recapped from link:../cli-reference.adoc[`cli-reference.adoc`] so the comparison below reads
+side-by-side rather than requiring two open tabs.
+
+Commands: `build`, `run`, `test`, `package`, `clean`, `resolve`. Multiple commands chain in one
+invocation (`kwenza build run`, `kwenza clean build run`), memoized once per invocation via
+`BuildState`.
+
+Flags: `--update` (forces re-resolution against Maven Central, ignoring `kwenza.lock`), `--verbose`
+(prints per-artifact resolution detail and, for `run`/`test`, the literal subprocess command).
+
+Environment variables: `KWENZA_REPO` (local cache directory override, default `~/.m2/repository`),
+`KWENZA_TIMING` (phase-timing breakdown to stderr).
+
+Every command operates on the current working directory — there's no `-f`/`--file`-style
+alternate-POM-location flag, and no `--project <path>` (tracked as an open, unscoped idea in
+AGENTS.md's "Also on the radar"). There's exactly one command chain per process, no reactor concept,
+and no per-invocation profile/property system at all.
+
+== Maven's CLI options, from `mvn --help`
+
+Source for every option and description below:
+https://maven.apache.org/ref/current/maven-embedder/cli.html[Maven CLI Options] unless otherwise
+cited.
+
+=== Reactor / multi-module targeting
+
+Maven's reactor is "the mechanism in Maven that handles multi-module projects" — it "collects all
+the available modules to build," "sorts the projects into the correct build order," and "builds the
+selected projects in order," honoring project dependencies, plugin declarations/dependencies on other
+in-build modules, build-extension declarations, and finally `<modules>` declaration order as a
+fallback, in that priority (Maven, "Guide to Working with Multiple Modules,"
+https://maven.apache.org/guides/mini/guide-multiple-modules.html). Note: `dependencyManagement` and
+`pluginManagement` entries are *not* "instantiated" references and don't affect this sort order — the
+same page is explicit that only real, resolved dependencies do.
+
+[cols="1,4"]
+|===
+|Flag |Behavior and when you'd use it
+
+|`-pl`, `--projects`
+|Comma-delimited list of reactor projects to build "instead of all projects." Use this to build (or
+run any lifecycle phase against) just one or a few modules of a multi-module reactor rather than
+everything.
+
+|`-am`, `--also-make`
+|"If project list is specified, also build projects required by the list." Combined with `-pl`, this
+walks *up* the dependency graph: pass `-pl module-a -am` and Maven also builds whatever `module-a`
+depends on within the reactor, so `module-a` actually has something to compile/link against.
+
+|`-amd`, `--also-make-dependents`
+|"If project list is specified, also build projects that depend on projects on the list." The mirror
+of `-am`: walks *down* the graph — pass `-pl module-a -amd` to also rebuild everything in the
+reactor that depends on `module-a`, e.g. to verify nothing downstream broke after changing it.
+
+|`-N`, `--non-recursive`
+|"Do not recurse into sub-projects." Restricts the build to exactly the current directory's project,
+ignoring `<modules>` entirely — the opposite end of the spectrum from a full reactor build.
+
+|`-rf`, `--resume-from`
+|"Resume reactor from specified project." For "when it fails in the middle" (guide-multiple-modules.html)
+— re-run a large reactor build starting partway through instead of from the top, after fixing
+whatever caused an earlier module to fail.
+|===
+
+*kwenza equivalent: none.* kwenza has no multi-module/reactor concept at all today — every command
+operates on a single project in the current working directory (`docs/cli-reference.adoc`'s opening
+line). This entire flag group only becomes meaningful once (or if) `[workspace]` multi-module
+support — already explicitly deferred in AGENTS.md's "Explicitly deferred (Phase 2)" list — actually
+lands.
+
+=== Parallelism
+
+[cols="1,4"]
+|===
+|Flag |Behavior and when you'd use it
+
+|`-T`, `--threads`
+|"Thread count, for instance 4 (int) or 2C/2.5C (int/float) where C is core multiplied." A plain
+integer (`-T 4`) is an absolute thread count; the `C`-suffixed form (`-T 1C`, `-T 2.5C`) is
+core-relative — `1C` means "one thread per available core," `2.5C` means "2.5 threads per core" —
+so the same flag scales automatically across machines with different core counts instead of a fixed
+number that's either too conservative or oversubscribed depending on hardware. Used to build
+independent reactor modules concurrently.
+|===
+
+*kwenza equivalent: none.* kwenza's own compile/resolve/package pipeline is single-threaded
+per-invocation (aside from whatever concurrency `MavenRepository`'s async jar/POM fetches already use
+internally — a different, non-user-facing thing). `-T` is specifically about parallelizing
+*independent reactor modules*, so — like the reactor flags above — it's not just "missing," it's not
+yet a meaningful concept until `[workspace]` exists. Worth flagging as a `[workspace]` design question
+in its own right even once modules exist: Maven parallelizes *across* the reactor graph, which is a
+different axis from parallelizing *within* a single module's own compile/test — kwenza's deferred
+"`kwenza test` parallelism" idea (AGENTS.md) is closer to the latter.
+
+=== Network / offline / update behavior
+
+[cols="1,4"]
+|===
+|Flag |Behavior and when you'd use it
+
+|`-o`, `--offline`
+|"Work offline." Suppresses any remote repository access; a build that needs an artifact not already
+in the local repository fails rather than fetching it.
+
+|`-U`, `--update-snapshots`
+|"Forces a check for missing releases and updated snapshots on remote repositories." Overrides
+Maven's normal SNAPSHOT update-interval caching (by default once per day per Maven's `settings.xml`
+`updatePolicy`) to force a fresh check right now.
+
+|`-nsu`, `--no-snapshot-updates`
+|"Suppress SNAPSHOT updates." The opposite of `-U` — explicitly skip checking for SNAPSHOT updates
+even if the normal interval would otherwise trigger one.
+|===
+
+*Direct comparison to kwenza's own model* (see "Reproducible by default" in
+link:../design-principles.adoc[design-principles.adoc]): these three flags exist *because* Maven's
+default behavior is to re-resolve against the network and re-check SNAPSHOTs on every build subject
+to a time-based cache policy — "hoping a version range still resolves the same way it did yesterday,"
+as design-principles.adoc puts it. `-o`/`-U`/`-nsu` are three different knobs for tuning how
+aggressively that background network-checking happens, because the default itself is
+network-dependent.
+
+kwenza inverts the default rather than adding matching knobs: `kwenza.lock` records a hash of
+declared dependencies, and `build`/`run`/`package`/`test` reuse the lock and skip network resolution
+entirely *unless* the hash changed or `--update` is passed (AGENTS.md, "Reproducible-by-default
+resolution"). So:
+
+* kwenza's `--update` is the rough mirror of Maven's `-U` — "go check the network now" — except
+  kwenza's default is "don't," where Maven's default is "check on some schedule," so the flag means
+  "escalate resolution intensity" in kwenza but "escalate check frequency" in Maven.
+* Maven's `-o`/`--offline` has *no* kwenza equivalent today, but for a different reason than the
+  reactor flags: it's not unimplemented, it's structurally less necessary. kwenza's default already
+  behaves like `-o` most of the time (lockfile hit ⇒ no network at all) — actual `--offline` in
+  kwenza would only matter for the case where the lock is stale/missing and you want resolution to
+  fail loudly instead of trying the network, which is a real, distinct case, and is exactly why
+  `--offline` mode is separately listed in AGENTS.md's "Explicitly deferred (Phase 2)" — this confirms
+  that entry rather than surfacing something new.
+* `-nsu` has no kwenza equivalent and arguably needs none — kwenza doesn't model "SNAPSHOT" versions
+  or time-based update intervals at all yet (no version ranges per "One correct way to do each thing"
+  in design-principles.adoc), so there's no periodic background check for `-nsu` to suppress in the
+  first place. Only relevant if/when kwenza ever adds SNAPSHOT-style pre-release handling — already
+  named as an open item under "Future ideas" in AGENTS.md.
+
+=== Profiles
+
+[cols="1,4"]
+|===
+|Flag |Behavior and when you'd use it
+
+|`-P`, `--activate-profiles`
+|"Comma-delimited list of profiles to activate." Activates the named `<profile>` block(s) in
+addition to any profile activated implicitly via its own `<activation>` conditions or via
+`settings.xml`'s `<activeProfiles>` (Maven, "Introduction to Build Profiles,"
+https://maven.apache.org/guides/introduction/introduction-to-profiles.html). Since Maven 3.9,
+prefixing an id with `?` marks it optional so an unresolvable profile id doesn't fail the build;
+prefixing with `!` or `-` (`-P !profileA` / `-P=-profileA`) *deactivates* a profile instead of
+activating it, including ones that would otherwise activate implicitly.
+|===
+
+Profiles themselves are defined in one of three places — "Per Project" (`pom.xml` itself), "Per
+User" (`~/.m2/settings.xml`), or "Global" (`${maven.home}/conf/settings.xml`) — per
+introduction-to-profiles.html.
+
+*Whether this is DSL-shaped or genuinely data-shaped* (the specific question this research was
+asked to check, against "the manifest is data" in design-principles.adoc): **it's genuinely
+data-shaped, not executable.** A profile's `<activation>` block is matched declaratively against the
+build environment — introduction-to-profiles.html documents exactly four activation kinds, each pure
+condition-matching with no scripting surface:
+
+* `activeByDefault` — a boolean, "only evaluated if no other profile is explicitly activated."
+* `<jdk>` — a version-prefix or range match (`1.4`, `[1.3,1.6)`) against the running JDK version, or
+  a vendor-string prefix match; no arbitrary expression language.
+* `<os>` — string-equality (optionally negated with `!`) against `os.name`/`os.arch`/`os.version`
+  Java system properties; "all given OS conditions must match."
+* `<property>` — presence-or-value match against a system/CLI property (optionally negated); "the
+  profile will activate if Maven detects a system property or CLI user property... of the
+  corresponding `name=value` pair."
+* `<file>` — existence-or-absence of a named file/directory, with interpolation "limited to
+  `${project.basedir}`, System properties, and request properties" (deliberately *not* full POM
+  property interpolation, to avoid a circular evaluation-order problem).
+
+Multiple activation kinds combine with AND logic ("the profile is then only active if all conditions
+are met"); there is no OR, no boolean expression syntax, and no way to compute a condition rather than
+state it. What's inside an activated profile (dependencies, plugin configuration, properties) is
+ordinary POM XML — the same data shape as the rest of the POM, just conditionally included.
+
+So Maven profiles are a real, working example of exactly the shape design-principles.adoc's "the
+manifest is data" section says should exist for "configuration that changes build behavior based on
+context": declarative condition -> data inclusion, no execution model, matching kwenza's own
+philosophy far more closely than Gradle's task-graph/DSL approach does anywhere else in either tool.
+
+*kwenza equivalent: none, and this is the single most interesting gap this document surfaces* — it's
+not addressed anywhere in AGENTS.md's "Explicitly deferred," "Also on the radar," or "Future ideas"
+sections, nor in `gradle-maven-feature-analysis.adoc`. Every other major Maven/Gradle capability this
+research and the prior research docs looked at either has a clear kwenza analog, is explicitly
+deferred, or is explicitly ruled out as DSL-shaped; conditional, environment-driven manifest sections
+is a real, currently-unnamed gap that — per the analysis above — doesn't actually conflict with "the
+manifest is data" the way a task graph or plugin DSL would. Concretely, the recurring real-world use
+cases this covers (a `-P dev`/`-P prod` split for environment-specific dependency versions or
+`main-class`, a JDK-version-gated dependency, an OS-gated native-library dependency) currently have no
+kwenza-shaped answer at all — not "deferred," just never discussed.
+
+=== Properties / system properties
+
+[cols="1,4"]
+|===
+|Flag |Behavior and when you'd use it
+
+|`-D`, `--define`
+|"Define a user property." Sets a `name=value` pair (`-Dfoo=bar`) usable both as a Java system
+property in any forked JVM and, within the POM, dereferenced as `${foo}` — the same mechanism
+`-P`'s `<property>` activation above matches against.
+|===
+
+*kwenza equivalent: none.* kwenza's manifest has no interpolation/property-reference system at all —
+`kwenza.toml` fields are literal values, consistent with "the manifest is data" (no `${...}`
+expression language to resolve). There's correspondingly no CLI mechanism to inject an ad hoc
+key/value pair into a build. Not discussed anywhere in AGENTS.md; would only become relevant if
+manifest interpolation were ever considered, which nothing today proposes.
+
+=== Output / verbosity
+
+[cols="1,4"]
+|===
+|Flag |Behavior |kwenza equivalent
+
+|`-e`, `--errors` |"Produce execution error messages." |No direct match — kwenza's fail-fast errors
+(design-principles.adoc, "Fail fast, with a specific and actionable message") are always specific,
+not gated behind a verbosity flag.
+
+|`-q`, `--quiet` |"Quiet output - only show errors." |No equivalent; kwenza has no quiet mode — its
+own status lines already go to stderr only, separate from stdout (`cli-reference.adoc`'s Output
+section), which covers part of the same underlying goal (keep stdout clean) differently.
+
+|`-X`, `--debug` |"Produce execution debug output." |Closest kin is `KWENZA_TIMING` (phase-timing
+to stderr) and `--verbose` (per-artifact resolution detail, literal subprocess command) — narrower
+and more targeted than Maven's blanket debug firehose, consistent with "Transparent: no magic" in
+design-principles.adoc naming exactly this kind of targeted, always-available detail rather than a
+generic debug switch.
+
+|`-B`, `--batch-mode` |"Run in non-interactive (batch) mode (disables output color)." |Partial
+overlap: kwenza already auto-suppresses color "when output isn't a real terminal... or when the
+`NO_COLOR` environment variable is set" (`cli-reference.adoc`) — i.e. kwenza's *default* behavior
+already does automatically, based on TTY detection, roughly what `-B`/`NO_COLOR` do explicitly for
+Maven. No separate interactivity concept exists in kwenza to disable, since kwenza's CLI has no
+interactive prompts to suppress in the first place.
+
+|`-V`, `--show-version` |"Display version information WITHOUT stopping build." |No equivalent —
+kwenza has no version-printing flag documented in `cli-reference.adoc` at all.
+
+|`-v`, `--version` |"Display version information." |Same as above — no equivalent found.
+|===
+
+=== Failure behavior
+
+[cols="1,4"]
+|===
+|Flag |Behavior and when you'd use it
+
+|`-ff`, `--fail-fast`
+|Default reactor behavior: "Stop at first failure in reactorized builds" — stop the whole build the
+moment any module fails.
+
+|`-fae`, `--fail-at-end`
+|"Only fail the build afterwards; allow all non-impacted builds to continue" — keep building every
+reactor module *not* dependent on the failed one, and report every failure together at the end,
+rather than stopping immediately.
+
+|`-fn`, `--fail-never`
+|"NEVER fail the build, regardless of project result" — the build process always exits successfully
+regardless of module failures; used to keep automation (e.g. a CI step that must not itself block
+on this particular run) going no matter what.
+|===
+
+*kwenza equivalent: none — and this is a genuinely open `[workspace]`-design question worth naming
+explicitly.* kwenza today has a strict all-or-nothing failure model by construction: there's exactly
+one project per invocation, so "which of several modules failed, and should the rest keep going"
+isn't a question that can even arise yet. These three flags are meaningless outside a reactor, so — as
+with the reactor-targeting and `-T` flag groups above — this isn't a missing kwenza feature so much as
+a design decision `[workspace]` will eventually have to make once it lands: does a `kwenza` reactor
+build stop at the first module failure by default (Maven's own default, arguably the most
+"transparent"/least-surprising choice per design-principles.adoc's "no magic" pillar), or does it need
+its own `-fae`/`-fn`-equivalent flags at all? AGENTS.md's `[workspace]` bullet does not currently
+mention failure semantics one way or the other — worth adding once `[workspace]` gets scoped for
+real.
+
+=== File / settings location overrides
+
+[cols="1,4"]
+|===
+|Flag |Behavior and when you'd use it
+
+|`-f`, `--file`
+|"Force the use of an alternate POM file (or directory with pom.xml)." Lets a build target a POM
+that isn't `./pom.xml` — either a different filename or a different directory entirely.
+
+|`-s`, `--settings`
+|"Alternate path for the user settings file" — overrides the default
+`~/.m2/settings.xml` (repository mirrors/credentials/proxies/per-user active profiles).
+
+|`-gs`, `--global-settings`
+|"Alternate path for the global settings file" — overrides the default
+`${maven.home}/conf/settings.xml`, the installation-wide counterpart to `-s`.
+
+|`-llr`, `--legacy-local-repository`
+|Listed in the current CLI reference as "UNSUPPORTED: Use of this option will make Maven invocation
+fail" — i.e. present in the option table only as an explicitly disabled legacy flag, not a working
+option, per the CLI options page itself.
+|===
+
+*kwenza equivalent, partial:*
+
+* `-f`/`--file` maps closely to the already-tracked, not-yet-built `--project <path>` idea in
+  AGENTS.md's "Also on the radar" section ("every command currently only operates on the current
+  working directory... small and standalone; a plausible easy first PR"). This research confirms
+  that item rather than surfacing anything new — Maven's `-f` is exactly the capability that bullet
+  describes, and it's already correctly triaged as small/standalone rather than needing fresh design.
+* `-s`/`--settings`/`-gs`/`--global-settings` have a rough kwenza analog in `KWENZA_REPO` (overrides
+  the local dependency cache directory — `cli-reference.adoc`) but not a full match: Maven's settings
+  files carry mirrors, server credentials, and proxy configuration that kwenza has no equivalent
+  concept for at all yet (kwenza's `MavenRepository` talks to Maven Central directly, per
+  `gradle-maven-plugin-census.adoc`'s architecture coverage). Not discussed in AGENTS.md; would only
+  become relevant alongside the already-listed "Future ideas" bullet on publishing to
+  Maven-compatible registries with auth, which implies *some* future credential/registry-config
+  story, though nothing today specifies its shape.
+* `-llr` has no kwenza equivalent and needs none — it's Maven's own deprecated legacy-repository-layout
+  flag, now hard-disabled by Maven itself; nothing in kwenza has ever had a legacy repository layout
+  to migrate away from, since kwenza adopted `~/.m2/repository`'s current layout directly and
+  natively from day one (AGENTS.md, "The local cache is `~/.m2/repository`, byte-for-byte Maven's own
+  layout").
+
+=== `--version`/`--help`
+
+`-v`/`--version` and `-V`/`--show-version` are covered above under Output/verbosity (the latter
+because Maven documents it there, distinguished only by "WITHOUT stopping build"). `-h`/`--help`
+("Display help information") has no kwenza equivalent documented in `cli-reference.adoc` — no `--help`
+flag or usage text is described there.
+
+== Gap analysis summary
+
+Sorted by whether the gap is already implied by something tracked in AGENTS.md, versus genuinely new.
+
+*Already implied by existing AGENTS.md tracking:*
+
+* Reactor targeting (`-am`, `-amd`, `-pl`, `-N`, `-rf`) and parallelism (`-T`) — both fall entirely
+  out of `[workspace]` multi-module support, already in "Explicitly deferred (Phase 2)."
+* `-o`/`--offline` — already its own line item in "Explicitly deferred (Phase 2)."
+* `-f`/`--file` (alternate POM/project location) — already covered by the "`--project <path>`" bullet
+  in "Also on the radar."
+* `-s`/`-gs` (settings/credentials) — partially anticipated by the "Also on the radar" registry
+  auth/publishing bullet, though not to the level of specifying settings-file shape.
+
+*Genuinely new — not discussed anywhere in AGENTS.md, design-principles.adoc, or the other research
+docs:*
+
+* **Profiles (`-P`/`<activation>`)** — the most significant finding here. Confirmed to be
+  genuinely data-shaped conditional activation, not a DSL, which means it doesn't conflict with "the
+  manifest is data" the way a task graph or plugin system would — a real, currently open design
+  candidate for kwenza, not something already ruled out.
+* **Failure semantics for a future reactor** (`-fae`/`-ff`/`-fn`) — not just an unimplemented flag,
+  but a decision `[workspace]`'s eventual design will need to make explicitly that the current
+  AGENTS.md bullet doesn't yet mention.
+* **`-D` user properties / manifest interpolation** — no kwenza equivalent and no discussion; likely
+  low priority given the manifest has no expression language to interpolate into today.
+* **`-nsu`** — a non-gap in practice: kwenza doesn't model SNAPSHOT/time-based update intervals, so
+  there's nothing for a suppression flag to suppress yet.
+* **`-e`/`-q`/`-X`/`-V`/`-v`/`-h`** — minor CLI ergonomics (verbosity levels, version/help flags) with
+  no discussion either way; likely low-effort, low-priority additions if ever wanted, not weighed
+  against any design principle either way.
+
+== Summary table
+
+[cols="2,2,4"]
+|===
+|Maven flag/option |kwenza equivalent |Verdict
+
+|`-pl`/`--projects` |None |Meaningless without `[workspace]`; already deferred.
+|`-am`/`--also-make` |None |Meaningless without `[workspace]`; already deferred.
+|`-amd`/`--also-make-dependents` |None |Meaningless without `[workspace]`; already deferred.
+|`-N`/`--non-recursive` |None (kwenza is always single-project) |Meaningless without `[workspace]`; already deferred.
+|`-rf`/`--resume-from` |None |Meaningless without `[workspace]`; already deferred.
+|`-T`/`--threads` |None |Reactor-level parallelism; blocked on `[workspace]`, distinct from deferred `kwenza test` parallelism.
+|`-o`/`--offline` |None |Already in AGENTS.md "Explicitly deferred (Phase 2)."
+|`-U`/`--update-snapshots` |`--update` (rough mirror, inverted default) |kwenza already defaults to lockfile-first; concept covered, mechanics differ.
+|`-nsu`/`--no-snapshot-updates` |None |Non-gap: kwenza has no SNAPSHOT/update-interval model yet.
+|`-P`/`--activate-profiles` |None |**Genuinely new candidate** — real data-shaped conditional config, not a DSL; undiscussed anywhere.
+|`-D`/`--define` |None |Undiscussed; no manifest interpolation model exists to hang it on.
+|`-e`/`--errors` |Always-specific fail-fast errors (different mechanism) |Low-priority ergonomics gap.
+|`-q`/`--quiet` |None |Low-priority ergonomics gap; stderr/stdout split covers part of the intent.
+|`-X`/`--debug` |`KWENZA_TIMING` + `--verbose` (narrower, targeted) |Deliberately narrower by design ("no magic"), not a gap to close.
+|`-B`/`--batch-mode` |Automatic TTY/`NO_COLOR` detection (different mechanism) |Mostly already covered by default behavior.
+|`-V`/`--show-version`, `-v`/`--version` |None |Undiscussed; low-priority ergonomics gap.
+|`-fae`/`--fail-at-end` |None |Open `[workspace]` design question, not yet named in AGENTS.md.
+|`-ff`/`--fail-fast` |All builds are effectively fail-fast today (single project) |Matches kwenza's implicit default; would need explicit design once `[workspace]` lands.
+|`-fn`/`--fail-never` |None |Open `[workspace]` design question, not yet named in AGENTS.md.
+|`-f`/`--file` |None |Already tracked as "`--project <path>`" in AGENTS.md "Also on the radar."
+|`-s`/`--settings` |`KWENZA_REPO` (partial: cache dir only, no credentials/mirrors) |Partially anticipated by registry-auth "Future ideas" bullet.
+|`-gs`/`--global-settings` |None |Same as `-s`: partially anticipated, not specified.
+|`-llr`/`--legacy-local-repository` |None needed |Non-gap: kwenza never had a legacy repo layout to migrate from.
+|`-h`/`--help` |None documented |Low-priority ergonomics gap.
+|===

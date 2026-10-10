@@ -1,0 +1,829 @@
+= Cargo Command Reference
+:toc:
+:toclevels: 2
+
+This is research output for a maintainer, not a decision record — nothing here has been folded into
+link:../../AGENTS.md[AGENTS.md] or link:../design-principles.adoc[design-principles.adoc] yet, and
+this file doesn't modify either, nor
+link:gradle-maven-feature-analysis.adoc[gradle-maven-feature-analysis.adoc] or
+link:gradle-maven-plugin-census.adoc[gradle-maven-plugin-census.adoc].
+
+== The question this answers
+
+Cargo isn't a new comparison being introduced here — it's already kwenza's stated design reference.
+link:../design-principles.adoc[design-principles.adoc]'s mission statement says kwenza "should feel
+like a build-and-dependency tool that shipped with the JDK itself — the way `cargo` feels
+inseparable from Rust," and AGENTS.md already models several concrete kwenza decisions directly on
+Cargo: reproducible-by-default resolution ("This is the uv/Cargo 'lockfile wins by default'
+pattern"), thin-jar-by-default packaging ("matches Maven/Cargo for now"), and the deliberately
+*rejected* `build.rs`-style arbitrary-scripting model for future extensibility ("deliberately not
+the Cargo `build.rs` model"). What's been missing is the other half of that comparison at
+command-and-flag granularity: exactly what Cargo's CLI surface actually is, command by command, so
+that "inspired by Cargo" can be checked against Cargo's real shape rather than a general impression
+of it. This document is that missing half — every Cargo command and its documented flags, from the
+Cargo Book itself, set directly against kwenza's own current CLI surface (`docs/cli-reference.adoc`)
+one gap at a time.
+
+== kwenza's current CLI surface (recap)
+
+From link:../cli-reference.adoc[docs/cli-reference.adoc], for reference alongside Cargo's surface
+below.
+
+Every kwenza command runs against the current working directory (no `--project <path>` yet).
+Multiple commands chain in one invocation (`kwenza build run`, `kwenza clean build run`), memoized
+within a single `BuildState` per AGENTS.md so resolve/compile happen once per invocation regardless
+of how many chained commands would each otherwise trigger them.
+
+[cols="1,4"]
+|===
+|Command |What it does
+
+|`kwenza build`
+|Resolves dependencies (lock-first) and compiles `src/main/java` to `<output-dir>/classes`. No packaged artifact.
+
+|`kwenza run`
+|Runs `build`, then executes `[package].main-class` in a forked `java` subprocess with compiled classes + resolved jars on the classpath.
+
+|`kwenza test`
+|Runs `build`, compiles `src/test/java`, then forks a JVM for `org.junit.platform.console.ConsoleLauncher`. "Nothing to do" (exit 0) if no test classes exist; fails fast with a specific message if test classes exist but no `ConsoleLauncher`-providing dev-dependency is resolvable.
+
+|`kwenza package`
+|Runs `build`, then writes a thin `<output-dir>/<name>-<version>.jar` with a `Class-Path` manifest entry pointing at cached dependency jars.
+
+|`kwenza clean`
+|Deletes the output directory (`target/` by default).
+
+|`kwenza resolve`
+|Refreshes `kwenza.lock` explicitly without compiling/packaging. Mostly useful with `--update`.
+|===
+
+Flags: `--update` (forces full re-resolution against Maven Central, ignoring `kwenza.lock` even if
+fresh; valid alongside `build`/`test`/`run`/`package`/`resolve`) and `--verbose` (prints one line per
+resolved dependency during a real resolution, and for `run`/`test` the literal command executed
+instead of the compact default one-liner).
+
+Env vars: `KWENZA_REPO` (overrides `~/.m2/repository`) and `KWENZA_TIMING` (phase-timing breakdown
+to stderr).
+
+That's six commands and two flags, full stop — no manifest-editing commands, no dependency-tree
+command, no publishing commands, no workspace concept yet. The rest of this document is about what
+sits on the other side of that gap in Cargo's own, much larger surface.
+
+== Cargo's command surface
+
+Organized exactly as the Cargo Book's own commands index does
+(https://doc.rust-lang.org/cargo/commands/index.html): Build Commands, Manifest Commands, Package
+Commands, Publishing Commands, General Commands, plus Report Commands and a small Deprecated/Removed
+set. Repeated flags are factored out once in <<common-flags>> below rather than repeated verbatim
+per command; each command's table below notes only what's specific to it, with a pointer to which
+common-flag groups it accepts.
+
+[[common-flags]]
+=== Common flags (shared across most commands)
+
+Cargo's command pages each break their options into the same recurring subsections. Nearly every
+command below draws from this same shared pool — noted per-command only where a command *doesn't*
+accept a group, or has something command-specific to add.
+
+Package Selection (build-graph commands: `build`, `check`, `test`, `bench`, `doc`, `fix`, `rustc`,
+`clean`, `tree`, `package`, `publish`)::
+`-p`/`--package <spec>...` (operate on named package(s)); `--workspace` (all workspace members);
+`--exclude <spec>...` (requires `--workspace`); `--all` (deprecated alias for `--workspace`).
+Cf. https://doc.rust-lang.org/cargo/commands/cargo-build.html[`cargo build`].
+
+Target Selection (compile-shaped commands)::
+`--lib`; `--bin <name>...` / `--bins`; `--example <name>...` / `--examples`; `--test <name>...` /
+`--tests`; `--bench <name>...` / `--benches`; `--all-targets` (equivalent to
+`--lib --bins --tests --benches --examples`).
+Cf. https://doc.rust-lang.org/cargo/commands/cargo-build.html[`cargo build`].
+
+Feature Selection::
+`-F`/`--features <features>` (space/comma-separated); `--all-features`; `--no-default-features`.
+Cf. https://doc.rust-lang.org/cargo/commands/cargo-build.html[`cargo build`].
+
+Compilation Options::
+`--target <triple>`; `-r`/`--release`; `--profile <name>`; `--timings` (compilation
+time/concurrency report); `-j`/`--jobs <N>`; `--keep-going` (build as many crates as possible rather
+than aborting on first failure).
+Cf. https://doc.rust-lang.org/cargo/commands/cargo-build.html[`cargo build`].
+
+Output Options::
+`--target-dir <directory>` (default `target/`, same default kwenza chose — see AGENTS.md's
+"output directory... Kept `target` to match Maven/Cargo for now" note).
+Cf. https://doc.rust-lang.org/cargo/commands/cargo-build.html[`cargo build`].
+
+Display Options::
+`-v`/`--verbose` (repeatable: twice for "very verbose," including dependency warnings and build
+script output); `-q`/`--quiet`; `--color <auto|always|never>`; `--message-format <human|short|json|...>`
+(diagnostic output format, e.g. for IDE/tool consumption).
+Cf. https://doc.rust-lang.org/cargo/commands/cargo-build.html[`cargo build`].
+
+Manifest Options::
+`--manifest-path <path>`; `--ignore-rust-version`; and the reproducibility trio:
+`--locked` ("Asserts that the exact same dependencies and versions are used as when the existing
+`Cargo.lock` file was originally generated" — a *hard failure* if the lock would need to change,
+not a silent re-resolve), `--offline` ("Prevents Cargo from accessing the network for any reason"),
+`--frozen` ("Equivalent to specifying both `--locked` and `--offline`").
+Cf. https://doc.rust-lang.org/cargo/commands/cargo-build.html[`cargo build`].
+
+Common Options (from the top-level https://doc.rust-lang.org/cargo/commands/cargo.html[`cargo(1)`] page)::
+`+<toolchain>` (rustup toolchain override, e.g. `+nightly`); `--config <KEY=VALUE|PATH>` (override a
+config value ad hoc); `-C <PATH>` (change working directory before executing — nightly-only,
+requires `-Z unstable-options`; this is the direct precedent for kwenza's own deferred
+`--project <path>` idea in AGENTS.md's "Also on the radar"); `-h`/`--help`; `-Z <flag>` (unstable,
+nightly-only flags — see <<unstable-flags>> below).
+
+NOTE: Cargo's `--locked`/`--frozen`/`--offline` default posture is worth contrasting directly with
+kwenza's `--update`: *Cargo's default already prefers the lock* (an up-to-date `Cargo.lock` is used
+as-is; only new/changed requirements touch it) — much closer to kwenza's own lock-first default than
+"Maven always re-resolves" framing might suggest. The real difference is in the failure mode: Cargo's
+`--locked` turns "the lock would need to change" into a hard CI-friendly error, where kwenza's
+current model (per AGENTS.md's `KwenzaLock.hashDependencies` description) silently re-resolves
+whenever the manifest hash changes, with no flag to instead assert-and-fail. See <<gap-analysis>>.
+
+[[build-commands]]
+=== Build Commands
+
+https://doc.rust-lang.org/cargo/commands/build-commands.html[Cargo Book: Build Commands]
+
+[cols="1,3,4"]
+|===
+|Command |Purpose |Notable command-specific flags (beyond <<common-flags>>)
+
+|https://doc.rust-lang.org/cargo/commands/cargo-build.html[`cargo build`]
+|"Compile the current package."
+|`--artifact-dir <directory>` (unstable: copy final artifacts elsewhere); `--future-incompat-report`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-check.html[`cargo check`]
+|"Check the current package and its dependencies for errors without performing final code
+generation." Same flag surface as `build`.
+|Nothing check-specific beyond skipping codegen — see the gap-analysis note on why this doesn't
+transfer to kwenza's own removed `kwenza check`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-clean.html[`cargo clean`]
+|"Remove generated artifacts." Deletes some or all of `target/`.
+|`--dry-run` (preview only); `--doc` (remove only `target/doc`); `--release` (remove only the
+release profile's artifacts); scoped by `--profile`/`--target`/`--target-dir` rather than an
+all-or-nothing delete.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-doc.html[`cargo doc`]
+|"Build a package's documentation," output to `target/doc` in rustdoc's format.
+|`--open` (launch a browser); `--no-deps` (skip dependency docs); `--document-private-items`
+(non-public items too; on by default for binaries).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-fetch.html[`cargo fetch`]
+|"Fetch dependencies of a package from the network," pre-populating the local cache so subsequent
+commands (especially with `--offline`) don't need it.
+|`--target <triple>` (repeatable).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-fix.html[`cargo fix`]
+|"Automatically fix lint warnings reported by rustc" (also drives edition migrations).
+|`--edition`/`--edition-idioms` (migrate code to the next edition's idioms — does *not* bump
+`edition` in `Cargo.toml` itself, that's still manual); `--broken-code` (apply fixes even into
+code that already fails to compile, for manual inspection); `--allow-dirty`/`--allow-staged`/
+`--allow-no-vcs` (safety rails: by default refuses to rewrite files with uncommitted VCS changes).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-run.html[`cargo run`]
+|"Run a binary or example of the local package."
+|`--bin <name>` / `--example <name>` select which target to run (singular, unlike `build`'s
+plural forms); arguments after `--` pass through to the program, same shape as kwenza's `run`
+executing `[package].main-class` in a subprocess.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-rustc.html[`cargo rustc`]
+|"Compile the current package, and pass extra options to the compiler" — everything after `--`
+goes straight to `rustc` itself, not to dependencies.
+|`--crate-type <type>` (override crate type, e.g. `cdylib`).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-rustdoc.html[`cargo rustdoc`]
+|Same idea as `rustc` but for documentation: build docs for one target, with extra args after `--`
+passed straight to `rustdoc`. Unlike `cargo doc`, does not document dependencies and is
+single-target only when extra args are given.
+|`--output-format <html|json>`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-test.html[`cargo test`]
+|"Execute unit and integration tests of a package."
+|`--no-run` (compile only); `--no-fail-fast` (run all test binaries even after one fails, rather
+than stopping at the first — direct analog worth flagging against kwenza's own `--test-threads`
+Phase 2 deferral, since it's failure-handling, not concurrency); `--doc` (doctests only); test-name
+filter argument plus `-- <args-to-the-test-binary>` (e.g. `cargo test -- --test-threads=3`) — note
+`--test-threads` is a `libtest` flag passed *through* Cargo, not a Cargo flag itself.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-bench.html[`cargo bench`]
+|"Execute benchmarks of a package," default profile `bench`.
+|Same shape as `test`. Its `#[bench]` harness is nightly-only unstable; the documented stable
+alternative is a separate crate (Criterion) — i.e. Cargo's own core benchmarking story is itself
+incomplete on stable, not a solved problem to copy wholesale.
+|===
+
+`cargo clippy`, `cargo fmt`, and `cargo miri` also appear on the Book's Build Commands index page,
+but they are *not* built into `cargo` itself — they're separate components (installed via `rustup
+component add`) that Cargo discovers and dispatches to through its external-subcommand mechanism
+(any `cargo-<name>` binary on `$PATH` becomes runnable as `cargo <name>`, per
+https://doc.rust-lang.org/cargo/commands/cargo.html[`cargo(1)`]'s "external tools" note). That
+dispatch mechanism — not clippy/fmt/miri's specific behavior — is the closest Cargo precedent to
+"builtin support for standard tooling" the way AGENTS.md's Checkstyle idea is framed; see
+<<gap-analysis>>.
+
+[[manifest-commands]]
+=== Manifest Commands
+
+https://doc.rust-lang.org/cargo/commands/manifest-commands.html[Cargo Book: Manifest Commands]
+
+These are the commands with no kwenza equivalent at all today, since `kwenza.toml` is hand-edited
+only (AGENTS.md: "the manifest is deliberately kept as inert data").
+
+[cols="1,3,4"]
+|===
+|Command |Purpose |Flags/behavior
+
+|https://doc.rust-lang.org/cargo/commands/cargo-add.html[`cargo add`]
+|Edits `Cargo.toml` directly to add a dependency, resolving a real version if none is given.
+|Source selection: `--git`/`--branch`/`--tag`/`--rev`/`--path`/`--registry`. Section placement:
+`--dev` (dev-dependencies), `--build` (build-dependencies), `--target <target>`. Dependency shape:
+`--rename`, `--optional`/`--no-optional`, `-F`/`--features`, `--no-default-features`/
+`--default-features`, `--dry-run` (preview the manifest edit without writing it). Example:
+`cargo add serde serde_json -F serde/derive`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-remove.html[`cargo remove`]
+|Edits `Cargo.toml` to remove one or more dependencies.
+|`--dev`/`--build`/`--target <target>` (which section to remove from); `--dry-run`. Example:
+`cargo remove --target wasm32-unknown-unknown nom`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-info.html[`cargo info`]
+|Displays registry information about a crate (description, versions, docs link) without adding it.
+|`<spec>` (optionally `name@version`); `--index`/`--registry`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-generate-lockfile.html[`cargo generate-lockfile`]
+|Generates `Cargo.lock` without building anything — the direct analog of `kwenza resolve`.
+|Manifest Options only (no package/target/feature selection — it resolves the whole graph).
+`--publish-time <timestamp>` (unstable: cap resolution to registry state as of a given time).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-locate-project.html[`cargo locate-project`]
+|Prints the path to the manifest governing the current directory, as JSON by default
+(`{"root": "/path/to/Cargo.toml"}`) or plain text with `--message-format plain`.
+|`--workspace` (locate the workspace root manifest instead of the current member's own).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-metadata.html[`cargo metadata`]
+|"Output the resolved dependencies of a package, the concrete used versions including overrides,
+in machine-readable format" as JSON to stdout — see <<metadata-detail>> below.
+|`--no-deps` (workspace members only, no dependency fetch); `--format-version <n>` (currently only
+`1`); `--filter-platform <triple>` (restrict `resolve` to one target, or `host-tuple` for the host).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-pkgid.html[`cargo pkgid`]
+|Prints one package's fully qualified SPEC, used to disambiguate `-p`/`update spec`/etc. targets
+when multiple same-named packages could match (e.g. same crate from two sources).
+|`-p`/`--package <spec>`. SPEC shapes: `name`, `name@version`, `url`, `url#version`, `url#name`,
+`url#name@version` (e.g. `https://github.com/rust-lang/crates.io-index#bitflags@1.0.4`).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-tree.html[`cargo tree`]
+|"Display a tree visualization of a dependency graph" — see <<tree-detail>> below.
+|`-e`/`--edges <kinds>` (`all,normal,build,dev,features,no-normal,no-build,no-dev,no-proc-macro`;
+default `normal,build,dev`); `-i`/`--invert <spec>` (show what depends *on* a package, reverse
+direction); `-d`/`--duplicates` (only packages resolved at more than one version — implies
+`--invert`); `--depth <n>|workspace`; `--prune <spec>`; `--no-dedupe`; `--charset <utf8|ascii>`;
+`-f`/`--format <fmt>` (default `{p}`, with `{p}`/`{l}`/`{r}`/`{f}` package/license/repository/
+features placeholders); `--prefix <indent|depth|none>`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-update.html[`cargo update`]
+|"Update dependencies as recorded in the local lock file" — the closest Cargo analog to
+`kwenza resolve --update`, but scoped, not all-or-nothing.
+|`[spec]...` positional args (update just these, rather than kwenza's whole-lock-or-nothing
+`--update`); `--recursive` (also force spec's own dependencies to update); `--precise <version|rev>`
+(pin to one exact version/git rev, mutually exclusive with `--recursive`); `-w`/`--workspace` (limit
+to workspace-defined packages); `--dry-run`; `--breaking <dir>` (unstable: update to the latest
+SemVer-*breaking* version, still asking first).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-vendor.html[`cargo vendor`]
+|Copies every resolved crates.io/git dependency's source into a local directory (default `vendor/`)
+and prints the `[source]` block to add to `.cargo/config.toml` to redirect all resolution there —
+see <<vendor-detail>> below.
+|`-s`/`--sync <manifest>` (also vendor extra workspaces, repeatable); `--no-delete` (keep existing
+vendor contents); `--respect-source-config` (honor existing `[source]` overrides while vendoring);
+`--versioned-dirs` (append version to every vendored directory name, even single-version ones, for
+diff-friendliness across upgrades).
+|===
+
+[[tree-detail]]
+==== `cargo tree` in detail
+
+Sample default output (from the command's own page):
+
+[source]
+----
+myproject v0.1.0 (/myproject)
+└── rand v0.7.3
+    ├── getrandom v0.1.14
+    │   ├── cfg-if v0.1.10
+    │   └── libc v0.2.68
+    ├── libc v0.2.68 (*)
+    └── rand_core v0.5.1
+----
+
+`(*)` marks a subtree already printed elsewhere (de-duplication, disable with `--no-dedupe`). With
+`-e features`, the tree instead shows *why* a feature got activated:
+
+[source]
+----
+myproject v0.1.0 (/myproject)
+└── log feature "serde"
+    └── log v0.4.8
+        ├── serde v1.0.106
+        └── cfg-if feature "default"
+            └── cfg-if v0.1.10
+----
+
+This directly confirms the shape of AGENTS.md's deferred `kwenza tree` bullet: a real `cargo tree`
+is a formatting/filtering layer over the same resolved dependency graph `Resolver` already builds
+for `kwenza.lock` — `-i`/`--invert` and `-d`/`--duplicates` in particular are exactly the two views
+(what pulled this in? / where do I have version conflicts?) that matter most for a nearest-wins
+resolver like kwenza's, where an unexpected version can silently shadow another.
+
+[[metadata-detail]]
+==== `cargo metadata` in detail
+
+Top-level JSON keys: `packages` (every package in the workspace, including feature-enabled
+dependencies unless `--no-deps`), `workspace_members`, `workspace_default_members`, `resolve`
+(the resolved graph, `null` under `--no-deps`), `target_directory`, `workspace_root`, `metadata`
+(free-form, from the manifest's own `[package.metadata]`), and `version` (schema version, currently
+`1`).
+
+A package entry carries `name`, `version`, `id`, `source` (`null` for path/workspace members, else
+`registry+URL`/`git+URL`/`sparse+URL`), `dependencies`, `targets`, `features`, `manifest_path`,
+`authors`, `license`, `repository`, `edition`, `rust_version`, and more. A `resolve` node carries
+`id`, `dependencies` (flat list of package IDs), `deps` (richer: each with `name`, `pkg`, and
+`dep_kinds` — an array of `{kind: null|"dev"|"build", target: null|"cfg(...)"}` — so a single
+dependency edge can be tagged simultaneously as e.g. a dev-dependency *and* target-specific), and
+`features` (which features ended up active on that node).
+
+This sharpens the verdict already reached in
+link:gradle-maven-feature-analysis.adoc[gradle-maven-feature-analysis.adoc] section 5 (IDE
+integration): that document concluded the right-sized kwenza feature is "a machine-readable (JSON)
+form of [`kwenza resolve`'s] existing output," reasoning from Maven's POM-is-data situation since
+Maven itself has no dedicated model-serving command. `cargo metadata` is the concrete existing
+precedent for exactly that shape, not just an analogy: it's already precisely "resolve, but as a
+stable JSON schema for tools" — kwenza's `kwenza.lock` plus in-memory `Resolution`/`ResolvedArtifact`
+data (per AGENTS.md's `Resolver`/`PomParser` description) already contains everything a
+`kwenza metadata`-equivalent would need to expose (resolved coordinates, nearest-wins outcome,
+dependency edges with dev/main scope — the same `dep_kinds` distinction kwenza's own
+`ensureMainResolved` split already tracks internally). The one design choice `cargo metadata` makes
+that's worth calling out explicitly if kwenza builds this: a stable, versioned `--format-version`
+number from day one, since it's the contract external tools (IDEs) will freeze against.
+
+[[vendor-detail]]
+==== `cargo vendor` in detail
+
+"This command will vendor all crates.io and git dependencies for a project into the specified
+directory at `<path>`... After this command completes the vendor directory specified... contains all
+remote sources from dependencies specified. Additional git and path dependencies will also be
+locally vendored." Vendored copies are meant to be read-only inputs — `[patch]`/local `path`
+dependencies are the documented way to modify one instead of hand-editing the vendor tree. Cargo
+prints the `[source]` replacement block for `.cargo/config.toml` to stdout rather than writing it
+anywhere itself, e.g. `cargo vendor > path/to/my/cargo/config.toml`. The Book's own page doesn't
+document any additional checksum/signature step specific to vendoring beyond what normal dependency
+fetching already does.
+
+[[package-commands]]
+=== Package Commands
+
+https://doc.rust-lang.org/cargo/commands/package-commands.html[Cargo Book: Package Commands] — note
+the Book's own category naming collides with kwenza's `package` command name, but covers a
+different, scaffolding/installation-flavored group of commands.
+
+[cols="1,3,4"]
+|===
+|Command |Purpose |Flags/behavior
+
+|https://doc.rust-lang.org/cargo/commands/cargo-init.html[`cargo init`]
+|Adds a `Cargo.toml` (and starter source file) to an *existing* directory.
+|`--bin` (default) / `--lib`; `--edition <2015\|2018\|2021\|2024>`; `--name <name>` (defaults to
+directory name); `--vcs <git\|hg\|pijul\|fossil\|none>`; `--registry <name>` (sets manifest
+`publish` restriction).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-new.html[`cargo new`]
+|Same as `init`, but creates the target directory itself and initializes VCS by default — this is
+Cargo's answer to AGENTS.md's own "Future ideas" bullet, `kwenza new` ("scaffold a new project
+quickly"), already named there with that exact command name.
+|Same flags as `init`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-install.html[`cargo install`]
+|Builds a binary crate (from crates.io, git, or a local path) and copies the resulting executable
+into `$CARGO_HOME/bin` for direct shell use — "managing installed executable Rust binary crates,"
+not a project dependency.
+|`--version`/`--git`+`--branch`/`--tag`/`--rev`/`--path` (source selection, same shape as `add`);
+`--list` (show installed crates/versions); `--force` (overwrite); `--root <dir>` (install location
+override); `--no-track` (skip Cargo's own installed-crate bookkeeping); `--debug` (dev profile
+instead of release).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-uninstall.html[`cargo uninstall`]
+|Removes a previously `cargo install`ed binary.
+|`-p`/`--package <spec>`; `--bin <name>` (only one binary from a multi-binary crate); `--root <dir>`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-search.html[`cargo search`]
+|Full-text searches a registry (crates.io by default) and prints matching crate names/descriptions.
+|`--limit <n>` (default 10, max 100); `--index`/`--registry`.
+|===
+
+[[publishing-commands]]
+=== Publishing Commands
+
+https://doc.rust-lang.org/cargo/commands/publishing-commands.html[Cargo Book: Publishing Commands]
+— directly relevant to AGENTS.md's own deferred "Future ideas" bullet, "Publishing to
+Maven-compatible registries (Central, private/custom registries), including auth."
+
+[cols="1,3,4"]
+|===
+|Command |Purpose |Flags/behavior
+
+|https://doc.rust-lang.org/cargo/commands/cargo-login.html[`cargo login`]
+|Reads a registry API token from stdin and saves it via a *credential provider* — by default,
+written to `$CARGO_HOME/credentials.toml` — "so that commands that require authentication, such as
+`cargo-publish`, will be automatically authenticated." Never stored in the manifest or in
+`Cargo.lock`.
+|`--registry <name>` (which registry to log into; defaults to `crates-io`).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-logout.html[`cargo logout`]
+|Removes a saved API token for a registry (local-only; doesn't revoke it server-side).
+|`--registry <name>`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-owner.html[`cargo owner`]
+|Manages who else (user or team) can publish new versions of an already-published crate.
+|`-a`/`--add <login>`; `-r`/`--remove <login>`; `-l`/`--list`; `--token`/`--index`/`--registry`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-package.html[`cargo package`]
+|Assembles the local package into a distributable `.crate` tarball under `target/package/` —
+normalized `Cargo.toml` (`[patch]`/`[replace]`/`[workspace]` stripped), `Cargo.lock`, a
+`.cargo_vcs_info.json` (git SHA + dirty flag), and the package's own source files. Runs a
+verification rebuild from the tarball by default. This is the direct precedent for the *name*
+collision with kwenza's own `kwenza package` — Cargo's `package` only assembles a publishable
+tarball; kwenza's `package` builds a runnable thin jar. Different artifacts, same verb.
+|`-l`/`--list` (preview included files, no tarball written); `--no-verify` (skip the rebuild check);
+`--allow-dirty` (permit uncommitted VCS changes); `--no-metadata` (suppress missing-metadata
+warnings); `--exclude-lockfile`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-publish.html[`cargo publish`]
+|Packages (via the same logic as `cargo package`) and uploads to a registry. Once a version is
+uploaded it is immutable on the registry — a new version number is the only way to change published
+code, matching Maven Central's own release-immutability norm.
+|`--dry-run` (all checks, no upload); `--no-verify`; `--allow-dirty`; `--token`;
+`--index`/`--registry`.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-yank.html[`cargo yank`]
+|"Removes a previously published crate's version from the server's index. This command does not
+delete any data, and the crate will still be available for download via the registry's download
+link." Yanking only prevents *new* dependents (without a pre-existing lockfile entry) from picking
+that version — existing lockfiles and direct downloads are unaffected. Maven Central has no
+equivalent at all (artifacts are either present or fully absent; there's no "discouraged but still
+resolvable for existing locks" middle state).
+|`--vers`/`--version <version>` (required target); `--undo` (reinstate a yanked version);
+`--token`/`--index`/`--registry`.
+|===
+
+[[general-report-deprecated]]
+=== General, Report, and Deprecated commands
+
+[cols="1,3,4"]
+|===
+|Command |Purpose |Notes
+
+|https://doc.rust-lang.org/cargo/commands/cargo.html[`cargo`]
+|The top-level entry point itself: dispatches to a built-in command, a configured
+https://doc.rust-lang.org/cargo/reference/config.html#alias[`[alias]`], or an external
+`cargo-<name>` binary on `$PATH` (how `clippy`/`fmt`/`miri` plug in without being built-in).
+|`-V`/`--version`; `--list` (enumerate installed subcommands); `--explain <CODE>` (runs
+`rustc --explain CODE`, i.e. delegates error-code explanations to the compiler, not a Cargo-owned
+knowledge base).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-help.html[`cargo help`]
+|Per-command help text (`cargo help <command>`, or `cargo <command> -h` for a shorter form).
+|Standard Display/Manifest/Common flags only, nothing help-specific.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-version.html[`cargo version`]
+|Prints Cargo's own version (equivalent to `cargo --version`/`cargo -V`).
+|`-v`/`--verbose` (`cargo -Vv`: adds release channel, commit hash, host target).
+
+|https://doc.rust-lang.org/cargo/commands/cargo-report.html[`cargo report`]
+|`cargo report future-incompat` — surfaces a saved report of lint patterns in the *dependency
+graph* that will become hard errors in a future Rust edition, collected during a prior build.
+|Only one report `<type>` exists today (`future-incompat`); otherwise just the common flag set.
+
+|https://doc.rust-lang.org/cargo/commands/cargo-verify-project.html[`cargo verify-project`]
+| _Deprecated since Rust 1.84_ ("Deprecated and Removed Commands" —
+https://doc.rust-lang.org/cargo/commands/deprecated-and-removed.html). Originally just validated
+that a manifest was well-formed JSON-reportable data, superseded by other commands' own manifest
+validation.
+|Kept here only because the research brief named it explicitly; not live documentation to build
+against.
+|===
+
+[[unstable-flags]]
+=== The `-Z` unstable-flag mechanism
+
+From https://doc.rust-lang.org/cargo/reference/unstable.html[Unstable Features]: "`-Z` command-line
+flags are used to enable new functionality that may not have an interface, or the interface has not
+yet been designed, or for more complex features that affect multiple parts of Cargo." They're
+nightly-only-gated ("Experimental Cargo features are only available on the nightly channel"), invoked
+either per-command (`cargo +nightly build -Z mtime-on-use`) or persistently via an `[unstable]` table
+in `.cargo/config.toml` ("Anything which can be configured with a `-Z` flag can also be set in the
+cargo config file... in the `unstable` table"). Concrete current examples: `build-std` (compile the
+standard library itself as part of the crate graph), `minimal-versions` (resolve to the *lowest*
+satisfying version instead of the greatest, a lockfile-generation mode), `mtime-on-use` (touch used
+files' mtimes for cache-eviction tools), and `-Z unstable-options` itself, which many *individual*
+flags on stable commands (like `-C <PATH>` above) are gated behind even once the command itself is
+stable. A feature graduates off `-Z` only "after some period of time, if the feature does not have
+any major concerns... which will make it available on stable once the current nightly release
+reaches the stable channel (anywhere from 6 to 12 weeks)."
+
+This is a real, load-bearing precedent for shipping something experimental without committing to it
+as a stable, permanent command: Cargo's own `cargo add`/`cargo remove` both spent time behind `-Z`
+flags before stabilizing, and several flags used above in this very document (`--artifact-dir`,
+`--breaking`, `-C`, `config get`) are still nightly-gated today. It's a real trade-off, not a free
+win: Rust's toolchain distribution (rustup, stable/beta/nightly channels) already gives it a natural
+place to hang an "unstable" concept — there's a whole separate release channel where breaking an
+unstable flag is expected and accepted. kwenza has no analogous channel split (there's one `kwenza`
+release, full stop), so a `-Z`-alike mechanism would need its own answer for *where* "nightly-only"
+lives without Cargo's rustup-channel infrastructure underneath it — worth naming as the actual cost
+if this pattern is ever borrowed, not just the benefit.
+
+[[workspaces]]
+=== Workspaces — direct precedent for kwenza's own deferred `[workspace]`
+
+From https://doc.rust-lang.org/cargo/reference/workspaces.html[Workspaces]: "A workspace is a
+collection of one or more packages, called workspace members, that are managed together." The
+mechanism is a `[workspace]` table:
+
+[source,toml]
+----
+[workspace]
+members = ["member1", "path/to/member2", "crates/*"]
+exclude = ["crates/foo"]
+default-members = ["path/to/member2"]
+resolver = "3"
+----
+
+`members` (glob-capable), `exclude`, `default-members` (which members a bare `cargo build` at the
+workspace root operates on absent `-p`/`--workspace`), and `resolver` (dependency-resolver version
+— a virtual manifest, one with `[workspace]` but no `[package]` of its own, must set this
+explicitly "as they have no `package.edition` to infer it from"). Members share one `Cargo.lock`
+and one `target/` directory. `workspace.dependencies`/`workspace.package` let member manifests
+inherit shared version/metadata/dependency declarations
+(`version.workspace = true`, `regex = { workspace = true, features = [...] }`) rather than repeating
+them per member. Package-related commands accept `-p`/`--package <name>` (one or more specific
+members) or `--workspace` (every member) to choose scope; with neither, Cargo operates on the
+current directory's own package, or `default-members` at the workspace root.
+
+Mapped onto kwenza's own already-deferred `[workspace]` idea (AGENTS.md, "Explicitly deferred —
+Phase 2"): Cargo's shape is data-only exactly the way
+link:gradle-maven-feature-analysis.adoc[gradle-maven-feature-analysis.adoc] section 3 already
+concluded Maven's reactor is (a member list plus real dependency edges, no build-order scripting) —
+Cargo's `members`/`exclude`/`default-members` are effectively the same shape as Maven's `<modules>`,
+just glob-capable. The one piece with no Maven analog at all is `workspace.dependencies` inheritance
+— a genuinely useful de-duplication mechanism (one place to bump a shared dependency's version
+across every member) that's worth weighing on its own merits for a future kwenza `[workspace]`
+design, independent of which existing tool it more resembles. `-p`/`--package` and `--workspace` as
+a *pair* of targeting flags (rather than kwenza inventing its own vocabulary) is also a small,
+free naming precedent if/when `kwenza build`-family commands need to target specific workspace
+members.
+
+[[gap-analysis]]
+== Gap analysis
+
+One line per Cargo command/capability with no kwenza equivalent today: already tracked in AGENTS.md
+(named where), or a genuinely new candidate this document surfaces.
+
+* *`cargo add` / `cargo remove`* (manifest-editing) — **new candidate, not currently tracked
+  anywhere in AGENTS.md.** kwenza's `kwenza.toml` is hand-edited only; nothing in "Explicitly
+  deferred," "Also on the radar," or "Future ideas" names manifest-editing CLI commands at all. Real
+  design tension to flag explicitly if scoped: `cargo add` resolves a real version from the registry
+  to fill in as it writes, which is exactly the kind of "manifest as a program" risk
+  design-principles.adoc guards against if implemented carelessly (a command with hidden network
+  side effects mutating `kwenza.toml`) — doable in a way consistent with "the manifest is data"
+  (the command runs, then writes inert TOML; nothing about the *file* becomes executable), but worth
+  scoping deliberately rather than copied reflexively.
+
+* *`cargo tree`* — **already tracked**: AGENTS.md's "Explicitly deferred (Phase 2)" list names
+  `kwenza tree` (dependency tree display) directly. This document adds the concrete flag surface to
+  design against once it's picked up: `-i`/`--invert` and `-d`/`--duplicates` in particular map onto
+  the two questions a nearest-wins resolver's users most need answered ("what pulled this version
+  in," "where do I have more than one version of the same artifact resolved").
+
+* *`cargo check`* — **already tracked, and already re-litigated once.** AGENTS.md records that
+  kwenza built and then explicitly removed a `kwenza check` modeled on this exact command, with
+  specific reasoning (`rustc` codegen is slow enough for `cargo check` to be a real, distinct
+  speedup over `cargo build`; `javac`'s own compile step doesn't have that gap). This research
+  doesn't reopen that call — it just confirms `cargo check`'s actual flag surface is otherwise
+  identical to `cargo build`'s, i.e. there's no check-specific flag richness being missed by the
+  removal.
+
+* *`cargo fix` / clippy-adjacent tooling* — **partially new.** Nothing in AGENTS.md names an
+  automatic-lint-fixing command. `cargo fix`'s actual mechanism (rewriting source files to resolve
+  compiler *warnings*, with `--allow-dirty`/`--allow-staged`/`--allow-no-vcs` safety rails against
+  clobbering uncommitted work) has no obvious `javac` equivalent to drive today — `javac` doesn't
+  emit machine-actionable fix suggestions the way `rustc`'s diagnostics do. Cargo's own *dispatch*
+  mechanism for `clippy`/`fmt` (external `cargo-<name>` binaries on `$PATH`, not built into cargo
+  itself) is closer precedent for AGENTS.md's already-tracked Checkstyle idea ("Future ideas":
+  "Builtin support for standard, commonly-expected Java tooling... Checkstyle is the concrete
+  example") than `cargo fix` itself is — worth noting that AGENTS.md's own framing already leans
+  toward Gradle's *bundled-plugin* shape for this (first-party, not a generic external-dispatch
+  convention), so this isn't actually a new option so much as confirmation of one already
+  considered.
+
+* *`cargo vendor`* — **new candidate**, touching kwenza's own already-identified "Secure by
+  default" gaps. AGENTS.md's "Also on the radar" section already names two live supply-chain gaps
+  (checksum verification "fails open, not closed"; `kwenza.lock`'s `sha256` is "write-only... never
+  read back"). Vendoring — copying every resolved dependency's actual source into the repo — is a
+  different, complementary mitigation (removes runtime trust in a remote registry/mirror entirely,
+  not just verifies what it sends) that isn't named anywhere in AGENTS.md yet. Worth scoping only
+  after the two already-acknowledged verification gaps are actually closed, per
+  design-principles.adoc's "Secure by default" ordering (fix the checksum-verification gap first;
+  vendoring solves a different, larger problem than that gap does).
+
+* *`cargo metadata`* — **already tracked, and sharpened by this document.**
+  link:gradle-maven-feature-analysis.adoc[gradle-maven-feature-analysis.adoc] section 5 already
+  reached "worth building intentionally: a JSON export of `kwenza resolve`'s existing output" for
+  IDE integration. `cargo metadata`'s real schema (see <<metadata-detail>>) confirms that verdict
+  concretely rather than by analogy, and adds one specific design point worth carrying forward: pin
+  a `--format-version` from the very first release, since external tools will treat that schema as
+  a stable contract immediately.
+
+* *`cargo login` / `cargo owner` / `cargo yank` / `cargo publish`* (registry auth + publish
+  lifecycle) — **already tracked** as a single undifferentiated bullet: AGENTS.md's "Future ideas"
+  names "Publishing to Maven-compatible registries (Central, private/custom registries), including
+  auth." This document adds the shape that idea is currently missing: Cargo splits it into four
+  distinct commands with genuinely different concerns (`login` — save a token, never touch the
+  manifest; `publish` — build+upload, immutable once live; `owner` — post-publish access control,
+  a concept with no Maven Central analog at all; `yank` — mark a version "don't pick me for new
+  installs" without deleting it, also no Maven Central analog). A future kwenza publish story
+  should probably decide `login`/`publish` are the load-bearing pair to build first (direct Maven
+  Central/`distributionManagement` analogs already exist per
+  link:gradle-maven-feature-analysis.adoc[gradle-maven-feature-analysis.adoc] section 4);
+  `owner`/`yank` are real but registry-team-governance features with no pressing kwenza equivalent
+  yet.
+
+* *`-Z` unstable-flag mechanism* — **new candidate, not currently tracked anywhere.** No kwenza
+  document mentions a way to ship an experimental flag/command without committing to it as
+  permanently stable. Real precedent worth naming the actual cost of, not just the benefit: Cargo's
+  version hangs entirely off rustup's stable/beta/nightly channel split, which kwenza has no
+  equivalent of today (one `kwenza` release, not three channels) — so borrowing the *pattern*
+  (an `[unstable]` config table, or a `--unstable <flag>` CLI convention) is plausible, but
+  "nightly-only" itself isn't something kwenza gets for free the way Cargo does.
+
+* *`[workspace]` command-surface details* (`-p`/`--workspace` targeting, `workspace.dependencies`
+  inheritance) — **already tracked as a feature** (`[workspace]` multi-module support, AGENTS.md
+  "Explicitly deferred"), but the *inheritance* mechanism specifically
+  (`workspace.dependencies`/`workspace.package`) is new detail this document surfaces: it has no
+  Maven analog (Maven's `<parent>` POM inheritance is the closest cousin, already covered in
+  AGENTS.md's nearest-wins/BOM reasoning, but isn't the same as one-line-per-member "opt into this
+  shared value") and is worth weighing on its own merits, not folded automatically into whatever
+  `[workspace]` design gets picked up.
+
+* *`cargo install`/`cargo uninstall`* (installing a binary crate for direct shell use, distinct
+  from project dependencies) — **not tracked anywhere, and arguably not a real gap.** kwenza has no
+  concept of a globally-installed tool crate, and nothing in its principles calls for one — the
+  closest kwenza analog to "install a tool globally" is a plain runnable thin jar from
+  `kwenza package`, which already works today. Noted for completeness, not flagged as missing.
+
+* *`cargo search`* — **not tracked, low priority.** A thin wrapper over Central's/a registry's own
+  search API; kwenza has no dependency-discovery UX today and nothing in its design docs asks for
+  one. Genuinely minor relative to everything else here.
+
+* *`cargo new`* — **already tracked verbatim.** AGENTS.md's "Future ideas" names `kwenza new`
+  ("scaffold a new project quickly") using that exact command name already — this document confirms
+  Cargo's actual flag surface (`--bin`/`--lib`/`--edition`/`--name`/`--vcs`/`--registry`) as a
+  starting reference if/when that gets scoped, and separately confirms Cargo splits scaffolding into
+  two commands (`new` creates the directory; `init` populates an existing one) — worth deciding
+  early whether kwenza wants that same split or just one command.
+
+* *`--offline`* — **already tracked**, AGENTS.md's "Explicitly deferred (Phase 2)" list names
+  `--offline` mode directly. This document adds the surrounding context: Cargo actually ships three
+  related flags, not one (`--locked` / `--offline` / `--frozen` = both combined) — worth deciding
+  whether kwenza's own eventual `--offline` should come with a `--locked`-equivalent (hard-fail if
+  the lock would need to change) alongside it, since the two solve genuinely different problems
+  (network avoidance vs. CI reproducibility assertion) that Cargo deliberately keeps as separate
+  flags rather than conflating.
+
+* *`cargo report future-incompat`* — **not tracked, not clearly applicable.** This is fundamentally
+  a response to Rust's edition-migration model (warning about patterns across the *whole dependency
+  graph* that a future edition will turn into hard errors) — Java's own analogous mechanism is
+  `javac`'s own deprecation/preview-feature warnings, which already surface directly during a normal
+  `kwenza build` compile step rather than needing a separate aggregated command. No clear kwenza gap
+  here.
+|===
+
+== Summary
+
+[cols="2,2,4"]
+|===
+|Cargo command |kwenza equivalent |One-line verdict
+
+|`build`
+|`kwenza build`
+|Direct match; flag surface differs mainly in kwenza having far fewer selection/feature knobs by design.
+
+|`check`
+|None (removed)
+|Deliberately removed already — see AGENTS.md; `javac` doesn't have the codegen-skip speedup that justifies it for `rustc`.
+
+|`clean`
+|`kwenza clean`
+|Direct match; Cargo's is more granular (`--doc`, `--release`, per-profile) where kwenza's is all-or-nothing on `target/`.
+
+|`doc`
+|None
+|No Javadoc-equivalent command in kwenza today; not named in any AGENTS.md list.
+
+|`fetch`
+|None (implicit in `resolve`/`build`)
+|kwenza always resolves-and-fetches as one step; no standalone "just warm the cache" command, though `kwenza resolve` is close.
+
+|`fix`
+|None
+|No rustc-diagnostic-rewriting equivalent; `javac` has no comparable machine-actionable fix suggestions to drive.
+
+|`run`
+|`kwenza run`
+|Direct match, including the forked-subprocess execution model both tools share.
+
+|`rustc` / `rustdoc`
+|None
+|No "compile/doc one target with extra raw compiler flags" escape hatch in kwenza; low priority absent a concrete need.
+
+|`test`
+|`kwenza test`
+|Direct match; `--no-fail-fast`/`--doc`/name-filtering have no kwenza flag equivalents yet, though JUnit Platform's own filtering can substitute for some.
+
+|`bench`
+|None
+|No benchmarking command; kwenza's own `benchmarks/Bench.java` harness is a separate, ad hoc tool, not a CLI command.
+
+|`add` / `remove`
+|None (hand-edit `kwenza.toml`)
+|Real, untracked gap — the manifest is edit-only by hand today, by design, but no CLI convenience exists or is planned.
+
+|`info`
+|None
+|No registry-crate-info lookup; low priority.
+
+|`generate-lockfile`
+|`kwenza resolve`
+|Direct match in intent (refresh the lock without building).
+
+|`locate-project`
+|None
+|No manifest-location query command; low priority, small.
+
+|`metadata`
+|None (tracked as future JSON export)
+|Already the "worth building" verdict in gradle-maven-feature-analysis.adoc section 5; `cargo metadata`'s real schema sharpens that into a concrete target.
+
+|`pkgid`
+|None
+|No package-spec disambiguation need yet — kwenza has no multi-source-per-name situation to disambiguate.
+
+|`tree`
+|None (tracked, Phase 2)
+|Already an explicit AGENTS.md deferral (`kwenza tree`); this document supplies the real flag surface to design against.
+
+|`update`
+|`kwenza resolve --update`
+|Partial match — Cargo's is scoped (`[spec]`, `--precise`, `--recursive`); kwenza's is all-or-nothing.
+
+|`vendor`
+|None
+|Untracked; a different, complementary supply-chain mitigation to AGENTS.md's already-named checksum-verification gaps.
+
+|`init` / `new`
+|None (tracked: `kwenza new`)
+|`kwenza new` already named in AGENTS.md "Future ideas"; Cargo splits into two commands, worth deciding whether kwenza should too.
+
+|`install` / `uninstall`
+|None
+|Not a real gap — no kwenza concept of globally-installed tool binaries, and nothing calls for one.
+
+|`search`
+|None
+|Untracked, low priority; thin wrapper over registry search.
+
+|`login` / `logout` / `owner` / `publish` / `yank`
+|None (tracked as one undifferentiated bullet)
+|AGENTS.md's "publishing to Maven-compatible registries" future idea needs this document's four-way split before it's scoped concretely.
+
+|`package`
+|`kwenza package`
+|Same verb, different artifact — Cargo assembles a source tarball for publishing; kwenza builds a runnable thin jar.
+
+|`version` / `help`
+|(implicit, no dedicated commands)
+|Low priority; kwenza likely has argv handling for `--help`/version already via its CLI framework, not itself a gap worth tracking.
+
+|`report future-incompat`
+|None
+|Not clearly applicable; Java's deprecation warnings already surface inline during `kwenza build`.
+
+|`-Z` unstable flags
+|None
+|Untracked; real precedent for shipping experimental features, but Cargo's version leans on rustup's channel split, which kwenza has no equivalent of.
+
+|Workspaces (`[workspace]`, `-p`/`--workspace`, `workspace.dependencies`)
+|None (tracked, Phase 2: `[workspace]`)
+|Already an explicit AGENTS.md deferral; this document adds the inheritance mechanism (`workspace.dependencies`) as new detail with no Maven analog, worth weighing on its own merits.
+|===

@@ -1,0 +1,624 @@
+= Gradle & Maven: Source-Level Architecture and Plugin Census
+:toc:
+:toclevels: 3
+
+Research output for a maintainer to fold into link:../../AGENTS.md[AGENTS.md]'s unscoped
+"everything Gradle and Maven can do, within reason" future-idea. Not itself a decision record —
+nothing here is a commitment, and nothing here should be read as superseding
+link:../design-principles.adoc[docs/design-principles.adoc].
+
+This document is deliberately narrower and more code-grounded than a docs-only feature comparison:
+Part 1 looks at the *actual source code* of Maven, maven-resolver, and Gradle rather than their
+user manuals, to compare against kwenza's own (much simpler) implementations in
+`src/main/java/dev/kwenza/resolver`. Part 2 surveys which specific plugins — built-in and
+third-party — real Java projects actually reach for, as the practical signal for which
+Gradle/Maven capabilities are worth kwenza covering versus which are long-tail edge cases nobody
+would miss. File paths below are current as of the `master` branch of each project in August 2026;
+both Maven and Gradle reorganize package layout across releases, so treat exact paths as
+best-effort snapshots, not permanent addresses.
+
+== Part 1: Source-level architecture
+
+=== Maven: how a Mojo actually runs
+
+Maven's own terminology: a *goal* (e.g. `compiler:compile`) is implemented by a **Mojo** class;
+goals are *bound* to *lifecycle phases* (`compile`, `test`, `package`, ...) either by a plugin's
+own packaging-specific default bindings or by explicit `<execution>` blocks in a POM.
+
+Maven's source tree has reorganized into top-level `impl/`, `api/`, `compat/` directories (not the
+old flat `maven-core/`), and the lifecycle package now contains *two* `MojoExecutor` classes: the
+legacy `org.apache.maven.lifecycle.internal.MojoExecutor` and a newer
+`org.apache.maven.lifecycle.internal.concurrent.MojoExecutor`
+(link:https://github.com/apache/maven/blob/master/impl/maven-core/src/main/java/org/apache/maven/lifecycle/internal/concurrent/MojoExecutor.java[source])
+used by the new concurrent build-plan executor; the concurrent variant overrides
+`useProjectLock()` to return `false` so it doesn't serialize against a project-wide lock the way
+the classic executor does. `DefaultLifecycleExecutor`
+(`impl/maven-core/src/main/java/org/apache/maven/lifecycle/DefaultLifecycleExecutor.java`,
+link:https://maven.apache.org/ref/3.9.16/maven-core/[Maven Core reference]) plans phase→goal
+bindings and hands `MojoExecution`s to the executor. The real invocation happens in
+`DefaultBuildPluginManager.executeMojo()`
+(`impl/maven-core/src/main/java/org/apache/maven/plugin/DefaultBuildPluginManager.java`): it
+resolves/creates the plugin's isolated `ClassRealm` via `getPluginRealm()` →
+`mavenPluginManager.setupPluginRealm()`, enters a scope seeded with `MavenProject`,
+`MojoExecution`, and a `DefaultLog`, then calls
+`mavenPluginManager.getConfiguredMojo(Mojo.class, session, mojoExecution)`
+(`DefaultMavenPluginManager`,
+`impl/maven-core/src/main/java/org/apache/maven/plugin/internal/DefaultMavenPluginManager.java`) —
+which both instantiates the Mojo class from the plugin's own classloader realm and injects
+`@Parameter`-annotated fields via component configuration — before finally calling `mojo.execute()`
+directly, wrapped in `mojoExecutionListener` before/after events and catch blocks specifically for
+`NoClassDefFoundError`/`LinkageError` (classloader-conflict diagnostics).
+
+This is the concrete shape of the thing kwenza's design principles rule out by name: a Mojo is
+*arbitrary Java code*, resolved as a dependency, loaded into its own classloader realm, and
+executed with reflection-based parameter injection — precisely the "plugin API" AGENTS.md's
+"Extensibility through JVM discovery, never a plugin API" explicitly won't have an equivalent of.
+
+=== Maven: reactor ordering for multi-module builds
+
+`ProjectSorter`
+(`impl/maven-core/src/main/java/org/apache/maven/project/ProjectSorter.java`,
+link:https://github.com/apache/maven/blob/master/impl/maven-core/src/main/java/org/apache/maven/project/ProjectSorter.java[source])
+builds a single DAG where reactor projects are vertices and edges come from direct
+`<dependencies>`, `<parent>`, build `<plugins>` (and their own dependencies), and `<extensions>` —
+anything referencing another reactor project. It calls a Plexus-utils `DAG`'s topological
+`visitAll()` to produce the build order; a code comment notes that conflating these different
+relationship kinds into one graph can cause spurious cycle detection.
+
+Parallelism itself lives elsewhere: `org.apache.maven.lifecycle.internal.concurrent.BuildPlanExecutor`
+(`impl/maven-core/src/main/java/org/apache/maven/lifecycle/internal/concurrent/BuildPlanExecutor.java`,
+link:https://github.com/apache/maven/blob/master/impl/maven-core/src/main/java/org/apache/maven/lifecycle/internal/concurrent/BuildPlanExecutor.java[source])
+sizes a `PhasingExecutor`/fixed thread pool as `min(session.getRequest().getDegreeOfConcurrency(),
+projectCount)` — i.e. the `-T` flag — then walks the plan in "weave mode," phase-by-phase rather
+than project-by-project, recursively re-invoking `executePlan()` as each step's predecessors
+complete, so independent modules/phases genuinely run concurrently up to the thread cap.
+
+kwenza's `[workspace]` multi-module support is explicitly deferred (Phase 2) and not yet designed;
+this is the concrete algorithm shape it would need to at least consider (topological sort over a
+module dependency DAG + a bounded worker pool), separate from whether kwenza would ever want to
+expose Maven's specific concurrency knobs (per "one correct way to do each thing," it probably
+wouldn't expose a `--threads`-equivalent, just pick a sensible default).
+
+=== maven-resolver: how conflict resolution and version ranges actually work
+
+kwenza's own `Resolver.resolve()` (`src/main/java/dev/kwenza/resolver/Resolver.java`) does a
+simple breadth-level BFS: process one depth level at a time, first node claimed at a given
+module-id at the shallowest depth wins, no exclusions, no version ranges, and only `compile`/
+`runtime` scoped non-optional edges are followed transitively.
+
+The real engine (`maven-resolver`, formerly Eclipse Aether) shares kwenza's basic traversal shape
+but is meaningfully richer in three specific ways:
+
+* **Traversal is breadth-first, same as kwenza** — the default collector, `BfDependencyCollector`
+  (`maven-resolver-impl/src/main/java/org/eclipse/aether/internal/impl/collect/bf/BfDependencyCollector.java`,
+  link:https://github.com/apache/maven-resolver/blob/master/maven-resolver-impl/src/main/java/org/eclipse/aether/internal/impl/collect/bf/BfDependencyCollector.java[source])
+  is explicitly documented "Breadth-first `DependencyCollector`" and drains a
+  `dependencyProcessingQueue` level by level, replacing an older `DefaultDependencyCollector`. This
+  is real validation that kwenza's basic resolution shape isn't a naive shortcut — it's the same
+  shape the reference implementation settled on.
+* **Version ranges and exclusions are resolved *during* traversal, not after** — each node's
+  version range is resolved via `VersionRangeResolver`, with candidate versions expanded
+  newest-first "to maximize benefit of skipper," and a chain of `DependencySelector`s (notably
+  `ExclusionDependencySelector`,
+  link:https://github.com/apache/maven-resolver/blob/master/maven-resolver-util/src/main/java/org/eclipse/aether/util/graph/selector/ExclusionDependencySelector.java[source])
+  filters children out of the graph before they're even added. That selector keeps a sorted
+  `Exclusion[]` array, merges parent exclusions into each level via `deriveChildSelector()`, and
+  matches artifactId/groupId/extension/classifier with `"*"` wildcard support — real, working
+  `<exclusions>` support kwenza has no equivalent of at all today (no version ranges, either).
+* **Conflict resolution is a separate, later, full-graph transform pass** —
+  `org.eclipse.aether.util.graph.transformer.ConflictResolver`
+  (link:https://github.com/apache/maven-resolver/blob/master/maven-resolver-util/src/main/java/org/eclipse/aether/util/graph/transformer/ConflictResolver.java[source])
+  runs `ConflictMarker` (groups nodes by GACE coordinate, ignoring version), then `ConflictIdSorter`
+  (topologically sorts those conflict groups, detects cycles), then a pluggable
+  `ClassicConflictResolver` (documented O(N²) worst-case) or newer `PathConflictResolver`
+  (documented O(N)) which delegates winner-selection to a `VersionSelector`. The *default*
+  `NearestVersionSelector` does pick strictly by depth first (`item1.getDepth() < item2.getDepth()`
+  wins outright — confirming kwenza's basic nearest-wins model is conceptually correct), **but for
+  same-depth siblings it does not fall back to declaration order the way kwenza's "first node at a
+  level wins" does — it picks the numerically higher version**
+  (`item1.getVersion().compareTo(item2.getVersion()) > 0`), and the eventual winner must also
+  satisfy every accumulated `VersionConstraint` from every conflicting declaration or resolution
+  fails outright. Scope handling is fully decoupled from version selection into a separate
+  `ScopeDeriver` (e.g. `JavaScopeDeriver`) applied per graph edge: test/system-scoped children stay
+  as-is, a compile-scoped parent passes its child's scope through unchanged, a test/runtime-scoped
+  parent overrides the child to itself, provided/system parents normalize the child to `provided`,
+  and everything else falls back to `runtime` — this per-edge rule is precisely the mechanism that
+  stops a `test`-scoped dependency's own dependencies from becoming transitively visible, something
+  kwenza currently only approximates with one blanket `TRANSITIVE_SCOPES = {"compile", "runtime"}`
+  filter and no per-edge narrowing at all.
+
+Net comparison: kwenza's nearest-wins is a real, honest subset of maven-resolver's algorithm — same
+breadth-first shape, same nearest-wins-by-depth default — but missing three concrete things:
+version ranges, exclusions, and same-depth tie-breaking by version rather than declaration order.
+Of the three, exclusions (`<exclusions>` in a POM, used constantly in real-world Central artifacts
+to break bad transitive pulls) is arguably the most-missed in practice, since kwenza's manifest has
+no place to express "resolve everything from X except Y" today.
+
+=== Gradle: the real task execution engine
+
+`DefaultTaskExecutionGraph`
+(`subprojects/core/src/main/java/org/gradle/execution/taskgraph/DefaultTaskExecutionGraph.java`,
+link:https://github.com/gradle/gradle/blob/master/subprojects/core/src/main/java/org/gradle/execution/taskgraph/DefaultTaskExecutionGraph.java[source])
+wraps a `PlanExecutor`/`NodeExecutor`/`FinalizedExecutionPlan`, but the actual graph-building logic
+lives one layer down in `DefaultExecutionPlan`
+(`subprojects/core/src/main/java/org/gradle/execution/plan/DefaultExecutionPlan.java`,
+link:https://github.com/gradle/gradle/blob/master/subprojects/core/src/main/java/org/gradle/execution/plan/DefaultExecutionPlan.java[source]):
+a `NodeMapping` maps tasks to `LocalTaskNode`s, `entryNodes`/`scheduledNodes` track requested vs.
+finalized order, dependency discovery is a depth-first `discoverNodeRelationships()` walk calling
+`node.resolveDependencies()`, and an `OrdinalNodeAccess` enforces same-project task-ordinal
+constraints; `DetermineExecutionPlanAction` computes the final scheduled-node sequence.
+`DefaultTaskExecutionGraph` itself is explicitly documented as not thread-safe on its own — the
+concurrent part is handed to `DefaultFinalizedExecutionPlan`, coordinated through a
+`ResourceLockCoordinationService` (project/task locks) and a broader `WorkerLeaseService` that gates
+how many nodes can run at once against `--max-workers`.
+
+Cross-*project* parallelism requires `org.gradle.parallel=true` (or `--parallel`) — without it,
+independent projects still build serially even on multiple cores
+(link:https://docs.gradle.org/current/userguide/performance.html[Performance docs],
+link:https://www.liutikas.net/2025/07/29/Parallel-Bits.html[Parallel Bits: Which Parts of Gradle
+Run in Parallel]). Within one project, task *actions* run serially unless a task action explicitly
+opts into the Worker API
+(link:https://docs.gradle.org/current/userguide/worker_api.html[Developing Parallel Tasks]) to fan
+its own internal work out across a `WorkerExecutor` with a chosen isolation level — *no isolation*
+(same classloader as the task, fastest), *classloader isolation* (fresh classloader, same JVM), or
+*process isolation* (a genuinely separate, reusable worker daemon process). So: unlike Maven's
+simple phase-weave thread pool, Gradle's cross-task parallelism is graph-driven (topological node
+scheduling gated by lock/lease acquisition per node) rather than phase-driven, and within-task
+parallelism is a distinct, opt-in mechanism a task author has to reach for explicitly.
+
+=== Gradle: how "UP-TO-DATE" actually gets detected
+
+`ExecuteActionsTaskExecuter`
+(`subprojects/core/src/main/java/org/gradle/api/internal/tasks/execution/ExecuteActionsTaskExecuter.java`,
+link:https://github.com/gradle/gradle/blob/master/subprojects/core/src/main/java/org/gradle/api/internal/tasks/execution/ExecuteActionsTaskExecuter.java[source])
+does not itself contain the comparison logic — it builds a `TaskExecution` "unit of work" and hands
+it to an `ExecutionEngine.Request.execute()`, translating the returned
+`ExecutionOutcome.UP_TO_DATE` into the task's own `UP_TO_DATE` outcome. The real snapshot/compare
+machinery lives under `DefaultExecutionHistoryStore`
+(`platforms/core-execution/execution/src/main/java/org/gradle/internal/execution/history/impl/DefaultExecutionHistoryStore.java`,
+link:https://github.com/gradle/gradle/blob/master/platforms/core-execution/execution/src/main/java/org/gradle/internal/execution/history/impl/DefaultExecutionHistoryStore.java[source]),
+which persists each prior execution's input/output fingerprints, plus a family of fingerprinters
+under `org.gradle.internal.fingerprint.impl` — `AbstractFileCollectionFingerprinter` and its
+path-sensitivity variants (`AbsolutePathFileCollectionFingerprinter`,
+`RelativePathFileCollectionFingerprinter`, `NameOnlyFileCollectionFingerprinter`,
+`IgnoredPathFileCollectionFingerprinter`) — which hash file contents/paths according to each
+`@InputFiles`/`@Classpath` annotation's declared path sensitivity. The **build cache key** is a
+hash over all of a task's input fingerprints plus its own implementation classpath (i.e. the
+plugin/Gradle version providing the task type), computed once per task and reused both for the
+in-process UP-TO-DATE check and, when the build cache is enabled, as the literal cache lookup key
+used to fetch and copy prior outputs instead of re-running the task at all
+(link:https://docs.gradle.org/current/userguide/build_cache_concepts.html[Build Cache: Important
+Concepts], link:https://docs.gradle.org/current/userguide/incremental_build.html[Incremental
+Build]).
+
+This is the single biggest capability gap between kwenza and Gradle today: kwenza has no
+input/output snapshotting of any kind, so `kwenza build` always recompiles everything from scratch.
+AGENTS.md already flags incremental compilation as "a real unknown... potentially in tension with"
+kwenza's `javax.tools.JavaCompiler`-only decision, since that API doesn't expose a source-level
+dependency graph the way Gradle's own incremental compiler does — this is the concrete shape
+(fingerprint-then-compare, not "ask javac what changed") that a future kwenza implementation would
+have to invent independently.
+
+=== Gradle: what the daemon actually keeps warm
+
+The daemon process (`platforms/core-runtime/launcher/.../daemon/server/Daemon.java`, registry at
+`platforms/core-runtime/daemon-protocol/src/main/java/org/gradle/launcher/daemon/registry/DaemonRegistry.java`,
+link:https://github.com/gradle/gradle/blob/master/platforms/core-runtime/daemon-protocol/src/main/java/org/gradle/launcher/daemon/registry/DaemonRegistry.java[source])
+keeps a JVM alive between invocations and, per the official docs
+(link:https://docs.gradle.org/current/userguide/gradle_daemon.html[The Gradle Daemon]), holds
+**compiled build-script/plugin classes and classloaders** in memory (so build scripts and
+`buildSrc` don't get reparsed/recompiled every run), plus **in-memory hashes of task inputs and
+outputs** used for incremental builds — i.e. the fingerprint state from the previous section lives
+in the daemon's heap, not written back to disk each time, which is precisely why a warm daemon's
+up-to-date checks are so much cheaper than a cold one's.
+
+Central to this is the **Virtual File System (VFS)**, Gradle's in-memory model of file/directory
+state (`VirtualFileSystemServices`, found via code search under
+`subprojects/core/src/main/java/org/gradle/internal/service/scopes/`), described in Gradle's own
+engineering blog post "Introducing file system watching"
+(link:https://blog.gradle.org/introducing-file-system-watching[Gradle engineering blog]): without
+OS-level file-system watching, the daemon has no way to know what changed on disk between builds
+and must discard the whole VFS; with watching enabled (`org.gradle.vfs.watch`, on by default since
+Gradle 7 — link:https://docs.gradle.org/current/userguide/file_system_watching.html[File System
+Watching docs]) the daemon subscribes to native OS filesystem-change notifications, so it can keep
+and reuse VFS entries for every path the OS *didn't* report as touched, re-stat/re-hash only what
+actually changed. The blog post cites roughly a 20% build-time saving from avoiding this redundant
+disk I/O.
+
+A daemon expires after being idle for 3 hours, under JVM heap pressure (finishes the current build,
+then restarts before the next), or when a request needs an incompatible environment (different
+Java version, JVM args, or Gradle version than any currently-idle daemon) — plus explicit
+`gradle --stop`. This maps directly onto AGENTS.md's own "no daemon" trade-off section: kwenza
+already measured the *cost* of not having one (a cold JVM class-loading ~10x more classes than
+`java -version`, ~350-400ms per invocation); this is the concrete list of what a daemon buys back
+in exchange, useful context for if/when AppCDS closes enough of that gap that the trade stops
+looking one-sided.
+
+=== Gradle: what the Tooling API actually exposes to IDEs
+
+IntelliJ IDEA and Eclipse Buildship both embed Gradle via the Tooling API's `ProjectConnection`,
+obtained from `DefaultGradleConnector`
+(`platforms/ide/tooling-api/src/main/java/org/gradle/tooling/internal/consumer/DefaultGradleConnector.java`,
+link:https://github.com/gradle/gradle/blob/master/platforms/ide/tooling-api/src/main/java/org/gradle/tooling/internal/consumer/DefaultGradleConnector.java[source])
+→ `DefaultProjectConnection` in the same package. Model requests go through `DefaultModelBuilder`
+(link:https://github.com/gradle/gradle/blob/master/platforms/ide/tooling-api/src/main/java/org/gradle/tooling/internal/consumer/DefaultModelBuilder.java[source]):
+`get()`/`get(ResultHandler)` wrap the request as a `ConsumerAction` dispatched via
+`connection.run(modelType, operationParameters)` against a `ConsumerConnection` abstraction — the
+layer that adapts across different Gradle daemon protocol versions, explicitly mapping an older or
+newer daemon's `UnsupportedOperationException`/`UnsupportedMethodException` into an
+"incompatible version" hint so a mismatched IDE/Gradle-version pairing still gets a usable model
+subset rather than a hard failure. On the provider side (inside the actual build process), this
+reaches `DefaultConnection`
+(`platforms/core-runtime/tooling-api-provider/src/main/java/org/gradle/tooling/internal/provider/DefaultConnection.java`),
+which invokes registered `ToolingModelBuilder`s to construct serializable model graphs (project
+hierarchy, source sets, dependencies, tasks) that cross the process boundary back to the IDE
+(link:https://docs.gradle.org/current/userguide/tooling_api.html[Tooling API docs]).
+
+Neither IDE parses a build script itself — both ask a real Gradle process to *evaluate* the build
+and hand back a structured model, which is exactly why Gradle IDE integration stays correct even
+when a build does something a static parser could never account for. This is a strong argument for
+what kwenza's own "Also on the radar" IDE-support item should look like: not a from-scratch
+IntelliJ/Eclipse plugin re-parsing `kwenza.toml`, but a small embeddable "give me the resolved
+project model" entry point kwenza itself exposes — made structurally easier by kwenza's manifest
+already being pure data with no build-script evaluation step to run at all, unlike Gradle's version
+of this same problem (Gradle's Tooling API exists specifically because evaluating a Groovy/Kotlin
+build script is a real program-execution step an IDE can't just skip).
+
+== Part 2: Plugin census — what real projects actually reach for
+
+=== Built-in / bundled plugins
+
+These ship with the tool itself — no extra dependency declaration needed to use them.
+
+==== Gradle core plugins
+
+* **`java`** — compiles, tests, and jars a plain Java project: `compileJava`, `test`, `jar` tasks
+  and the standard source sets
+  (link:https://docs.gradle.org/current/userguide/plugin_reference.html[Gradle Plugin Reference]).
+  *Covered* — this is exactly kwenza's core `build`/`test`/`package`, natively, not as a plugin.
+* **`java-library`** — adds the `api` vs. `implementation` dependency-configuration split so a
+  library controls which of its own dependencies leak onto a *consumer's* compile classpath
+  (link:https://docs.gradle.org/current/userguide/java_library_plugin.html[The Java Library Plugin]).
+  *Not covered* — kwenza has one flat `[dependencies]` table with no such distinction. This is a
+  genuine, universal gap for any resolver-based tool, not a Gradle-specific concept, and matters
+  most once multiple modules can depend on each other — see the synthesis below.
+* **`application`** — implicitly applies `java` and `distribution`; adds a `run` task and a
+  packaged, runnable distribution (start scripts plus all runtime deps) once a main class is set
+  (link:https://docs.gradle.org/current/userguide/application_plugin.html[The Application Plugin]).
+  *Partially covered* — kwenza's `run` command is the same idea; the "packaged distribution with
+  generated start scripts" half is closer to kwenza's deferred `--fat`/future Docker-image work
+  than anything it does today.
+* **`war`** — packages a web-application archive, with `providedCompile`/`providedRuntime`
+  configurations for servlet-container-supplied dependencies that shouldn't be bundled
+  (link:https://docs.gradle.org/current/userguide/war_plugin.html[The War Plugin]). *Not covered*,
+  and a low-priority, architecture-specific, increasingly legacy need — most real deployments have
+  moved to embedded-server executable jars or containers instead of WAR-to-servlet-container.
+* **`checkstyle`** / **`pmd`** — static-analysis quality gates; both wire a configurable rule set
+  into the build and fail/report on violations
+  (link:https://docs.gradle.org/current/userguide/plugin_reference.html[Gradle Plugin Reference]).
+  *Not covered* — exactly the "Checkstyle-style verification" AGENTS.md's "Also on the radar"
+  section already names as the leading candidate for a resurrected `kwenza check`, and a universal
+  need (essentially every non-trivial Java shop runs *some* static-analysis gate). Both are, in
+  practice, an ordinary jar with a `main()` — the same JVM-discovery shape `kwenza test` already
+  uses for JUnit engines, not a reason to need a plugin API.
+* **`jacoco`** — code-coverage instrumentation (via a plain `-javaagent:` flag) and reporting.
+  *Not covered.* Universal need, and a near-perfect mechanical fit for kwenza's architecture: JaCoCo
+  attaches to a forked JVM exactly the way kwenza already loads Mockito's inline mock maker as an
+  explicit `-javaagent` on the forked test JVM (see AGENTS.md's Mockito decision) — the same pattern
+  would just work for coverage.
+* **`signing`** — signs build artifacts (jars, publications) with PGP, mostly to satisfy Maven
+  Central publishing requirements. *Not covered* — directly relevant to kwenza's own deferred
+  "Publishing to Maven-compatible registries" future idea, since Central requires signed artifacts.
+* **`maven-publish`** — publishes artifacts plus a generated POM to any Maven-compatible repository,
+  including Central
+  (link:https://docs.gradle.org/current/userguide/publishing_maven.html[The Maven Publish Plugin]).
+  *Not covered at all today* — the same deferred "publish-side mirror of `KWENZA_REPO`" gap,
+  and a universal need for any team distributing real artifacts.
+* **`ivy-publish`** — publishes in the legacy Apache Ivy module-descriptor format
+  (link:https://docs.gradle.org/current/userguide/publishing_ivy.html[The Ivy Publish Plugin]).
+  *Not covered*, and this one really is Gradle-specific historical baggage from its Ivy-era roots —
+  real projects publish Maven-format almost exclusively today, so it's not a universal signal.
+* **`distribution`** — assembles an arbitrary zip/tar bundle of build outputs, independent of
+  `application`
+  (link:https://docs.gradle.org/current/userguide/distribution_plugin.html[The Distribution Plugin]).
+  *Not covered* — overlaps with `application` above; kwenza's thin jar is already its own
+  distribution unit, so a separate archive-bundling concept would likely fold into `--fat`/
+  container-image work rather than needing its own feature.
+* **`build-init`** — scaffolds a new Gradle project, and can convert an existing Maven `pom.xml` to
+  Gradle, applying `maven-publish`/`java-library`/`war` as needed
+  (link:https://docs.gradle.org/8.6-rc-1/userguide/build_init_plugin.html[Build Init Plugin]).
+  *Not covered* — maps directly onto two things AGENTS.md's "Future ideas" already names:
+  `kwenza new` (scaffolding) and the "maybe: an auto-migration tool from Maven/Gradle" idea. Both
+  are already tracked, not new signal.
+
+==== Maven core/bundled plugins
+
+* **compiler** — compiles sources, bound to the `compile`/`test-compile` phases by default
+  (link:https://maven.apache.org/plugins/maven-compiler-plugin/[Maven Compiler Plugin]).
+  *Covered* — kwenza's in-process `javax.tools.JavaCompiler` step.
+* **surefire** (unit tests) / **failsafe** (integration tests, a distinct non-fail-fast phase whose
+  failures are only reported at `verify`, after environment teardown in `post-integration-test` has
+  already run) —
+  (link:https://maven.apache.org/surefire/maven-failsafe-plugin/[Maven Failsafe Plugin]). Surefire's
+  job is *covered* by `kwenza test`; failsafe's specific job — a separate lifecycle phase for a
+  different test subset with deferred failure reporting — is *not covered*. The underlying real
+  need (run a filtered test subset differently) is universal, but it's arguably better solved with
+  JUnit 5 tag/filter-based selection inside kwenza's one existing test command (already possible
+  today per AGENTS.md's `@Tag("integration")` note) than by adding a whole second lifecycle phase —
+  the phase split is more Maven-plumbing-shaped than the underlying need itself.
+* **jar** / **resources** — build the jar; copy `src/main/resources` to the output directory.
+  *Covered* by kwenza's packager and resource-copy step.
+* **install** — copies the built artifact into the local `~/.m2` repository. *Adjacent but not
+  fully covered* — kwenza already uses `~/.m2/repository` as its dependency cache, but doesn't yet
+  "install" its own build output there the way Maven does; a natural, low-effort extension of
+  existing behavior, not a new subsystem.
+* **deploy** — uploads artifacts to a remote repository. *Not covered* — same publish-side gap as
+  Gradle's `maven-publish` above, a universal need for anyone shipping to a shared registry.
+* **clean** — deletes build output. *Covered* by kwenza's `clean` command.
+* **site** — generates a Doxia-based documentation/reports website aggregating Javadoc, coverage,
+  and static-analysis reports. *Not covered*, and low-priority: modern projects overwhelmingly use
+  README/docs-as-code/GitHub Pages instead of a generated Maven Site; this is a dated,
+  Maven-specific answer rather than a universal need.
+* **assembly** — builds arbitrary custom-shaped archives (a "jar with dependencies," a `tar.gz`
+  bundle with a specific directory layout) from a descriptor file
+  (link:https://gist.github.com/simonwoo/04b133cb0745e1a0f1d6[jar/assembly/shade comparison]).
+  *Not covered* — exists largely because Maven never had a simpler first-class "runnable app plus
+  deps" story; kwenza's thin-jar-by-default choice is already a simpler, cleaner answer to the same
+  underlying problem, so this plugin's whole descriptor-driven-archive-DSL existence is itself
+  Maven-specific evidence, not a gap kwenza needs to fill the same way.
+* **shade** (`maven-shade-plugin`) — relocates and merges dependency classes into a single uber-jar,
+  optionally renaming packages to dodge classpath collisions. Despite its `org.apache.maven.plugins`
+  groupId, it is **not** bound into any default lifecycle phase — genuinely third-party in
+  behavior even though it ships from the same organization
+  (link:https://maven.apache.org/plugins/maven-shade-plugin/shade-mojo.html[shade:shade]). See the
+  Shadow entry below for the full Maven/Gradle-specific-vs-universal judgment, since the two
+  plugins solve the identical problem.
+* **dependency** — general dependency introspection/manipulation: prints a dependency tree, copies
+  resolved jars out to a directory, and can `analyze` a project for dependencies it declares but
+  doesn't use, or uses but doesn't declare. *Partially covered* — kwenza's `resolve` command and
+  deferred `kwenza tree` overlap with the introspection half; the "analyze for unused/undeclared
+  dependencies" half is a distinct, genuinely useful, universal diagnostic capability with no
+  Maven-specific reason to exist — nothing about wanting to know "am I declaring something I don't
+  use, or using something I haven't declared" depends on how Maven itself works.
+* **enforcer** — fails the build if configurable rules are violated: banned duplicate classes on
+  the classpath, a required Java version, dependency-version convergence, no `SNAPSHOT`
+  dependencies in a release build, and similar policy checks. *Not covered.* Partially universal:
+  version-convergence detection is real and complements kwenza's lockfile model directly, and
+  duplicate-class detection matters specifically for a *thin*-jar/`Class-Path` model like kwenza's
+  (where colliding classes across separately-listed jars can silently shadow each other at
+  runtime, unlike a shaded jar where the shade step itself would surface the conflict) — but other
+  rules in its standard set (required Maven version, OS checks) are Maven-environment-specific
+  busywork with no kwenza equivalent to build.
+* **release** — automates "bump version, tag, build, deploy, bump to next SNAPSHOT" directly
+  against Maven's `pom.xml`-embedded, mutable version field. *Not covered*, and it's a genuinely
+  Maven-specific answer to a Maven-specific problem: the entire reason this plugin (and its Gradle
+  equivalents) exist is that Maven/Gradle store the version as literal, mutable text inside the
+  build file that has to be mechanically rewritten, committed, and tagged on every release. See the
+  axion-release entry below for a materially different, more data-shaped alternative worth weighing
+  instead of copying this mechanism.
+
+=== Third-party plugins with genuinely wide real-world adoption
+
+A sanity check against the candidate list in the research brief: all of the named plugins are real
+and broadly cited. The one likely exception is **gradle-release**, which appears to be losing
+ground to **axion-release-plugin**'s git-tag-derived model (no single head-to-head adoption metric
+found, but axion is the more actively promoted current option). One notable omission worth flagging:
+**SpotBugs** is consistently bundled alongside Checkstyle and PMD in "static analysis trio"
+write-ups (e.g. `github.com/novoda/gradle-static-analysis-plugin`,
+`github.com/openhab/static-code-analysis`) — if kwenza ever adds lint integration, it should be
+framed engine-agnostically across at least these three rather than picking just one. Also notable:
+the **Kotlin Gradle plugin** is plausibly the single most-applied non-core Gradle plugin ID in the
+wild by raw project count (nearly every Kotlin or Android project applies it), arguably outranking
+Shadow and Spotless combined.
+
+==== Gradle ecosystem
+
+* **Shadow** (`GradleUp/shadow`, formerly `com.github.johnrengelman.shadow`, now
+  `com.gradleup.shadow`) — fat/uber-jar building, file transforms, package relocation, and R8/
+  ProGuard optimization; explicitly billed as "the Gradle counterpart to Maven's Shade plugin," and
+  its maintenance moved from the original author to the GradleUp org specifically to keep it alive
+  (link:https://github.com/GradleUp/shadow[GradleUp/shadow], ~4.2k GitHub stars;
+  link:https://gradleup.com/shadow/[Shadow docs]). **Maven/Gradle-specific vs. universal**: mixed.
+  The *need* — "ship one self-contained runnable artifact" — is universal (every ecosystem has some
+  answer: Rust and Go statically link, Python has PyInstaller). But *why* Shadow/shade specifically
+  has to exist as a heavyweight relocation-and-merging tool, rather than something simpler, is
+  largely because Maven/Gradle's classpath model predates thin-jar-plus-`Class-Path`-manifest
+  conventions being common, and shading itself introduces real problems (resource/`META-INF`
+  collisions) that a thin jar sidesteps entirely. kwenza's thin-jar-by-default choice already
+  answers the core "one artifact to ship" need for the common case without the relocation half; a
+  narrow residual (a single self-contained file for, say, a serverless deployment target) remains
+  legitimate opt-in territory, matching kwenza's own already-deferred `--fat`.
+* **Spotless** (`diffplug/spotless`, Gradle and Maven flavors) — multi-language code
+  formatting/format-checking (Java, Kotlin, Groovy, and many non-JVM languages), runnable in
+  "check" or "apply" mode. Confirmed wide adoption: ~5.5k GitHub stars overall, with the Gradle
+  plugin used by roughly 15,000 GitHub projects and the Maven plugin by roughly 6,000 (a January
+  2023 snapshot cited in the project's own materials, plausibly higher now —
+  link:https://github.com/diffplug/spotless[diffplug/spotless],
+  link:https://www.baeldung.com/java-maven-spotless-plugin[Baeldung: Maven Spotless Plugin]); real
+  large projects such as Apache ShardingSphere use it directly
+  (link:https://shardingsphere.apache.org/blog/en/material/2022_06_08_how_does_apache_shardingsphere_standardize_and_format_code_we-use_spotless/[ShardingSphere
+  engineering blog]). **Universal need** — format enforcement in CI has nothing to do with
+  Gradle/Maven's own architecture, and it fits kwenza's JVM-discovery model well: invoking a
+  formatter's own `main()` class as an ordinary dependency, the same shape as `kwenza test`.
+* **Error Prone Gradle Plugin** (`net.ltgt.errorprone`) — wires Google's Error Prone static-analysis
+  compiler plugin into `JavaCompile` tasks
+  (link:https://github.com/tbroyer/gradle-errorprone-plugin[tbroyer/gradle-errorprone-plugin]).
+  Adoption is smaller than Shadow/Spotless but it's a recognized standard, especially at
+  Google-influenced shops. **Universal-leaning**, and notably it hooks in via a plain javac
+  `-Xplugin:ErrorProne` compiler flag rather than a bespoke Gradle API — a clean real-world example
+  of "extensibility through what the JVM/javac already supports" already working in practice, and
+  plausibly something kwenza's existing in-process `javax.tools.JavaCompiler` wrapper could pass
+  through with minimal work rather than needing a dedicated feature.
+* **Kotlin Gradle Plugin** (`org.jetbrains.kotlin.jvm`) — compiles Kotlin, versioned in lockstep
+  with the compiler itself; adoption is extremely high, essentially mandatory for any real Kotlin
+  project. The "plugin" packaging is Gradle-specific mechanism, but the underlying need —
+  compiling a second JVM language — is universal and a real, already-open roadmap question for
+  kwenza (per AGENTS.md's "Multi-JVM-language support" section), since kwenza has no plugin API to
+  hang Kotlin support off of and would need a different, dependency-resolved-compiler shape.
+* **JIB** (`GoogleContainerTools/jib`, Gradle and Maven flavors) — builds OCI/Docker container
+  images for Java apps directly from build output, without a Dockerfile or a running Docker daemon,
+  using layered images so unchanged dependency layers aren't rebuilt
+  (link:https://github.com/GoogleContainerTools/jib[GoogleContainerTools/jib], ~14.4k GitHub
+  stars). Actively maintained by Google, with an extension framework for GraalVM native-image and
+  Quarkus support. **The strongest universal-need signal in this whole census** — container images
+  are now a default JVM deployment target regardless of build tool, and Jib's "one correct way,
+  derived from what the build tool already knows, no Dockerfile scripting" design matches kwenza's
+  own philosophy unusually closely. Directly maps onto kwenza's already-deferred "First-class
+  Docker/OCI image output as a `[package]` target" future idea, and is close to a primary-source
+  design reference for how to do it without shelling out to `docker build` (matching kwenza's own
+  "no subprocess spawning" preference).
+* **Gradle Versions plugin** (`com.github.ben-manes.versions`, migrating to
+  `io.github.ben-manes.versions`) — reports which declared dependencies (and Gradle itself) have
+  newer versions available; the de facto standard for this since roughly 2012
+  (link:https://github.com/ben-manes/gradle-versions-plugin[ben-manes/gradle-versions-plugin]).
+  **Universal need**, and cleanly native to kwenza's existing architecture: a "what's outdated"
+  report, without applying anything, is directly buildable on top of `kwenza.lock` plus the live
+  Maven Central resolution kwenza already performs — no new subsystem required.
+* **Lombok Gradle plugin** (`io.freefair.lombok`) — auto-wires Lombok as an annotation processor and
+  IDE support. **Gradle-specific ceremony, not universal signal** — it exists mainly to paper over
+  Gradle's own `annotationProcessor` configuration wiring; Lombok itself is an ordinary JSR 269
+  annotation processor, meaning it should "just work" in kwenza once declared as a plain dependency
+  — exactly the shape of extensibility kwenza already supports, once annotation-processor discovery
+  is made a deliberate decision rather than an accident of the running JDK's default behavior (see
+  AGENTS.md's "Also on the radar" item on this).
+* **Protobuf Gradle plugin** (`com.google.protobuf`) — invokes `protoc` and wires generated sources
+  into compilation; ranked around #11 among Gradle plugins per mvnrepository
+  (link:https://github.com/google/protobuf-gradle-plugin[google/protobuf-gradle-plugin]).
+  **Mixed**: feeding generated sources into compilation is a universal need, but the plugin's
+  OS/arch-detection-and-binary-fetch mechanism is more generic pre-compile-hook plumbing than deep
+  architectural signal. This is exactly the "codegen before compile" category AGENTS.md's own
+  validation-strategy section already names as a concrete blocker for the SBE stress-test project
+  ("adds a real dependency plus codegen") — kwenza has no source-generation phase concept at all
+  today.
+* **Node/JS Gradle plugins** (e.g. `com.github.node-gradle.node`,
+  `siouan/frontend-gradle-plugin`) — let a JVM build orchestrate a Node.js toolchain (npm/yarn
+  install, `npm run build`) for JVM projects that bundle a JS frontend. A genuinely real problem
+  (JVM apps bundling a frontend), but mechanically it's just "invoke an external toolchain, copy its
+  output" — a real tension point, since kwenza's no-plugin-API stance has no obvious escape hatch
+  for arbitrary external-process build steps today (the same gap `[scripts]`, already deferred,
+  would need to resolve). Low priority relative to kwenza's stated Java-first direction.
+* **Release-automation plugin**: **axion-release-plugin**
+  (`pl.allegro.tech.build.axion-release`) is the more actively maintained, more architecturally
+  interesting option compared to the older `gradle-release` plugin — it derives the project version
+  from the nearest SCM (git) tag rather than storing it in the build file at all: "if the current
+  commit is tagged, the project has a release version; if there were commits after the last tag,
+  the project is in SNAPSHOT version"
+  (link:https://github.com/allegro/axion-release-plugin[allegro/axion-release-plugin],
+  link:https://axion-release-plugin.readthedocs.io/[axion-release-plugin docs]). Same root cause as
+  Maven's release plugin, but axion's actual innovation — a version *derived from* existing,
+  already-trusted state (git history) instead of *stored as* mutable text that has to be kept in
+  sync — fits "the manifest is data, never a program" unusually well. This is a stronger signal
+  that kwenza's manifest maybe shouldn't hold a mutable version field to be mechanically rewritten
+  at all, rather than a signal that kwenza needs a release-automation plugin of its own.
+
+==== Maven ecosystem
+
+* **maven-shade-plugin** — same capability as Shadow; ranked around #9 among Maven plugins by
+  mvnrepository, arguably the single most-reached-for non-lifecycle-bound Maven plugin for building
+  a runnable jar
+  (link:https://maven.apache.org/plugins/maven-shade-plugin/[maven-shade-plugin]). Same judgment as
+  Shadow above — an ecosystem-specific workaround kwenza's thin-jar default already sidesteps for
+  the common case.
+* **spotless-maven-plugin** — the Maven flavor of Spotless; same ~6,000-GitHub-project adoption
+  figure and identical universal-need judgment as the Gradle plugin above.
+* **license-maven-plugin** (`com.mycila`) — checks/inserts license headers and has been
+  continuously released since 2008
+  (link:https://central.sonatype.com/artifact/com.mycila/license-maven-plugin[com.mycila:license-maven-plugin]).
+  A real but narrow universal need — it overlaps heavily with a general formatter's own
+  license-header step (Spotless has one built in), which is really evidence that "one lint/format
+  hook covers this" rather than evidence for a dedicated kwenza feature. There's a second, distinct
+  MojoHaus `license-maven-plugin` that instead downloads and collects *dependency* license files
+  and checks them against an allow-list
+  (link:https://github.com/mojohaus/license-maven-plugin[mojohaus/license-maven-plugin]) — that
+  half is a genuine, universal license-compliance-review need with no Maven-specific reason to
+  exist, and it's adjacent to data kwenza's resolver already has (declared licenses are ordinary
+  POM metadata already being fetched and parsed for every dependency).
+* **exec-maven-plugin** (MojoHaus) — runs an arbitrary system process or a `main()` class as part
+  of the build; ranked around #24 among Maven plugins by mvnrepository
+  (link:https://www.mojohaus.org/exec-maven-plugin/[exec-maven-plugin docs]). **Maven-specific
+  plumbing** for the most part — much of its popularity comes from filling a gap Maven's own
+  lifecycle leaves open (no first-class "run an arbitrary process at this phase" primitive without
+  a plugin). kwenza already has `run`; any further need here is the same universal "external
+  process as a build step" gap the Node/JS plugins above also point at, better answered with one
+  generic hook (kwenza's already-deferred `[scripts]` idea) than a dedicated exec plugin — and worth
+  reading AGENTS.md's "manifest is data" principle carefully here, since `exec-maven-plugin` is
+  exactly the arbitrary-command-in-a-config-file shape kwenza has so far deliberately avoided.
+* **versions-maven-plugin** (MojoHaus) — the Maven counterpart to the Gradle versions plugin above,
+  reporting outdated dependencies/plugins/parent and able to mechanically rewrite the POM to the
+  latest versions
+  (link:https://www.mojohaus.org/versions/versions-maven-plugin/[versions-maven-plugin docs]). Same
+  universal-need judgment, same "directly buildable on existing resolution + lockfile" conclusion.
+* **build-helper-maven-plugin** (MojoHaus) — a general-purpose Maven lifecycle escape hatch: add
+  extra source/resource directories, parse a version string into parts, attach extra classified
+  artifacts for install/deploy, reserve a free network port
+  (link:https://github.com/mojohaus/build-helper-maven-plugin[mojohaus/build-helper-maven-plugin]).
+  **Squarely Maven-specific compensation**, not universal signal — it exists mainly because
+  Maven's static POM schema is rigid about "one main source directory, one version format," and
+  this plugin is the community's generic workaround. A real TOML manifest like kwenza's can simply
+  make these plain first-class fields where they're actually needed (kwenza's own `[package]
+  output-dir` being a one-line override, rather than needing a helper plugin, is already evidence
+  this instinct is paying off).
+* **jib-maven-plugin** — same project and same universal-need judgment as the Gradle Jib plugin
+  above (link:https://github.com/GoogleContainerTools/jib/blob/master/jib-maven-plugin/README.md[jib-maven-plugin]).
+* **os-maven-plugin** — detects OS/architecture and exposes `${os.detected.*}` properties, almost
+  always paired with the protobuf/gRPC plugins so a POM can select the right native classifier.
+  **Purely Maven-specific plumbing** — it exists only because a declarative-only POM has no way to
+  branch on OS/arch the way an actual program can. kwenza, being a real program rather than
+  evaluated XML, could resolve the equivalent trivially inside its own resolver code with no plugin
+  concept, no extra dependency, and no manifest changes needed at all.
+* **jacoco-maven-plugin** (`org.jacoco`) — the same coverage engine as Gradle's `jacoco` plugin.
+  **Universal need**, same as the Gradle plugin — coverage reporting is a near-universal CI
+  expectation, and JaCoCo's plain `-javaagent:` attachment is an almost-native fit for kwenza's
+  already-forked test JVM.
+
+== Synthesis: candidate features not yet in AGENTS.md
+
+Cross-checked against AGENTS.md's full "Explicitly deferred," "Also on the radar," and "Future
+ideas" sections (not assumed — read in full for this research). Several things this research
+surfaced turn out to already be tracked there under a different name (Docker/OCI packaging,
+publishing/signing, IDE support, Checkstyle-style tooling, annotation-processor discovery,
+incremental compilation, Kotlin/multi-language support, `kwenza new`/auto-migration) — those are
+*not* repeated below. What follows are the items this research surfaced that genuinely aren't
+covered by anything currently in AGENTS.md:
+
+* **Dependency exclusions** (a `<exclusions>` equivalent). maven-resolver's
+  `ExclusionDependencySelector` shows this is a distinct, load-bearing mechanism from version
+  mediation itself — real Central artifacts lean on it constantly to break bad transitive pulls,
+  and kwenza's manifest currently has no way to express "resolve X, but not one of its transitive
+  dependencies Y" at all. Arguably a sharper, more concrete gap than the already-deferred
+  `kwenza tree` command, and one AGENTS.md doesn't mention in any form today.
+* **`api`/`implementation`-style dependency visibility** (Gradle's `java-library` plugin). No
+  equivalent notion exists in kwenza's flat `[dependencies]` table. Matters most once
+  `[workspace]` multi-module support lands (a library module needs to say which of its own
+  dependencies are its own implementation detail vs. part of its public API), so it's a natural
+  companion feature to the already-deferred `[workspace]` item rather than a standalone one — but
+  it isn't named anywhere in AGENTS.md today.
+* **Dependency-analysis diagnostics** — "declared but unused" / "used but undeclared" dependency
+  detection (`maven-dependency-plugin`'s `analyze` goal). Distinct from the already-deferred
+  `kwenza tree` (which is about *display*, not *analysis*), and a universal diagnostic need with
+  zero Maven-specific reason to exist.
+* **A "what's outdated" dependency-update report** (Gradle's Versions plugin / Maven's
+  versions-maven-plugin), without necessarily auto-applying anything. Cleanly buildable on top of
+  `kwenza.lock` and the live Central resolution kwenza already does; not mentioned anywhere in
+  AGENTS.md despite being a natural, low-effort extension of existing machinery.
+* **Task-level output caching** (Gradle's build cache), as distinct from the already-flagged
+  "incremental compilation" future idea. Incremental compilation is about *not recompiling
+  unchanged source within one machine's build*; a build cache is the broader, separate idea of
+  keying a compiled/packaged output by a hash of its inputs so identical work is never repeated
+  even across clean checkouts or machines (potentially shared/remote). Related, but a distinct and
+  larger question AGENTS.md doesn't currently pose at all.
+* **Dependency license reporting/compliance** (`license-maven-plugin`'s dependency-license half). A
+  real, universal need for any organization doing license review, and a nearly-free extension of
+  data kwenza's resolver already fetches and parses (POM metadata) — not mentioned in AGENTS.md.
+* **Build-policy enforcement rules** (Maven Enforcer-style checks): dependency-version convergence,
+  and — specifically relevant to kwenza's *own* thin-jar/`Class-Path` architecture rather than a
+  borrowed Maven concern — duplicate-class detection across separately-listed classpath jars, a
+  failure mode a shaded/fat jar's build step would surface but a thin jar's `Class-Path` manifest
+  entry currently has no equivalent check for at all. Fits kwenza's own "fail fast, with a specific
+  and actionable message" principle closely, and isn't named anywhere in AGENTS.md today.
+* **SCM-tag-derived project versioning** (the axion-release-plugin model: version *derived from*
+  the nearest git tag rather than *stored as* mutable text in the manifest). AGENTS.md doesn't
+  currently discuss project versioning or release mechanics as a feature area at all — this is a
+  genuinely new candidate, and one that's unusually well-aligned with "the manifest is data, never
+  a program" specifically because it removes a mutable, rewritten-on-release field from the
+  manifest entirely rather than adding a release-automation feature that rewrites one.

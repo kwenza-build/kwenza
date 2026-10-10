@@ -1,0 +1,432 @@
+= Gradle/Maven Feature Analysis
+:toc:
+:toclevels: 2
+
+This is research output for a maintainer, not a decision record — nothing here has been folded into
+link:../../AGENTS.md[AGENTS.md] or link:../design-principles.adoc[design-principles.adoc] yet, and
+this file doesn't modify either.
+
+== The question this answers
+
+AGENTS.md's "Future ideas" section carries one deliberately unscoped bullet: "Everything Gradle and
+Maven can do, within reason (while keeping things simple/declarative)." That's not a feature — it's
+an open invitation to scope one feature at a time. This document goes through ten concrete capability
+areas, establishes what Maven and Gradle actually do (from their own docs, not secondhand summaries),
+compares that to what kwenza already does (from `AGENTS.md`, `docs/architecture.adoc`,
+`docs/cli-reference.adoc`, `docs/manifest-reference.adoc`), and gives each area a verdict: *worth
+building intentionally*, *explicitly out of scope*, or *open question* — each tied to a specific
+existing kwenza principle or decision, not a fresh opinion invented for this document.
+
+Three design-principles.adoc principles do most of the filtering work throughout, so it's worth
+stating them once up front rather than re-deriving them per section:
+
+* *"The manifest is data, never a program"* — no scripting/plugin DSL in `kwenza.toml`, ever.
+* *"One correct way to do each thing"* — pick one default; don't expose Maven/Gradle's full
+  configurability.
+* *"Extensibility through JVM discovery, never a plugin API"* — extensibility happens via
+  `ServiceLoader`/annotation-processor discovery of ordinary dependencies, never a kwenza plugin
+  interface.
+
+== 1. Task graphs and build lifecycle/phases
+
+*Maven.* Maven's `default` lifecycle is a fixed, sequential list of phases —
+`validate, compile, test, package, verify, install, deploy` — and "these lifecycle phases are
+executed sequentially to complete the `default` lifecycle" (Maven, "Introduction to the Build
+Lifecycle," https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html). Phases
+themselves do nothing; a packaging type (e.g. `jar`) binds specific plugin goals to specific phases
+by default (e.g. `compiler:compile` to `compile`, `surefire:test` to `test`, `jar:jar` to `package`),
+and a POM's own `<executions>` can bind additional goals to any phase (same page). "If a build phase
+has no goals bound to it, that build phase will not execute" — the phase list is fixed, but what
+runs inside each phase is a configurable, data-described binding, not a script.
+
+*Gradle.* Gradle has no fixed phase list at all. A build runs through three internal
+stages — initialization, configuration, execution — where "Gradle registers tasks and other
+properties to the projects found by the initialization phase" during configuration, and "across all
+projects in the build, tasks form a Directed Acyclic Graph (DAG)," built "before executing any
+task(s)" (Gradle, "Build Lifecycle,"
+https://docs.gradle.org/current/userguide/build_lifecycle.html). Tasks are arbitrary, user- or
+plugin-registered units of work — "a task represents some independent unit of work that a build
+performs" (Gradle, "More about Tasks,"
+https://docs.gradle.org/current/userguide/more_about_tasks.html) — wired together with
+`dependsOn`/`finalizedBy` and conditional registration logic that lives in a build script (Groovy or
+Kotlin DSL), not a data file.
+
+*kwenza today.* `docs/cli-reference.adoc` and `AGENTS.md`'s `BuildState` description describe
+exactly Maven's shape without naming it that way: a fixed, small set of ordered operations
+(resolve → compile → test-compile → package → run), memoized once per invocation via
+`ensureResolved`/`ensureMainResolved`/`ensureCompiled`/`ensureTestCompiled`, with each CLI command
+(`BuildCommand`, `TestCommand`, ...) as a thin wrapper that triggers the subset of that sequence it
+needs. There is no user-facing way to register a new phase, reorder existing ones, or make a step
+conditional.
+
+*Verdict: explicitly out of scope*, judged against *"the manifest is data, never a program."*
+Gradle's task graph is a DAG built by running a build script — `dependsOn`, conditional task
+registration, and dynamic task creation are exactly the kind of executable build logic kwenza rules
+out by design. Maven's phase model, by contrast, is already what kwenza effectively has: a small,
+fixed, non-extensible sequence of named steps. There's nothing to "build" here in the Gradle
+direction — adopting it would mean adding a DSL — and nothing missing in the Maven direction, since
+kwenza's fixed command chain already delivers that outcome without needing to be reframed as a new
+feature.
+
+== 2. Plugin ecosystem and extension mechanisms
+
+*Maven.* A Maven plugin goal is implemented by a **Mojo** ("Maven plain Old Java Object"), a Java
+class annotated `@Mojo(name = "...")` with `@Parameter`-annotated fields that the POM's
+`<configuration>` XML maps onto by reflection-like conversion (Maven, "Guide to Configuring
+Plug-ins," https://maven.apache.org/guides/mini/guide-configuring-plugins.html). A **plugin
+descriptor** declares the plugin's available mojos and default phase bindings; a POM's
+`<executions>` can bind a goal to a specific phase explicitly. Mechanically, this is a real plugin
+API: third-party Java code implementing a Maven-defined interface (`AbstractMojo`), invoked in the
+build's own process.
+
+*Gradle.* A Gradle **binary plugin** is "a class that implements `Plugin<Project>` and configures
+the project when applied" (Gradle, "Understanding Plugins,"
+https://docs.gradle.org/current/userguide/plugins.html); applying it means "Gradle creates an
+instance of the plugin class and calls the instance's `Plugin.apply()` method," and a plugin
+typically registers tasks and exposes configuration through an **extension** object (a DSL block
+like `checkstyle { ... }`). A **script plugin** is the same idea written directly in a build file
+rather than packaged as a jar (Gradle, "Implementing Gradle Plugins,"
+https://docs.gradle.org/current/userguide/implementing_gradle_plugins.html). Both binary and script
+plugins are, mechanically, executable code with first-class access to the project model.
+
+*kwenza today.* AGENTS.md is explicit that this exact idea is rejected: "No test-framework plugin
+system... there's no kwenza-side mechanism for swapping in a different test runner," because the
+JUnit Platform's own `ServiceLoader`-based engine discovery already covers the same need "the same
+mechanism Maven's Surefire (provider auto-detection) and Gradle (`useJUnitPlatform()`) both lean on."
+
+*Verdict: explicitly out of scope*, judged against *"extensibility through JVM discovery, never a
+plugin API."* Both Mojo and `Plugin<Project>` are, mechanically, a build-tool-defined Java interface
+that third-party code implements and the build tool invokes with privileged access to its own
+model — precisely the shape design-principles.adoc rules out by name ("never through a
+kwenza-specific plugin interface"). Any future kwenza feature that looks like it needs "a plugin" is
+a signal to find the `ServiceLoader`/annotation-processor-shaped alternative instead, exactly as
+`kwenza test` already did for test frameworks.
+
+== 3. Multi-module/composite builds
+
+*Maven.* The **reactor** "collects all available modules to build, then sorts them into the correct
+build order, then builds them one at a time" — sorting by "project dependency," "plugin declaration
+where the plugin is one of the modules," "plugin dependency," "build extension declaration," and
+finally the `<modules>` declaration order as a fallback (Maven, "Guide to Working with Multiple
+Modules," https://maven.apache.org/guides/mini/guide-multiple-modules.html; note
+`introduction-to-the-reactor.html` 404s on the current site — this guide is the live replacement).
+Critically, "`<dependencyManagement>`/`<pluginManagement>` elements do NOT affect build order" —
+only real, instantiated dependency edges do. A `<modules>` list plus a `<parent>` POM (which "makes
+project inheritance explicit in the project object model," Maven, POM Reference,
+https://maven.apache.org/pom.html) is the entire mechanism: pure data, no build-order scripting.
+
+*Gradle.* Multi-project builds declare subprojects in a single `settings.gradle(.kts)` via
+`include()`, where "by default, a project path corresponds to the relative physical location of the
+project directory" (Gradle, "Structuring Projects with Gradle,"
+https://docs.gradle.org/current/userguide/multi_project_builds.html); cross-project dependencies use
+`project(":shared")` references, and "the required project will be built first." **Composite
+builds** go further: "a composite build is a build that includes other builds," registered via
+`includeBuild(...)`, where "Gradle automatically substitutes the external dependency with a local
+source" (Gradle, "Composite Builds,"
+https://docs.gradle.org/current/userguide/composite_builds.html) — letting one build transparently
+consume another *separate* build's project as if it were a published dependency, with the caveat
+that "substitutions are not transitive across builds."
+
+*kwenza today.* `[workspace]` multi-module support is already listed in AGENTS.md's "Explicitly
+deferred (Phase 2)" section — a real, sized, acknowledged gap, not something this document is
+introducing. Nothing about composite builds (a *second*, separate build tree contributing local
+overrides into this one) appears anywhere in kwenza's docs yet.
+
+*Verdict (single-manifest multi-module, i.e. `[workspace]`): worth building intentionally* — this is
+already committed as a Phase 2 item, and Maven's reactor is the right model to copy from, not
+Gradle's: a `[workspace]` member list plus real dependency edges between members (Maven's rule 1) is
+pure data, matching *"the manifest is data"*; ordering derived from plugin/build-extension
+declarations (Maven's rules 2–4) doesn't apply since kwenza has no plugin declarations to sort by, so
+kwenza's version would be simpler than Maven's own, consistent with *"one correct way to do each
+thing."*
+
+*Verdict (Gradle-style composite builds / cross-build substitution): open question.* No kwenza
+principle rules this out outright — it's data-shaped in the same way `[workspace]` is (a list of
+external local paths to substitute) — but there's no stated need for it yet, and it's unclear whether
+`[workspace]` alone (once built) already covers kwenza's realistic use cases (a monorepo with several
+modules) versus the genuinely different one composite builds solve (developing against a local
+checkout of a *separately versioned* dependency). Worth revisiting only after `[workspace]` ships and
+a real cross-repo scenario surfaces.
+
+== 4. Publishing to repositories
+
+*Maven.* Publishing is `distributionManagement` (a POM's `<repository>`/`<snapshotRepository>`
+elements naming where release/snapshot artifacts go) plus the `deploy` phase, executed by the
+`maven-deploy-plugin`: "deploy:deploy - Automatically deploys the artifact, its POM, and attached
+artifacts" (Maven, Deploy Plugin, https://maven.apache.org/plugins/maven-deploy-plugin/). "Distribution
+management... manages the distribution (aka. remote publication) of the artifact" (Maven, POM
+Reference, https://maven.apache.org/pom.html#Distribution_Management). Authentication is
+out-of-band: the deploy plugin "reads user credentials from `settings.xml`," never the POM itself —
+so the publish target and metadata are pure POM data, and secrets live in a separate,
+not-committed file.
+
+*Gradle.* The `maven-publish` plugin defines one or more `MavenPublication` objects ("provides
+publications of type MavenPublication") built from a software component (e.g. `components["java"]`),
+plus one or more named repositories with URLs and credentials, all declared inside a `publishing { }`
+block in the build script (Gradle, "Publishing Maven,"
+https://docs.gradle.org/current/userguide/publishing_maven.html). Gradle generates both a Maven POM
+and its own richer Gradle Module Metadata file alongside it. The publication itself — what gets
+published, under what coordinates, with what customized POM content (licenses, developers, SCM) — is
+expressed via a Groovy/Kotlin DSL block, i.e. executable configuration, not a static file, even
+though the *output* (the POM) is the same static artifact Maven produces.
+
+*kwenza today.* Already an explicit AGENTS.md "Future ideas" bullet: "Publishing to Maven-compatible
+registries (Central, private/custom registries), including auth — the publish-side mirror of the
+existing consume-side `KWENZA_REPO` override."
+
+*Verdict: worth building intentionally*, judged against *"the manifest is data"* and *"one correct
+way to do each thing."* The Maven shape is the one to copy, not Gradle's: a `[publish]` table in
+`kwenza.toml` naming one registry URL (data, mirroring `distributionManagement`), with credentials
+supplied out-of-band (an environment variable or a `~/.m2/settings.xml`-equivalent kwenza already
+doesn't have, not embedded in the manifest) — never a `publishing { }`-style DSL block with
+programmatically-constructed publications. Since kwenza already produces exactly one artifact shape
+(a thin jar) rather than Gradle's many customizable `MavenPublication`s, there's only one sensible
+"publication" to publish, so the Gradle-style multi-publication richness has nothing to do — the same
+reasoning AGENTS.md already applies to `[versions]` skipping Gradle's rich version objects.
+
+== 5. IDE integration points
+
+*Maven.* Maven has no dedicated model-serving API; IDE plugins (IntelliJ's built-in Maven importer,
+Eclipse's m2e) read the POM model directly and shell out to Maven itself (or an embedded resolver)
+for dependency resolution. The entire "model" an IDE needs is exactly the data described in the POM
+Reference (https://maven.apache.org/pom.html) — coordinates, `<dependencies>`, `<modules>`,
+`<build>` — because that data fully determines the build; there's no task graph to execute to find
+out what the build *would* do.
+
+*Gradle.* Because a Gradle build's actual shape (its tasks, dependencies, source sets) is only known
+after running the configuration phase of that specific build script, IDEs can't get it by static
+parsing — they need Gradle itself to run and report back. That's what the **Tooling API** is for: "a
+programmatic API... for embedding Gradle into your own software," used by "Eclipse Buildship" and
+"IntelliJ IDEA... for importing your Gradle project and running tasks" (Gradle, "Tooling API,"
+https://docs.gradle.org/current/userguide/tooling_api.html). It exposes models like `GradleBuild` and
+`EclipseProject` (project hierarchy, dependencies, source directories, tasks) and is explicitly
+version-independent across Gradle releases — a whole embedding/versioning contract that exists
+*because* the build is a program that must run to be understood.
+
+*kwenza today.* "IDE support: IntelliJ IDEA and Eclipse integration" is already an AGENTS.md future
+idea, "flagged as important to land relatively early rather than as a late nice-to-have."
+
+*Verdict: worth building intentionally*, judged against *"the manifest is data, never a program"*
+and *"transparent: no magic, ever."* kwenza's situation is structurally Maven's, not Gradle's:
+`kwenza.toml` is pure data, so an IDE plugin can parse the manifest directly the same way m2e parses
+a POM, with no embedding API needed for the *shape* of the project. The one thing an IDE genuinely
+can't get by static parsing is the *resolved* dependency graph (versions after mediation, jar
+locations in `~/.m2`) — which is exactly what `kwenza resolve` already computes and `kwenza.lock`
+already records. The right-sized feature is a machine-readable (JSON) form of that existing output —
+not a Gradle-style long-lived embeddable API, since there's no task graph or executable model on the
+other end that would justify one.
+
+== 6. Dependency verification / lockfiles
+
+*Maven.* Maven has no first-party lockfile concept at all — there is no "lockfile" plugin among
+Maven's own core or reporting plugins (https://maven.apache.org/plugins/), and dependency resolution
+re-runs against configured repositories on every build, constrained only by whatever exact-version or
+range each POM specifies. Checksum handling exists but is narrow: published `.sha1`/`.md5` files are
+compared against downloads. There is no equivalent to a `sha256`-pinned, "trust the lock file, skip
+the network" model.
+
+*Gradle.* Gradle ships two distinct, deliberately separate mechanisms. **Dependency locking**
+"saves the resolved versions of dependencies to a lock file" (`gradle.lockfile`), and once present,
+Gradle "enforces the locked versions as if they were declared with `strictly()`" (Gradle, "Dependency
+Locking," https://docs.gradle.org/current/userguide/dependency_locking.html) — this is a *version
+stability* mechanism, generated via `--write-locks`. **Dependency verification** is a separate,
+security-focused mechanism: a `gradle/verification-metadata.xml` file enables checksum and PGP
+signature verification, where "if the computed checksum doesn't match the expected value, the build
+fails instead of using the tampered file," and the same for missing/untrusted signatures (Gradle,
+"Verifying dependencies," https://docs.gradle.org/current/userguide/dependency_verification.html).
+The docs are explicit that these solve different problems: locking prevents "unexpected version
+changes," verification addresses "supply chain security concerns."
+
+*kwenza today.* `kwenza.lock` already looks like a merge of both Gradle mechanisms into one file —
+`manifest-hash` plus resolved `version` covers locking, and a recorded `sha256` per artifact looks
+like verification. But AGENTS.md's "Also on the radar" section already names the real gap directly:
+`fetchJarAsync` "silently skips `.sha1` verification if fetching the checksum itself fails" (fails
+open, not closed), and the lock's own `sha256` "is currently write-only... nothing in
+`ensureFromLock`... ever reads it back to verify a cached jar." design-principles.adoc's "Secure by
+default" section calls this out in exactly these terms already.
+
+*Verdict: worth building intentionally*, judged against *"Secure by default, wherever kwenza touches
+code it didn't write"* (design-principles.adoc), which is the principle AGENTS.md itself cites for
+this gap. This isn't really a *new* feature to scope from Gradle's example — it's closing kwenza's own
+already-diagnosed gap (fail closed on a failed checksum fetch; actually read back and check the
+lock's `sha256` on cache hits) using a shape kwenza already committed to (a single lock file
+combining version-pinning and integrity, closer to Cargo/uv than to Gradle's two-file split). Gradle's
+richer PGP-signature verification is a plausible *later* step once the basic checksum-enforcement gap
+is closed, not a reason to hold off on the basic fix.
+
+== 7. Testing integration
+
+*Maven.* Surefire "executes the unit tests of an application" during the `test` phase, supporting
+JUnit 3/4/5, TestNG, and others via a provider-selection mechanism, with forking controlled by
+`forkCount`/`reuseForks` and configurable parallel execution strategies (Maven, Surefire Plugin,
+https://maven.apache.org/surefire/maven-surefire-plugin/).
+
+*Gradle.* The `Test` task "executes tests in a separate ('forked') JVM, isolated from the main build
+process"; `useJUnitPlatform()` is "the simplest setup" for JUnit 5-style testing, and
+`maxParallelForks` (default `1`) lets multiple forked JVMs run concurrently, with the docs warning
+that "tests that interact with the filesystem are particularly prone to conflict" under parallelism
+(Gradle, "Testing in Java & JVM projects,"
+https://docs.gradle.org/current/userguide/java_testing.html).
+
+*kwenza today.* AGENTS.md already makes the equivalence claim explicitly and correctly: `kwenza
+test` forks a JVM "the same as `run` does," runs `org.junit.platform.console.ConsoleLauncher`, and
+relies on the JUnit Platform's own `ServiceLoader` engine discovery — "the same mechanism Maven's
+Surefire (provider auto-detection) and Gradle (`useJUnitPlatform()`) both lean on." Intra-suite
+parallelism already works today with zero kwenza-specific flags via JUnit Platform's own
+`junit.jupiter.execution.parallel.*` configuration, auto-discovered from a copied
+`junit-platform.properties` file. The one acknowledged gap — multiple **forked JVMs** running
+disjoint shards of one suite at once (Gradle's `maxParallelForks`, Surefire's `forkCount`) — is
+already named and explicitly deferred in AGENTS.md's "Explicitly deferred (Phase 2)" list as
+`kwenza test` parallelism (`--test-threads`).
+
+*Verdict: mostly already achieved; the residual gap is explicitly out of scope for now*, per
+AGENTS.md's own Phase 2 deferral list — not a new finding from this research, just confirmation that
+the single-process JUnit-Platform-native parallelism kwenza already supports really is the mechanical
+equivalent of what Surefire/Gradle offer, and that multi-process sharding is a distinct, larger,
+already-acknowledged feature rather than a gap this research is newly surfacing.
+
+== 8. Code-quality tooling hookup
+
+*Maven.* `maven-checkstyle-plugin` offers three goals: `checkstyle`/`checkstyle-aggregate` (reporting
+only, generate an HTML report) and `checkstyle:check`, which "performs Checkstyle analysis and
+outputs violations to the console, with the ability to fail the build based on configuration" — but
+"by default, violations do NOT fail the build"; that's opt-in configuration in the POM (Maven,
+Checkstyle Plugin, https://maven.apache.org/plugins/maven-checkstyle-plugin/).
+
+*Gradle.* The core `checkstyle` plugin is bundled with Gradle itself (not a third-party plugin the
+user adds the way Maven's is): applying it "adds a number of tasks... that perform the quality
+checks," and the built-in `check` lifecycle task "depends on: All Checkstyle tasks, including
+`checkstyleMain` and `checkstyleTest`" — so a violation fails `check` (and, by extension, `build`) by
+default, no opt-in required (Gradle, "The Checkstyle Plugin,"
+https://docs.gradle.org/current/userguide/checkstyle_plugin.html).
+
+*kwenza today.* AGENTS.md's removed-then-reserved `kwenza check` name is explicitly earmarked for
+this: "Checkstyle-style verification is the leading candidate" for what `check` should become, and
+the "Future ideas" list repeats it as "Builtin support for standard, commonly-expected Java tooling
+that's painful to wire up in Gradle/Maven — Checkstyle is the concrete example."
+
+*Verdict: worth building intentionally*, judged against *"extensibility through JVM discovery, never
+a plugin API"* and *"one correct way to do each thing."* The key distinction this research surfaces:
+Gradle's Checkstyle integration is *not* an example of the plugin-API extensibility this document
+rules out elsewhere (section 2) — it's a specific, named tool wired directly into the tool itself,
+the same category as kwenza's own in-process `javac`/jar handling, not a user-supplied
+`Plugin<Project>`. That's exactly the shape AGENTS.md is describing: kwenza should pick Checkstyle (or
+whichever one tool) as *the* blessed choice and drive it in-process via a `[check]`-style data table
+(ruleset path, severity threshold, on/off) reusing the reserved `check` command name — never a
+mechanism for a user to plug in an arbitrary linter of their own choosing.
+
+== 9. Incremental build and build caching
+
+*Maven.* Maven has no first-party incremental-build or build-cache equivalent — every phase's bound
+goals simply run every time `mvn` is invoked for that phase; there is no snapshot/skip mechanism
+described anywhere in Maven's own lifecycle or plugin-configuration docs.
+
+*Gradle.* Gradle's **up-to-date checks** work by fingerprinting: "before a task is executed for the
+first time, Gradle takes a fingerprint of the inputs... contains the paths of input files and a hash
+of the contents of each file," and a task is skipped when "the new fingerprints are the same as the
+previous fingerprints" (Gradle, "Incremental builds,"
+https://docs.gradle.org/current/userguide/incremental_build.html) — this requires a task to
+explicitly declare its inputs/outputs via annotations (`@InputFiles`, `@OutputDirectory`, etc.); "a
+task won't work [incrementally] unless a task has at least one task output." The **build cache**
+extends this further: "a build cache key" derived from those same inputs lets task outputs be reused
+"between builds on one computer or even between builds running on different computers via a build
+cache," local or remote, but only for tasks explicitly annotated `@CacheableTask` — "custom task
+types are not cacheable by default" (Gradle, "Build Cache,"
+https://docs.gradle.org/current/userguide/build_cache.html).
+
+*kwenza today.* AGENTS.md's "Future ideas" already lists this exactly as "Incremental compilation — a
+real unknown, and potentially in tension with the current in-process `javax.tools.JavaCompiler`-only
+decision, since that API doesn't give a source-level dependency graph for free the way Gradle's own
+incremental compiler... does," and explicitly prescribes the next step: "Instrument first (extend
+`KWENZA_TIMING`) before deciding whether to build one."
+
+*Verdict: open question*, exactly as AGENTS.md already frames it — not resolved by this research, and
+not newly discovered by it either. Judged against *"Fast is not a trade-off to apologize for"*
+(design-principles.adoc), whose stated method is "instrument first, build second... never the other
+way around": Gradle's fingerprinting model is a plausible template *if* instrumentation shows
+`javac`-level compilation (not resolve/package, which are already fast per the no-daemon section) is
+where real repeat-build time goes on non-trivial projects — but `javax.tools.JavaCompiler` doesn't
+expose the source-level dependency graph Gradle's own incremental compiler relies on for free, so the
+implementation cost is genuinely unknown until that instrumentation happens. This is squarely a
+"measure, then decide" item, not a "ruled in" or "ruled out" one.
+
+== 10. Daemon/performance architecture
+
+*Maven.* Maven has no daemon: every `mvn` invocation is a fresh JVM process, identical in shape to
+kwenza's own model today.
+
+*Gradle.* "The Gradle Daemon solves this problem" — JVM startup overhead — by being "a long-lived
+background process that reduces the time it takes to run a build" (Gradle, "Gradle Daemon,"
+https://docs.gradle.org/current/userguide/gradle_daemon.html). It keeps warm across builds: "caching
+project information," in-memory "classes for plugins and build scripts," and "the hashes of task
+inputs and outputs for incremental builds" — plus continuous JVM runtime optimization (JIT warming)
+and filesystem-watching to know what changed without a fresh full scan. Gradle's own docs claim "the
+Daemon can reduce build times by 15-75% when you build the same project repeatedly."
+
+*kwenza today.* This is already a documented, *measured* trade-off, not a hunch: `docs/architecture.adoc`
+and AGENTS.md both record that kwenza's own resolve/compile/package logic is "fast and stable
+(~400ms for a trivial project)" but a cold JVM must class-load "~10x more classes than a bare `java
+-version`" (~3,800 vs ~380 — javac internals, XML parsing, `java.net.http`, none covered by the JDK's
+default Class Data Sharing archive), costing "another ~350-400ms every time," which is "the direct,
+quantified reason Gradle's warm daemon edges out kwenza on tiny projects despite kwenza's simpler
+internals." AppCDS for kwenza's own class footprint is already flagged in "Also on the radar" as the
+counter-move, and watch mode is already flagged in "Future ideas" as the one explicit, opt-in
+exception a long-lived process would be allowed for.
+
+*Verdict: explicitly out of scope*, per the "no daemon" trade-off already recorded in AGENTS.md and
+weighed against the *Fast* pillar in design-principles.adoc — this document doesn't add a new reason
+to reconsider a persistent general-purpose kwenza daemon; the measurement already exists, the
+decision already stands, and the two levers already on kwenza's own roadmap for the same cold-start
+problem (AppCDS; an opt-in watch-mode process, explicitly scoped as an exception rather than a
+reversal) are the correct next steps, not a daemon copied from Gradle.
+
+== Summary
+
+[cols="2,1,4"]
+|===
+|Capability area |Verdict |One-line reasoning
+
+|1. Task graphs / build lifecycle
+|Out of scope
+|Gradle's DAG needs a scripted task graph; Maven's fixed-phase shape is already what kwenza's command chain delivers.
+
+|2. Plugin ecosystem / extension mechanisms
+|Out of scope
+|Both Mojo and `Plugin<Project>` are a build-tool-defined plugin API — exactly what "JVM discovery, never a plugin API" rules out.
+
+|3a. Multi-module (`[workspace]`)
+|Worth building
+|Already a Phase 2 commitment; Maven's reactor (data-only module list + real dependency edges) is the right, simpler model to copy.
+
+|3b. Composite builds (`includeBuild`)
+|Open question
+|Not ruled out by any principle, but unclear if `[workspace]` alone already covers kwenza's realistic use cases.
+
+|4. Publishing
+|Worth building
+|Already an AGENTS.md future idea; copy Maven's data-shaped `distributionManagement` + out-of-band auth, not Gradle's `publishing {}` DSL.
+
+|5. IDE integration
+|Worth building
+|kwenza's manifest is already parseable like a POM; the real gap is a JSON form of `kwenza resolve`'s output, not a Gradle-style embeddable Tooling API.
+
+|6. Dependency verification / lockfiles
+|Worth building
+|Closes AGENTS.md's own already-diagnosed "fails open" gap; judged directly against "Secure by default."
+
+|7. Testing integration
+|Mostly already achieved
+|`kwenza test` already mirrors Surefire/`useJUnitPlatform()` via JUnit Platform ServiceLoader discovery; multi-JVM sharding is already an acknowledged Phase 2 deferral, not a new gap.
+
+|8. Code-quality tooling
+|Worth building
+|Checkstyle-as-bundled-tool (like Gradle's core plugin) is a first-party integration, not the user-plugin-API pattern ruled out in #2; fits the reserved `check` name.
+
+|9. Incremental build / build cache
+|Open question
+|Already framed in AGENTS.md as "a real unknown" pending `KWENZA_TIMING` instrumentation — genuinely undecided, not yet ruled either way.
+
+|10. Daemon / performance architecture
+|Out of scope
+|Already a measured, documented trade-off; AppCDS and an opt-in watch-mode exception are the already-planned levers, not a general daemon.
+|===
