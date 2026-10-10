@@ -225,9 +225,25 @@ specific decision and its specific reasoning; that one is for the pattern.
 - `kwenza test` parallelism (`--test-threads` / multi-process sharding across several forked
   JVMs, the equivalent of Gradle's `maxParallelForks` or Surefire's `forkCount`) — see the
   "`kwenza test` forks a JVM..." decision above for what's already possible today without it.
+  Same fork in the road as the "own test console output" item under "Future ideas": both need
+  kwenza to stop delegating to `ConsoleLauncher`'s CLI and own a Launcher-API runner, so scope them
+  together rather than as two separate line items.
 
 ## Also on the radar (surfaced later, not yet triaged against the above)
 
+- **CI-compatible test reports via `--reports-dir`.** `kwenza test` forks `ConsoleLauncher` already;
+  adding `--reports-dir=<dir>` to that invocation makes `ConsoleTestExecutor` register a
+  `LegacyXmlReportGeneratingListener`, which writes one `TEST-<class>.xml` per test class in the
+  legacy Ant-JUnit schema that Jenkins/GitHub Actions/GitLab already parse (same lineage as
+  Surefire's and Gradle's XML). Flag-only: no Launcher API, no reflection, no new dependency, so it
+  doesn't touch "zero external dependencies" or "no test-framework plugin system" above. One more
+  flag, `--config=junit.platform.reporting.open.xml.enabled=true`, also writes JUnit's Open Test
+  Reporting XML into the same directory, but OTR's schema is still pre-1.0 and no mainstream CI
+  parses it natively, so legacy XML is the interop-relevant one. Open choices: output directory
+  (under `[package] output-dir`, e.g. `target/test-results`) and whether it's on by default.
+  HTML reports are *not* covered by this: every ecosystem surveyed treats HTML as a downstream tool
+  (Maven's `maven-surefire-report-plugin`; Gradle only because it owns its listener). Sourcing in
+  [docs/research/junit-launching-and-reporting.adoc](docs/research/junit-launching-and-reporting.adoc).
 - **`--project <path>`** — every command currently only operates on the current working directory
   (see `docs/cli-reference.adoc`'s opening line). Small and standalone; a plausible easy first PR.
 - **AppCDS for kwenza's own cold-start — tried, works, real but size-dependent win.** A
@@ -383,7 +399,31 @@ Compiler & language
 - Multi-JVM-language support (Kotlin, Scala, ...) — see "Multi-JVM-language support is a real
   direction" in docs/design-principles.adoc. Java-first: a real direction, not near-term work.
 
+Testing & reporting
+- **Own test console output levels and format, instead of `ConsoleLauncher`'s presets.**
+  `ConsoleLauncher`'s `--details`/`--details-theme`/`--color-palette` are presets, not an extension
+  point; Gradle can format its own output because it registers its own `TestExecutionListener` on
+  `LauncherFactory.create()`. Gradle's default is deliberately near-silent (failures only), and
+  people routinely have to raise `testLogging` by hand; `ConsoleLauncher`'s default (`tree`) is the
+  noisier opposite. Current `ConsoleLauncher` output is judged good enough for now. If this is ever
+  built: kwenza's own code can't compile against `org.junit.platform.launcher.*`, but a small
+  runner main class in the forked JVM can implement `TestExecutionListener` through
+  `java.lang.reflect.Proxy` (needs only the interface's `Class`, found at runtime), at the cost of
+  verbose reflective discovery-request building; the alternative is a separately built helper jar
+  with a real JUnit dependency, simpler code but a new artifact to build, version and distribute.
+  Reflection's per-call overhead is nanoseconds against a few thousand listener callbacks, dwarfed
+  by the JVM fork itself, so it shouldn't drive the choice. Whatever shape it takes, keep an
+  always-emitted final summary line independent of how verbose the live stream is.
+- HTML test reports, same gate as above: a kwenza-owned listener plus renderer (Gradle's model), or
+  shelling out to Open Test Reporting's separate CLI converter (a new runtime dependency).
+
 Performance
+- Prefer return codes over exceptions for any new hot-path logic (a per-test listener callback,
+  resolver loops over many versions). Exceptions cost mostly in `fillInStackTrace()`, which only
+  matters when they fire per iteration; kwenza's current exceptions (`CliException`,
+  `CommandFailedException`, `IncompatibleJdkException`) fire at most once per invocation, so there's
+  nothing to change today. A direction to weigh when scoping hot paths, not a refactor of existing
+  code.
 - Incremental compilation — a real unknown, and potentially in tension with the current in-process
   `javax.tools.JavaCompiler`-only decision, since that API doesn't give a source-level dependency
   graph for free the way Gradle's own incremental compiler (or Eclipse's ECJ, which IDEs use) does.

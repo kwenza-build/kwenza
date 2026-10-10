@@ -1,0 +1,344 @@
+= JUnit launching and reporting: primary-source research
+:toc:
+:toclevels: 2
+
+Primary-source research for a maintainer, not a decision record. The conclusions are summarized in
+link:../../AGENTS.md[AGENTS.md] ("Also on the radar" and "Future ideas"); this file holds the
+sourcing behind them. It builds on an earlier investigation that established the
+Gradle-vs-Surefire-vs-`ConsoleLauncher` baseline (Gradle drives the Launcher API with its own
+listener; Surefire's HTML report is a separate plugin; `ConsoleLauncher`'s console format is a set
+of presets). Those facts are taken as given here and not re-derived.
+
+== Summary
+
+*The lowest-cost path to CI-compatible structured test reports for kwenza is cheaper than the
+prior handoff assumed, and it requires no Launcher-API integration at all.* `ConsoleLauncher`'s
+existing `--reports-dir=<dir>` flag — a single argument added to kwenza's _already-forked_
+`ConsoleLauncher execute` invocation — makes `ConsoleTestExecutor` (the class backing
+`ConsoleLauncher`) construct a `LegacyXmlReportGeneratingListener` and register it directly on the
+`Launcher` it creates internally. That listener writes one `TEST-<root>.xml` file per test class,
+in the exact legacy Ant-`junit`-task-compatible schema that Jenkins/GitHub Actions/GitLab and
+every other CI system already parse — the same lineage of schema Surefire and Gradle produce.
+This is a *CLI-flag-only change*, not a code architecture change: no Launcher API reference, no
+reflection, no new kwenza module. The harder feature the prior handoff described — a
+kwenza-authored Launcher API runner for custom console formatting and/or test-run parallelism
+across forked JVMs — remains a separate, larger, genuinely-deferred investment; it is not a
+prerequisite for CI-compatible XML. Getting JUnit's newer *Open Test Reporting (OTR)* XML
+_additionally_ costs only one more CLI flag (`--config=junit.platform.reporting.open.xml.enabled=true`),
+piggybacking on the same `--reports-dir` output directory, because the listener that writes it is
+already auto-registered via `ServiceLoader` on every `Launcher` — including the one
+`ConsoleLauncher` creates — regardless of whether anything calls the Launcher API directly.
+
+'''
+
+== 1. `ConsoleLauncher --reports-dir`, precisely, from primary sources
+
+*Primary source: `ConsoleTestExecutor.java`, the class `ConsoleLauncher` delegates test execution
+to* (`junit-platform-console/src/main/java/org/junit/platform/console/command/ConsoleTestExecutor.java`,
+https://github.com/junit-team/junit-framework/blob/main/junit-platform-console/src/main/java/org/junit/platform/console/command/ConsoleTestExecutor.java[junit-team/junit-framework],
+read directly via the GitHub API on 2026-08-20). The method signature and registration logic:
+
+[source,java]
+----
+public TestExecutionSummary execute(PrintWriter out, Optional<Path> reportsDir, boolean failFast) { ... }
+
+private SummaryGeneratingListener registerListeners(PrintWriter out, Optional<Path> reportsDir, Launcher launcher,
+        @Nullable CancellationToken cancellationToken) {
+    // always register summary generating listener
+    SummaryGeneratingListener summaryListener = new SummaryGeneratingListener();
+    launcher.registerTestExecutionListeners(summaryListener);
+    // optionally, register test plan execution details printing listener
+    createDetailsPrintingListener(out).ifPresent(launcher::registerTestExecutionListeners);
+    // optionally, register XML reports writing listener
+    createXmlWritingListener(out, reportsDir).ifPresent(launcher::registerTestExecutionListeners);
+    createFailFastListener(cancellationToken).ifPresent(launcher::registerTestExecutionListeners);
+    return summaryListener;
+}
+
+private Optional<TestExecutionListener> createXmlWritingListener(PrintWriter out, Optional<Path> reportsDir) {
+    return reportsDir.map(it -> new LegacyXmlReportGeneratingListener(it, out));
+}
+----
+
+and separately, in `launchTests`:
+
+[source,java]
+----
+reportsDir.ifPresent(dir -> discoveryRequestBuilder.configurationParameter(OUTPUT_DIR_PROPERTY_NAME,
+    dir.toAbsolutePath().toString()));
+----
+
+This confirms, unambiguously and from the actual code, not a doc paraphrase:
+
+* `--reports-dir=<dir>` populates exactly one `Optional<Path> reportsDir` value, which does exactly
+two things: (a) constructs and registers a `LegacyXmlReportGeneratingListener(reportsDir, out)`
+directly on the `Launcher` `ConsoleTestExecutor` creates via `LauncherFactory::create`, and (b)
+sets the `junit.platform.reporting.output.dir` configuration parameter
+(`LauncherConstants.OUTPUT_DIR_PROPERTY_NAME`, `@since 1.13.3`) to that same directory.
+* There is *no separate "format" choice* — `--reports-dir` always wires up
+`LegacyXmlReportGeneratingListener`, never `OpenTestReportGeneratingListener` directly. The two
+listeners are registered through entirely different mechanisms (see below).
+
+*What format does `LegacyXmlReportGeneratingListener` write?* Its own class-level javadoc, read
+directly from source
+(`junit-platform-reporting/src/main/java/org/junit/platform/reporting/legacy/xml/LegacyXmlReportGeneratingListener.java`):
+
+[quote]
+____
+"`LegacyXmlReportGeneratingListener` is a `TestExecutionListener` that generates a separate XML
+report for each root in the `TestPlan`. Note that the generated XML format is compatible with
+the _legacy_ de facto standard for JUnit 4 based test reports that was made popular by the Ant
+build system." (`@since 1.4`, `@API(status = STABLE, since = "1.7")`)
+____
+
+And the actual file-naming logic in the same class:
+
+[source,java]
+----
+Path xmlFile = this.reportsDir.resolve("TEST-" + rootName + ".xml");
+----
+
+— i.e. `TEST-<fully-qualified-class-name>.xml`, one file per root/test class, the exact naming
+convention Ant's `junit` task, Surefire, and Gradle's XML output all use. This has been `STABLE`
+API since JUnit Platform 1.7 (released 2020), so it is present in effectively every JUnit 5/6
+version kwenza's users could plausibly have as a dev-dependency today.
+
+*Answer to the handoff's open question*: `--reports-dir` produces the *legacy Ant-JUnit-compatible
+XML*, not Open Test Reporting, and it does so *with zero extra code* — it is a documented,
+stable CLI flag on the exact `ConsoleLauncher` invocation kwenza already forks. The handoff's claim
+that there is "no middle ground via `ConsoleLauncher` itself, only via the Launcher API" was
+correct about _custom console formatting_ (confirmed again here — `--details`/`--details-theme`
+really are presets, see §4) but was *overly pessimistic about structured reports specifically*:
+CI-compatible XML is already a `ConsoleLauncher`-only, flag-only feature.
+
+Sources:
+https://github.com/junit-team/junit-framework/blob/main/junit-platform-console/src/main/java/org/junit/platform/console/command/ConsoleTestExecutor.java[`ConsoleTestExecutor.java`] ·
+https://github.com/junit-team/junit-framework/blob/main/junit-platform-reporting/src/main/java/org/junit/platform/reporting/legacy/xml/LegacyXmlReportGeneratingListener.java[`LegacyXmlReportGeneratingListener.java`] ·
+https://docs.junit.org/6.1.1/running-tests/console-launcher.html[JUnit User Guide — Console Launcher, `--reports-dir`] ·
+https://github.com/junit-team/junit-framework/blob/main/junit-platform-launcher/src/main/java/org/junit/platform/launcher/LauncherConstants.java[`LauncherConstants.java`]
+
+== 2. Open Test Reporting: what it is, its status, and its relationship to the legacy format
+
+*Primary sources*: https://github.com/ota4j-team/open-test-reporting[ota4j-team/open-test-reporting]
+(the spec/tooling repo, maintained by the JUnit team) and
+`OpenTestReportGeneratingListener.java` (`junit-platform-reporting/src/main/java/org/junit/platform/reporting/open/xml/`,
+read directly via GitHub raw content on 2026-08-20).
+
+Open Test Reporting (OTR) is a *language-agnostic* XML/HTML test-reporting spec, explicitly _not_
+JUnit-specific in intent, "maintained by the JUnit team." It defines two complementary schemas:
+
+* an *events-based* format — a flat, timestamped stream of test-lifecycle events, suited to
+writing incrementally during a run without buffering; this is what
+`OpenTestReportGeneratingListener` produces, as a single `open-test-report.xml` per run
+(JUnit's own doc text: "writes an XML report for the entire execution in the event-based format
+specified by Open Test Reporting which supports all features of the JUnit Platform such as
+hierarchical test structures, display names, tags, etc.")
+* a *hierarchical* format — a nested tree, more human-readable, produced by _converting_ the
+events-based format with OTR's own CLI tool, not written directly by JUnit.
+
+The schemas themselves are versioned separately from JUnit and are at *schema version 0.2.0* as
+of this research (per the ota4j-team repo) — i.e. still evolving, not a frozen 1.0, though the
+listener that produces them (`OpenTestReportGeneratingListener`) is JUnit-Platform-API-stable:
+`@since 1.9`, `@API(status = MAINTAINED, since = "1.13.3")`.
+
+*How it's enabled — and this is the important mechanical detail*: unlike
+`LegacyXmlReportGeneratingListener` (explicitly `new`'d by `ConsoleTestExecutor` only when
+`--reports-dir` is given), `OpenTestReportGeneratingListener` is *auto-registered via
+`ServiceLoader`* on _any_ `Launcher` created through `LauncherFactory.create()` — the source
+carries the annotation `@SuppressWarnings("unused") // Used via ServiceLoader` on its no-arg
+constructor. This means it is already present and running, inert, on every `ConsoleLauncher`
+invocation (and every Gradle/custom Launcher-API run) that has `junit-platform-reporting` on the
+classpath — it just doesn't write anything unless explicitly turned on via three configuration
+parameters, all `junit.platform.reporting.*`:
+
+* `junit.platform.reporting.open.xml.enabled=true|false` (default `false`) — the master switch
+* `junit.platform.reporting.output.dir=<path>` — where to write; *this is the exact same
+parameter `--reports-dir` already sets* (`OUTPUT_DIR_PROPERTY_NAME`), so passing `--reports-dir`
+plus `--config=junit.platform.reporting.open.xml.enabled=true` writes _both_ the legacy XML and
+`open-test-report.xml` into the same directory, from the same forked `ConsoleLauncher` process,
+with no additional wiring
+* `junit.platform.reporting.open.xml.git.enabled=true|false` — embed Git repo/commit/branch info
+* `junit.platform.reporting.open.xml.socket=<port>` — stream events to a socket instead of a file
+
+*Tooling to convert/render OTR*: the https://github.com/ota4j-team/open-test-reporting[`ota4j-team/open-test-reporting`]
+repo ships a CLI tool that validates either schema, converts events-based → hierarchical, and
+generates a standalone HTML report from either. JUnit's own user guide links this tool directly
+rather than shipping conversion/HTML itself — i.e. HTML from OTR data is a downstream-tool
+responsibility, the same separation Maven draws between Surefire (data) and
+`maven-surefire-report-plugin` (HTML).
+
+*Bottom line for kwenza*: OTR is real, current, JUnit-team-maintained, and gated behind nothing
+harder than a `--config` flag on the same fork — but its schema is still pre-1.0 and it is _not_
+the format CI systems already parse (see §3). Legacy XML remains the interop-relevant format today;
+OTR is the forward-looking one, worth tracking but not yet a substitute.
+
+Sources:
+https://github.com/ota4j-team/open-test-reporting[ota4j-team/open-test-reporting] ·
+https://github.com/junit-team/junit-framework/blob/main/junit-platform-reporting/src/main/java/org/junit/platform/reporting/open/xml/OpenTestReportGeneratingListener.java[`OpenTestReportGeneratingListener.java`] ·
+https://docs.junit.org/6.1.1/advanced-topics/junit-platform-reporting.html[JUnit User Guide — Platform Reporting] ·
+https://github.com/junit-team/junit-framework/blob/main/junit-platform-launcher/src/main/java/org/junit/platform/launcher/LauncherConstants.java[`LauncherConstants.java`]
+
+== 3. How other JVM (and cross-ecosystem) tools handle structured reporting
+
+*Maven Surefire* — confirmed precisely: the plugin's own overview page states report output goes
+to `${basedir}/target/surefire-reports/`, in two formats: plain text `*.txt` and XML `*.xml`
+(named `TEST-*.xml`, same convention as JUnit's legacy listener). Surefire ships its _own_ XSD
+(`surefire-test-report.xsd`) rather than pointing at an Ant-owned schema file — so precisely
+speaking, Surefire, Gradle, and JUnit's `LegacyXmlReportGeneratingListener` are three independent
+implementations that all target the same de facto shape Ant's `junit` task made popular, not three
+consumers of one canonical XSD. HTML is explicitly out of scope for Surefire itself — the same
+page says "For an HTML format of the report, please see the Maven Surefire Report Plugin," a
+separate artifact/goal (`surefire-report:report` / `mvn site`), confirming and sharpening the
+handoff's existing claim.
+Source: https://maven.apache.org/surefire/maven-surefire-plugin/[Maven Surefire Plugin overview].
+
+*Gradle* — the handoff's claims are confirmed verbatim from Gradle's own current user guide: by
+default (no plugin, no config) a `Test` task produces "an HTML test report," "XML test results in
+a format compatible with the Ant JUnit report task," and "an efficient binary format" (Gradle's own
+internal format the other two are generated from). The phrase "compatible with the Ant JUnit report
+task" is Gradle's own words, i.e. Gradle is explicit that its interop target is the same
+Ant-popularized shape as Surefire and JUnit's legacy listener.
+Source: https://docs.gradle.org/current/userguide/java_testing.html[Gradle User Guide — Java Testing].
+
+*Bazel* — `java_test` (via Bazel's general test-runner contract, not Java-specific) supports
+`XML_OUTPUT_FILE`, an environment variable naming "a test result XML output file"; Bazel's own
+docs state "The XML schema is based on the JUnit test result schema" and that if the test binary
+doesn't write one, "Bazel generates a default XML output file wrapping the test log as part of the
+test action" — i.e. Bazel treats _some_ JUnit-XML-shaped file as the baseline contract for any test
+rule, language-agnostic, and synthesizes a degenerate one if nothing else is written. Sharding is
+a separate, orthogonal mechanism: `TEST_TOTAL_SHARDS`/`TEST_SHARD_INDEX` (0-based) tell a test
+runner which slice to run, and it must touch `TEST_SHARD_STATUS_FILE` to prove it actually honored
+sharding, or Bazel fails the run — relevant prior art for kwenza's own explicitly-deferred
+multi-JVM test parallelism item, since it's the same "runner announces the total/index it accepted"
+shape any sharding design would need.
+Source: https://bazel.build/reference/test-encyclopedia[Bazel Test Encyclopedia].
+
+*sbt* — confirmed from sbt's own reference manual: "By default, sbt will generate JUnit XML test
+reports for all tests in the build, located in the `target/test-reports` directory," via a plugin
+(`JUnitXmlReportPlugin`) that ships _auto-included_ rather than needing to be added by the user —
+can be turned off with `disablePlugins(plugins.JUnitXmlReportPlugin)`. Notable as a fourth
+independent JVM tool converging on "JUnit XML" as the default, on-by-default interop format, this
+time for a build tool whose native test frameworks (ScalaTest, specs2, ScalaCheck) aren't JUnit at
+all — the format has become ecosystem-neutral, not JUnit-specific in practice.
+Source: https://www.scala-sbt.org/1.x/docs/Testing.html[sbt Reference Manual — Testing].
+
+*TestNG* — included as prior art for "what should a structured JVM test report contain," not as
+another legacy-XML producer (TestNG predates and is independent of JUnit Platform). By default,
+with no configuration, TestNG's built-in listeners produce several report artifacts under
+`test-output/`: `org.testng.reporters.SuiteHTMLReporter` (a browsable HTML suite report),
+`org.testng.reporters.FailedReporter` (writes `testng-failed.xml`, a rerun-only-failures manifest —
+notably a feature none of the XML-report tools above offer), and `org.testng.reporters.XMLReporter`
+(TestNG's own results XML, distinct from the JUnit-XML-shaped file TestNG _also_ emits for
+CI-tool interop via a separate reporter). All of this is on by default and can be turned off with
+`-usedefaultlisteners false`. Confidence note: TestNG's own site (`testng.org`) confirms the
+default-directory and `-usedefaultlisteners` behavior directly, but the precise reporter class list
+above is corroborated across secondary sources (Baeldung, tutorialspoint-style guides) rather than
+one single authoritative TestNG page enumerating them — flagged as lower-confidence than the rest
+of this section.
+Sources: https://testng.org/testng_listeners.html[testng.org — Listeners] (primary, partial);
+secondary corroboration via search aggregation, noted above.
+
+*Why "JUnit XML" is the interop lingua franca* — confirmed directly from pytest's own docs
+(a non-JVM, non-JUnit tool): pytest calls its own output "JUnitXML format," describes it as
+producing "result files which can be read by Jenkins or other Continuous integration servers," and
+is explicit that it is chasing a moving, _de facto_ target rather than a ratified spec — its docs
+warn that certain pytest features "will break schema verifications for the latest JUnitXML schema."
+That's the same shape of admission Surefire (own XSD, not Ant's) and Gradle ("compatible with,"
+not "is") make: there is no single canonical XSD anyone owns, only a widely-converged-on shape
+(`<testsuite>`/`<testcase>` elements, `TEST-*.xml` naming, `time`/`failures`/`errors`/`skipped`
+attributes) that Jenkins' own JUnit plugin, GitHub Actions test-reporting actions, and GitLab's
+`junit` artifact-report type all parse leniently enough that every JVM tool above independently
+targeting "the Ant shape" is sufficient for interop, without needing byte-identical output.
+Source: https://docs.pytest.org/en/stable/how-to/output.html[pytest — Output docs, JUnitXML].
+
+== 4. Console output UX conventions
+
+*Gradle's default is deliberately quiet, not verbose.* Confirmed from Gradle's own docs: at the
+default `LIFECYCLE` log level, Gradle logs _only_ test failures (with `SHORT` exception format);
+per-test pass/fail lines require explicitly raising `testLogging` (Gradle's docs give `INFO` level
+as logging "test failures, skipped tests, test standard output and test standard error"). This is
+the "show only what needs attention, full detail is opt-in" convention.
+Source: https://docs.gradle.org/current/userguide/java_testing.html[Gradle User Guide — Java Testing].
+
+*`ConsoleLauncher`'s default is the opposite: full tree, not summary-only.* Confirmed from the
+JUnit User Guide's Console Launcher options and `ConsoleTestExecutor`'s own `Details` enum: the
+`--details` flag's documented modes are `none, summary, flat, tree, verbose, testfeed`, and the
+*default is `tree`* — a full colored tree diagram of every container/test, not just failures.
+`none` is the mode that collapses to "only the summary and test failures are shown" — i.e.
+`ConsoleLauncher`'s quiet mode is Gradle's _default_ mode, and `ConsoleLauncher`'s default is
+noisier than Gradle's default. This is a real, documented divergence in default philosophy between
+the two tools' console UX, not just a formatting difference — worth naming explicitly since kwenza
+inherits `ConsoleLauncher`'s default (`tree`) as its own out-of-the-box behavior today.
+Source: https://docs.junit.org/6.1.1/running-tests/console-launcher.html[JUnit User Guide — Console Launcher].
+
+*Color/theme conventions*: `ConsoleLauncher` auto-detects ANSI support and a Unicode-vs-ASCII
+tree theme by default (`--details-theme=THEME`, values `ascii`/`unicode`, "auto-detected by
+default"), with `--disable-ansi-colors`, `--color-palette=<properties file>` (fully custom styling)
+and `--single-color` (monochrome, text attributes only — for terminals/CI logs that render color
+unreliably) as opt-outs/over-rides layered on top of the auto-detected default — i.e. "detect and
+degrade gracefully" rather than "always full color" or "always plain," is the convention.
+Source: `ConsoleTestExecutor.getColorPalette()` and the JUnit User Guide Console Launcher page
+(as above).
+
+*Progress vs. final summary*: every tool surveyed splits these as two distinct concerns rather
+than one continuous stream — `ConsoleLauncher`'s `DetailsPrintingListener` variants stream
+per-event output live during the run, then a separate, always-registered
+`SummaryGeneratingListener` prints counts/timing/failures once at the end regardless of `--details`
+mode (`ConsoleTestExecutor.registerListeners` always adds it, unconditionally, before any
+details-mode listener). Gradle's live output (failures-only by default) plus its own end-of-task
+`FAILED`/`BUILD SUCCESSFUL` line follows the identical two-phase shape. This "always emit a final
+summary line, independently of how verbose the live stream was" pattern looks like the actual
+convention worth kwenza preserving if it ever touches this area, more than any specific color or
+tree-glyph choice.
+
+== Recommendation for kwenza
+
+*Cheap, available today, requires no architecture change:*
+
+* Add `--reports-dir=<dir>` (a natural default: alongside kwenza's existing output directory
+convention, e.g. `target/test-results` or similar — a naming choice, not a technical one) to the
+existing forked `ConsoleLauncher execute ...` invocation in `TestCommand.java`. This is a
+same-process CLI-argument change to the fork kwenza already performs — no new dependency
+reference (compile-time or reflective), no Launcher API code, no change to the "zero external
+dependencies for kwenza itself" or "no test-framework plugin system" decisions in `AGENTS.md`.
+It produces `TEST-<class>.xml` files in the legacy Ant-compatible schema — the exact shape
+Jenkins/GitHub Actions/GitLab already parse, confirmed directly from `ConsoleTestExecutor.java`
+and `LegacyXmlReportGeneratingListener.java` (§1).
+* Optionally, one more forked-process flag —
+`--config=junit.platform.reporting.open.xml.enabled=true` — additionally writes
+`open-test-report.xml` (JUnit's newer, forward-looking Open Test Reporting format) into the same
+directory, for free, via the same mechanism (§2). Worth doing at the same time as the above,
+since it's zero marginal engineering cost once `--reports-dir` is being passed, even though OTR
+isn't yet the CI-interop format (its schema is pre-1.0 and no mainstream CI tool parses it
+natively today — see §3's "JUnit XML" characterization).
+* This directly revises the prior handoff's framing: "structured reports" in `AGENTS.md`'s "Future
+ideas" is *not* downstream of the Launcher-API-runner investment. It's a small, near-term,
+flag-only feature, cheap enough that it arguably doesn't belong in "Future ideas" at all once
+scoped — closer to a same-size change as the already-shipped `--disable-banner` flag.
+
+*Still genuinely gated behind a real Launcher-API runner (the prior handoff's investment, not
+changed by this research):*
+
+* *HTML reports.* Neither `LegacyXmlReportGeneratingListener` nor `--reports-dir` produce HTML —
+that's a downstream-tool responsibility in every ecosystem surveyed (Maven needs
+`maven-surefire-report-plugin`; JUnit's own docs point at OTR's separate CLI tool for HTML; Gradle
+is the one exception, and only because Gradle owns a custom `TestExecutionListener` feeding a
+Gradle-authored HTML renderer — exactly the Launcher-API investment the handoff described). If
+kwenza wants an HTML report, either shell out to the OTR CLI tool as a _new_ runtime dependency
+(a real, different kind of coupling than "reflect against whatever the user's classpath
+provides"), or write kwenza's own `TestExecutionListener` + renderer the way Gradle does — both
+are the larger investment, unaffected by the `--reports-dir` finding above.
+* *Custom console formatting* (Gradle-style build-output-matching console lines instead of
+`ConsoleLauncher`'s own tree/flat/verbose presets). Confirmed again in this research (§1, §4):
+`--details`/`--details-theme`/`--color-palette` are real presets and real degrade-gracefully
+defaults, but not an extension point — matching kwenza's own build-output style specifically
+still requires the Launcher API and a kwenza-owned listener.
+* *Test-run parallelism across forked JVMs* (`AGENTS.md`'s already-deferred item). Unchanged by
+this research: still the same fork in the road as custom console formatting, per the prior
+handoff — both need a kwenza-owned Launcher-API runner, and Bazel's shard-index/shard-status-file
+contract (§3) is relevant prior art for that specific design _if and when_ it gets picked up, not
+a reason to build it now.
+
+In short: the prior handoff's overall shape ("defer the big Launcher-API investment") still holds,
+but it was drawn one notch too pessimistically on structured _XML_ reports specifically. XML is a
+flag; HTML and custom formatting are the real fork in the road.
