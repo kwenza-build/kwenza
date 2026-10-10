@@ -1,0 +1,593 @@
+= Gradle CLI Reference vs. kwenza
+:toc:
+:toclevels: 2
+
+== Scope of this document
+
+This document catalogs one specific, narrow thing: the actual command-line surface of the
+`gradle` executable itself — every flag it accepts, and the built-in tasks every Gradle build gets
+for free from its base/lifecycle plugins with no user configuration at all. It deliberately does
+*not* re-derive:
+
+* The task-graph/DAG conceptual model, Maven's fixed-phase lifecycle, or the plugin-ecosystem
+  comparison — see link:gradle-maven-feature-analysis.adoc[gradle-maven-feature-analysis.adoc]
+  (sections 1, 2, 9, 10 in particular).
+* The real execution-graph internals (`DefaultExecutionPlan`, `WorkerLeaseService`), how
+  UP-TO-DATE/build-cache fingerprinting actually works (`DefaultExecutionHistoryStore`,
+  path-sensitivity fingerprinters), or exactly what the daemon keeps warm in memory (compiled
+  build-script classes, in-memory task fingerprints, the Virtual File System) — see
+  link:gradle-maven-plugin-census.adoc[gradle-maven-plugin-census.adoc] ("Gradle: the real task
+  execution engine," "Gradle: how UP-TO-DATE actually gets detected," "Gradle: what the daemon
+  actually keeps warm").
+
+Everything below is instead "if you type `gradle` at a shell, what can you actually type after
+it" — flags, their real documented behavior, and whether kwenza has an equivalent today. Primary
+sources: Gradle's own
+link:https://docs.gradle.org/current/userguide/command_line_interface.html[Command-Line Interface]
+docs and link:https://docs.gradle.org/current/userguide/build_environment.html[Build Environment]
+docs, cited per claim below.
+
+== kwenza's current CLI surface, for reference
+
+From link:../cli-reference.adoc[docs/cli-reference.adoc], as of this writing:
+
+[cols="1,3"]
+|===
+|Surface |Current shape
+
+|Commands
+|`build`, `run`, `test`, `package`, `clean`, `resolve` — chainable in one invocation
+(`kwenza build run`, `kwenza clean build run`), each triggering resolve/compile at most once per
+invocation via memoized `BuildState`.
+
+|Flags
+|`--update` (force re-resolution, ignore `kwenza.lock`), `--verbose` (per-dependency detail on a
+real resolution; full literal command for `run`/`test` instead of the compact one-liner).
+
+|Environment variables
+|`KWENZA_REPO` (override local dependency cache, default `~/.m2/repository`), `KWENZA_TIMING`
+(phase-timing breakdown to stderr).
+
+|Targeting
+|None — every command operates on the current working directory; no `--project <path>`, no
+task/command exclusion, no name abbreviation (there's nothing to abbreviate: six fixed command
+names, no user-registered tasks).
+
+|Output
+|Status lines to stderr only, cyan/red/gray coloring auto-detected via a real terminal check and
+suppressed by `NO_COLOR` or non-terminal output; no `--quiet`/`--info`/`--debug` level, no
+`--console` mode selection, no `--stacktrace`.
+|===
+
+The rest of this document walks Gradle's much larger surface against this baseline.
+
+== Gradle's CLI options
+
+All entries below are from Gradle's
+link:https://docs.gradle.org/current/userguide/command_line_interface.html[Command-Line Interface]
+reference unless otherwise cited.
+
+=== Execution behavior
+
+[cols="2,4,2"]
+|===
+|Flag |What it actually does |kwenza equivalent
+
+|`--parallel` / `--no-parallel`
+|Allows Gradle to "fork JVMs and execute projects concurrently" — cross-*project* parallelism
+only; without it, independent projects still build serially even on multiple cores. Backed by
+`org.gradle.parallel` in `gradle.properties`.
+|None. kwenza has no multi-module concept yet (`[workspace]` is Phase 2 per AGENTS.md), so there
+is nothing to parallelize across projects today; within a single module kwenza's compile/resolve
+steps are each already one unit of work, not a task graph with independently schedulable nodes.
+
+|`--build-cache` / `--no-build-cache`
+|Enables/disables the Build Cache, which reuses previous task outputs (locally or from a shared
+remote cache) keyed by input fingerprints, instead of re-running a task.
+|None. This is the incremental-build/cache axis link:gradle-maven-feature-analysis.adoc[section 9]
+already frames as an open, unresolved question in AGENTS.md — not re-litigated here.
+
+|`--configuration-cache` / `--no-configuration-cache`
+|Enables/disables reuse of the *configuration* phase's result (the built task graph itself) across
+builds, skipping build-script re-evaluation when nothing relevant changed.
+|Not applicable in the same shape: kwenza's manifest is inert TOML data, never evaluated as code
+(design-principles.adoc, "The manifest is data, never a program"), so there is no
+build-script-evaluation cost to cache in the first place — the problem this flag solves doesn't
+exist for kwenza by construction, not because it's unbuilt.
+
+|`--offline`
+|Runs without accessing any network resources; Gradle resolves entirely from already-cached
+dependencies and fails if something isn't already there.
+|**Genuine gap, and already tracked**: AGENTS.md's "Explicitly deferred (Phase 2)" list names
+`--offline` mode by name. kwenza's `kwenza.lock`-first reproducibility model already avoids network
+access on most invocations (see design-principles.adoc, "Reproducible by default"), but there's
+currently no way to force a hard failure instead of a silent network attempt when the lock is
+stale or `--update` is passed offline.
+
+|`-U`, `--refresh-dependencies`
+|"Refreshes dependency state" — forces re-checking of dynamic versions/changing modules against
+the remote repository even if a local cache entry exists.
+|Loosely mapped by `--update` (force full re-resolution against Maven Central, ignoring
+`kwenza.lock`), though kwenza has no dynamic/changing-version concept to "refresh" specifically —
+`--update` re-resolves everything, it doesn't selectively refresh what might have changed
+upstream.
+
+|`--continue`
+|Continues executing as many tasks as possible after a task failure, instead of stopping
+immediately, so multiple independent failures are all reported in one run.
+|None. kwenza's fixed resolve→compile→test→package sequence is linear with hard dependencies
+between phases (you can't package what didn't compile), so "continue past a failure" has less
+obvious meaning than it does for Gradle's independent DAG nodes — a real difference in shape, not
+just an unbuilt feature.
+
+|`-m`, `--dry-run`
+|"Runs with all task actions disabled" — shows which tasks *would* execute (per the task graph)
+without doing any real work.
+|None, and the analogous feature would be showing kwenza's own fixed phase sequence for a given
+chained invocation before running it (e.g. what `kwenza build clean package` would actually do in
+order) — plausible but not built. Lower priority than most gaps here since kwenza's own phase
+order is already fixed and documented, not something a dry run would need to reveal per-project.
+
+|`--rerun-tasks` (whole build) / a task's own `--rerun` option
+|Forces tasks to execute even if Gradle's up-to-date checks say nothing changed.
+|Not applicable today — kwenza has no up-to-date/incremental-skip mechanism of any kind yet (every
+`kwenza build` always fully recompiles, per
+link:gradle-maven-plugin-census.adoc[gradle-maven-plugin-census.adoc]'s UP-TO-DATE section), so
+there is nothing for a "rerun anyway" flag to override.
+|===
+
+=== Task/build targeting
+
+[cols="2,4,2"]
+|===
+|Flag |What it actually does |kwenza equivalent
+
+|`-x`, `--exclude-task`
+|Excludes a named task (and, transitively, anything only needed by it) from the task graph for
+that invocation.
+|None. kwenza's commands are coarser-grained than Gradle tasks (`test` always implies `build`
+first, with no way to ask for "test but skip compiling main sources" since that's not a meaningful
+state) — the closer analogy is kwenza's existing command *chaining* itself (`kwenza build run`
+picks which named steps run, in order), which already covers the common cases Gradle needs
+`-x test` for (e.g. skipping tests): there's no direct kwenza equivalent of "run `build` but
+exclude one of its internal phases," but there doesn't need to be one yet, since kwenza has no
+optional internal sub-steps to exclude.
+
+|`-p`, `--project-dir`
+|Specifies the directory to treat as the build's root, instead of the current working directory.
+|**Genuine gap, and already tracked**: AGENTS.md's "Also on the radar" section names `--project
+<path>` directly, calling it "small and standalone; a plausible easy first PR," and
+`docs/cli-reference.adoc`'s opening line already documents the current cwd-only limitation.
+
+|Task-name abbreviation (camelCase-prefix matching)
+|Gradle matches a shortened task name against the full name's camelCase segments — "task names can
+be abbreviated... `gradle bR` for `buildRelease`," documented with the exact examples `foBa`/`fB`
+matching `fooBar`/`foo-bar`, and `gradle che` for `check`.
+|Not applicable in the same shape: kwenza has exactly six fixed, non-extensible command names
+(`build`, `run`, `test`, `package`, `clean`, `resolve`), typed in full already at 4-7 characters
+each — there is no user-registered task namespace for an abbreviation feature to disambiguate
+between. This is a real, distinct feature but one that only earns its keep once a build can have
+an open-ended number of task names, which conflicts with "one correct way to do each thing" unless
+kwenza ever grows user-defined tasks (currently ruled out — see "the manifest is data, never a
+program").
+|===
+
+=== Output and logging
+
+[cols="2,4,2"]
+|===
+|Flag |What it actually does |kwenza equivalent
+
+|`-q`, `--quiet`
+|Sets log level to log errors only.
+|None. kwenza's status lines (`resolve: ...`, `compile: ...`) always print to stderr with no
+level-based suppression.
+
+|`-w`, `--warn`
+|Sets log level to warn.
+|None — kwenza has no leveled logging at all today, just the fixed stderr status-line format
+described in `docs/cli-reference.adoc`.
+
+|`-i`, `--info`
+|Sets log level to info (more detail than the default "lifecycle" level).
+|Loosely covered by `--verbose`, though kwenza's flag is a fixed on/off detail toggle scoped to
+dependency resolution and the literal `run`/`test` command line, not a general log-level scale.
+
+|`-d`, `--debug`
+|Logs in debug mode, "with normal stacktrace" — the most verbose built-in level.
+|None directly, though `KWENZA_TIMING` (env var, not a flag) covers the adjacent but distinct need
+of phase-by-phase timing diagnostics, which Gradle doesn't fold into `--debug` at all (Gradle has
+no equivalent of `KWENZA_TIMING`'s specific JVM-bootstrap-vs-own-logic split).
+
+|`-s`, `--stacktrace` / `-S`, `--full-stacktrace`
+|Outputs a stacktrace for user-code exceptions (`-s`) or a complete stacktrace for all exceptions
+including Gradle-internal ones (`-S`), suppressed by default.
+|None. kwenza's fail-fast philosophy (design-principles.adoc, "Fail fast, with a specific and
+actionable message") is arguably the more direct answer to the same underlying need — kwenza aims
+to never need a stacktrace because the error message itself already names the specific problem —
+but there's no equivalent opt-in for a genuine internal kwenza bug (e.g. an unexpected
+`NullPointerException`) that isn't one of the anticipated fail-fast cases.
+
+|`--console=(plain,colored,auto,rich,verbose)`
+|Selects console output mode: `plain` (no color), `colored` (color, no rich/dynamic status),
+`auto` (color only when attached to a real terminal — the default), `rich` (color regardless of
+terminal attachment), `verbose` (color plus explicit task names/outcomes per line).
+|Partially covered: kwenza's own terminal-attached auto-color-detection is exactly Gradle's `auto`
+mode by default, and `NO_COLOR` support goes beyond what Gradle documents here — but kwenza has no
+way to force color when piped (Gradle's `rich`/`colored`) or force plain when attached to a
+terminal (Gradle's `plain`), both one-line additions if ever needed.
+
+|`--warning-mode=(all,fail,none,summary)`
+|Controls how deprecation/configuration warnings are surfaced: `all` logs every one, `fail` logs
+them and fails the build, `summary` (default) suppresses individual warnings but prints a count,
+`none` suppresses entirely.
+|Not applicable — kwenza has no deprecation-warning concept at all yet (no plugin ecosystem or
+versioned DSL to deprecate anything within, per "the manifest is data" — there's no API surface
+to deprecate).
+|===
+
+=== Properties
+
+[cols="2,4,2"]
+|===
+|Flag |What it actually does |kwenza equivalent
+
+|`-P`, `--project-prop`
+|Sets an arbitrary project property (`-Pmyprop=myvalue`) readable from the build script/plugins.
+|None, and arguably out of scope by design: `-P` exists because Gradle build scripts are code that
+can branch on an ad-hoc property; kwenza's manifest is pure data with no conditional-logic surface
+for a property to feed into (design-principles.adoc, "the manifest is data, never a program").
+
+|`-D`, `--system-prop`
+|Sets a JVM system property on the build itself (`-Dmyprop=myvalue`), readable via
+`System.getProperty` from build logic.
+|None directly for build-affecting purposes (again, no build logic to read it), though kwenza's own
+process obviously runs on a JVM and nothing stops passing `-D` flags to the `java` invocation of
+`bin/kwenza` itself — that's just a JVM feature, not a kwenza one.
+|===
+
+=== Performance and diagnostics
+
+[cols="2,4,2"]
+|===
+|Flag |What it actually does |kwenza equivalent
+
+|`--profile`
+|Generates a high-level HTML performance report under the build directory, breaking down where
+time was spent.
+|Substantially covered, in a different shape: `KWENZA_TIMING` already gives phase-by-phase timing
+to stderr (JVM bootstrap, manifest-load, resolve, compile, package), which is the same underlying
+need (understand where build time went) via a lighter-weight mechanism (an env var and a text
+line, not a generated HTML report) consistent with "transparent: no magic" rather than a separate
+artifact to open.
+
+|`--scan`
+|Uploads/generates a Build Scan — a detailed, shareable web report of the build (tasks run,
+dependencies resolved, performance, environment) hosted by Gradle's own service by default.
+|None, and a poor fit as-is: a Build Scan implies an external hosted service by default, which cuts
+against kwenza's zero-external-dependency, self-contained posture. `KWENZA_TIMING` plus
+`--verbose`'s per-dependency detail already cover the *local* transparency half of what a Build
+Scan gives; a shareable report is a distinct, larger feature nobody has asked for yet.
+
+|`--max-workers`
+|Sets the maximum number of workers used for parallel task execution and (with the Worker API)
+in-task parallel work; defaults to the number of processors.
+|Not applicable yet — with no task graph and no `--parallel` equivalent, there's nothing to bound
+the worker count of. kwenza's own dependency resolution already fetches POMs and JARs
+concurrently internally (see link:../architecture.adoc[Architecture]) but exposes no user-facing
+concurrency knob for it.
+|===
+
+=== Daemon control
+
+[cols="2,4,2"]
+|===
+|Flag |What it actually does |kwenza equivalent
+
+|`--daemon` / `--no-daemon`
+|Uses the Gradle Daemon (on by default) or forces a single foreground run without a persistent
+background process for that invocation.
+|Inverted default, not a missing feature: kwenza has no daemon at all — every invocation is
+already what `gradle --no-daemon` gives you, permanently, per the "no daemon" trade-off in
+AGENTS.md and link:../architecture.adoc[Architecture]. There is no kwenza flag for this because
+there is no daemon mode to opt out of.
+
+|`--foreground`
+|Starts the daemon as a foreground process (mainly for debugging the daemon itself).
+|Not applicable — no daemon process exists to run in the foreground.
+
+|`--stop`
+|Stops all daemons matching the current Gradle version.
+|Not applicable, same reason.
+
+|`--status`
+|Lists currently running and recently-stopped daemons matching the current Gradle version.
+|Not applicable, same reason.
+|===
+
+Directly against kwenza's own documented no-daemon trade-off
+(link:../architecture.adoc[Architecture], "Why kwenza has no daemon (and what that costs)"): every
+one of these four flags exists purely to manage a warm background process. kwenza's flag surface
+is smaller here not because these are unbuilt features but because the thing they'd control
+doesn't exist — consistent with the already-recorded, measured decision, not a new finding.
+
+== Common built-in tasks (base/lifecycle plugins)
+
+Every Gradle build gets these for free — no plugin declaration beyond what `java`/`application`
+already imply for most projects — per the
+link:https://docs.gradle.org/current/userguide/command_line_interface.html[Command-Line Interface]
+docs' own built-in task listing.
+
+[cols="1,3,2"]
+|===
+|Task |What it does |kwenza equivalent
+
+|`tasks`
+|Lists a project's runnable tasks, grouped, with descriptions (`tasks --all` for every task
+including ungrouped ones; `tasks --group="..."` filters to one group).
+|None needed in the same shape — kwenza has exactly six fixed commands, already fully enumerated
+in one short `docs/cli-reference.adoc`, not a dynamically-registered set a listing command would
+need to discover.
+
+|`help`
+|Prints general CLI help, or (`help --task <name>`) detailed help for one specific task including
+its options.
+|Partially covered by kwenza's own `--help`-style usage output (not shown on the pages read for
+this document, but implied by any CLI); no per-command detailed-help mode, though with only six
+commands and one short reference doc the gap is much smaller than for Gradle's open-ended task
+set.
+
+|`projects`
+|Lists the subproject hierarchy of a multi-project build.
+|Not applicable — kwenza has no multi-module concept yet (`[workspace]` is Phase 2).
+
+|`dependencies`
+|Prints the resolved dependency tree per configuration (compile classpath, runtime classpath, ...).
+|**Genuine gap, and already tracked**: AGENTS.md's "Explicitly deferred (Phase 2)" list names
+`kwenza tree` (dependency tree display) directly as the intended equivalent. `--verbose` today
+prints a flat per-artifact list during a real resolution, but not a tree showing *why* each
+transitive dependency was pulled in beyond the single "(via ...)" annotation already shown.
+
+|`dependencyInsight --dependency <module>`
+|Explains why one specific dependency resolved to the version it did — the conflict/selection
+reasoning for a single module, not the whole tree.
+|None, and a natural extension of the `kwenza tree` idea above once that lands — a targeted "why
+did we get this version" view is a smaller, more specific version of the same underlying gap.
+
+|`properties`
+|Lists a project's Gradle-model properties (name, version, and every extension-contributed
+property) as key/value pairs.
+|Not applicable in the same shape — kwenza's manifest is already fully human-readable TOML with no
+computed/derived properties (per design-principles.adoc, "the manifest is data"), so there's
+nothing a `properties`-style command would surface that isn't already visible by opening
+`kwenza.toml` directly.
+
+|`init`
+|Scaffolds a brand-new Gradle build (build scripts, wrapper, starter source layout) interactively
+or from flags.
+|**Genuine gap, and already tracked**: AGENTS.md's "Future ideas" section names `kwenza new`
+("scaffold a new project quickly") directly as an unscoped future idea.
+
+|`wrapper`
+|Generates `gradlew`/`gradlew.bat` plus the wrapper jar and properties, so a project can be built
+without Gradle pre-installed.
+|Deliberately not planned, per a different but related AGENTS.md future idea: "Lean on version
+managers (asdf, mise, sdkman)... instead of a per-project wrapper script/jar the way Gradle and
+Maven each ship one — the cargo/rustup and dotnet model." This is a considered divergence, not an
+oversight.
+
+|`build`
+|The full lifecycle task: assembles outputs and runs all verification tasks (tests, checks) —
+Gradle's own "assemble everything and verify it" umbrella.
+|Named collision worth flagging explicitly: Gradle's `build` task compiles *and tests*, where
+kwenza's `build` command compiles only (no test-compile, no test run) — someone coming from Gradle
+typing `kwenza build` expecting tests to run would be surprised. kwenza's nearest equivalent of
+Gradle's `build` semantics is actually `kwenza test` (which itself first does everything `build`
+does). Not a bug, just a naming difference worth being explicit about since the two tools chose
+the same word for different scopes.
+
+|`assemble`
+|Assembles outputs (compiles and packages) without running any verification/tests.
+|Closely matches kwenza's `build` + `package` chain (`kwenza build package`), modulo kwenza's
+`build` alone not producing a packaged jar (that's `package`'s job) — a finer-grained split of the
+same "compile and produce output without testing" idea, not a gap.
+
+|`check`
+|Runs all verification tasks — by default just `test`, but any code-quality plugin (Checkstyle,
+PMD, JaCoCo coverage thresholds) hooks in here too.
+|Name deliberately freed and not yet reused: AGENTS.md documents that kwenza briefly had a `check`
+command (modeled on `cargo check`, a compile-only dry run) and removed it because `javac` doesn't
+have the codegen-speed problem `rustc` does that makes `cargo check` worth a separate command. The
+name is explicitly reserved for a future Checkstyle-style verification command instead — much
+closer to what Gradle's `check` actually means than what kwenza's old `check` did.
+
+|`clean`
+|Deletes the build output directory.
+|Directly covered: kwenza's own `clean` command does exactly this (deletes `target/` or whatever
+`[package] output-dir` is set to), reporting `clean: nothing to remove` if there's nothing there.
+|===
+
+== Gap analysis summary
+
+Grouping every "no kwenza equivalent" line above by whether it's already named somewhere in
+AGENTS.md or is genuinely new signal from this document:
+
+**Already tracked in AGENTS.md, nothing new to add:**
+
+* `--offline` — named verbatim in "Explicitly deferred (Phase 2)."
+* `-p`/`--project-dir` — kwenza's `--project <path>` idea, named verbatim in "Also on the radar."
+* `dependencies`/`dependencyInsight` — kwenza's `kwenza tree`, named verbatim in "Explicitly
+  deferred (Phase 2)."
+* `init` — kwenza's `kwenza new`, named verbatim in "Future ideas."
+* `--build-cache`/`--rerun-tasks`/up-to-date checking generally — already framed as the open,
+  unresolved incremental-build question in AGENTS.md and
+  link:gradle-maven-feature-analysis.adoc[gradle-maven-feature-analysis.adoc] section 9; this
+  document doesn't add new urgency, just confirms the CLI surface Gradle exposes for it.
+* `check` — the name is already explicitly reserved in AGENTS.md for a future Checkstyle-style
+  command, distinct from Gradle's own `check` semantics but a closer match than kwenza's removed
+  one.
+* `wrapper` — AGENTS.md already records a considered decision *not* to build a kwenza equivalent
+  (lean on asdf/mise/sdkman instead).
+
+**Genuinely new candidates surfaced by this document, not previously named in AGENTS.md:**
+
+* **`--console` force-modes** (force color when piped, force plain when attached to a terminal).
+  kwenza's current auto-detection already covers the default case Gradle calls `auto`; the
+  explicit override modes are a small, low-priority gap.
+* **`-q`/`--quiet`/`-i`/`--info`/`-d`/`--debug` leveled logging.** kwenza has exactly one on/off
+  detail toggle (`--verbose`) where Gradle has a five-level scale. Whether kwenza needs more than
+  two levels is genuinely unscoped — a plausible "one correct way" case *against* adding this
+  (design-principles.adoc), since kwenza's stderr output is already small and fixed-format; flagged
+  here as an open question, not a recommendation to build it.
+* **`--stacktrace`/`--full-stacktrace` for genuine internal errors.** kwenza's fail-fast philosophy
+  covers every *anticipated* error case with a specific message, but there's currently no
+  documented escape hatch for surfacing a raw stacktrace on an unanticipated internal exception —
+  worth a decision (even if the decision is "no, that's what a bug report is for") rather than an
+  accidental gap.
+* **The `build` task-name collision** between Gradle's compile+test+verify meaning and kwenza's
+  compile-only meaning. Not a feature gap at all, but worth flagging explicitly as a
+  documentation/expectation-setting item — someone porting muscle memory from Gradle could be
+  surprised that `kwenza build` doesn't run tests.
+
+**Explicitly out of scope, not gaps at all:**
+
+* `--parallel`, `--max-workers`, `--configure-on-demand`, `--isolated-projects` — no task graph or
+  multi-module structure exists yet for these to apply to.
+* `--configuration-cache` — no build-script evaluation step exists to cache; the problem doesn't
+  exist by construction (manifest is data).
+* `-P`/`-D` project/system properties for build logic — no conditional build logic exists for a
+  property to feed into, by design.
+* `--warning-mode` — no deprecation/versioned-API surface exists to warn about yet.
+* `--daemon`/`--no-daemon`/`--foreground`/`--stop`/`--status` — no daemon exists; this is the
+  already-measured, already-documented "no daemon" trade-off, not a new finding.
+* `--scan` — implies an external hosted service by default, a poor fit for kwenza's
+  zero-external-dependency posture; `KWENZA_TIMING` already covers the local-transparency need.
+* Task-name camelCase abbreviation — no open-ended, user-registered task namespace exists for it
+  to disambiguate within.
+
+== Summary table
+
+[cols="2,2,4"]
+|===
+|Gradle flag/task |kwenza equivalent |Verdict
+
+|`--parallel`
+|None
+|Out of scope — no task graph/multi-module structure to parallelize yet.
+
+|`--build-cache`/`--no-build-cache`
+|None
+|Open question — same unresolved incremental-build axis already in AGENTS.md.
+
+|`--configuration-cache`
+|None (not applicable)
+|Out of scope by construction — no build-script evaluation to cache; manifest is data.
+
+|`--offline`
+|None
+|Genuine gap, already tracked in AGENTS.md Phase 2.
+
+|`-U`/`--refresh-dependencies`
+|`--update` (coarser)
+|Partial — `--update` re-resolves everything rather than selectively refreshing.
+
+|`--continue`
+|None
+|Not obviously applicable — kwenza's phases have hard sequential dependencies, unlike Gradle's DAG.
+
+|`-m`/`--dry-run`
+|None
+|Minor gap — lower priority since kwenza's phase order is already fixed and documented.
+
+|`--rerun-tasks`
+|None (not applicable)
+|Out of scope — no up-to-date/skip mechanism exists yet to override.
+
+|`-x`/`--exclude-task`
+|Command chaining (coarser)
+|Partial — covers the common case (e.g. skip tests) at a coarser grain.
+
+|`-p`/`--project-dir`
+|None
+|Genuine gap, already tracked in AGENTS.md "Also on the radar."
+
+|Task-name abbreviation
+|None (not applicable)
+|Out of scope — no open-ended user-registered task namespace exists.
+
+|`-q`/`-w`/`-i`/`-d` log levels
+|`--verbose` (binary, coarser)
+|New candidate, low urgency — open question, not a recommendation.
+
+|`-s`/`-S` stacktrace flags
+|None
+|New candidate — no escape hatch for genuine unanticipated internal errors.
+
+|`--console` modes
+|Auto-detection only (matches Gradle's `auto` default)
+|New candidate, minor — explicit force-modes not yet supported.
+
+|`--warning-mode`
+|None (not applicable)
+|Out of scope — no deprecation/versioned-API surface exists.
+
+|`-P`/`--project-prop`, `-D`/`--system-prop`
+|None (not applicable)
+|Out of scope by design — no build logic exists for a property to feed into.
+
+|`--profile`
+|`KWENZA_TIMING` (lighter-weight)
+|Substantially covered, different shape.
+
+|`--scan`
+|None
+|Out of scope — implies an external hosted service by default; poor fit.
+
+|`--max-workers`
+|None
+|Not applicable yet — no user-facing parallelism to bound.
+
+|`--daemon`/`--no-daemon`/`--foreground`/`--stop`/`--status`
+|None (not applicable)
+|Out of scope — no daemon exists; already the measured, documented trade-off.
+
+|`tasks`/`help --task`
+|Fixed six-command `docs/cli-reference.adoc`
+|Not needed in the same shape — no dynamic task set to enumerate.
+
+|`projects`
+|None (not applicable)
+|Out of scope — no multi-module concept yet (`[workspace]` is Phase 2).
+
+|`dependencies`/`dependencyInsight`
+|None
+|Genuine gap, already tracked as `kwenza tree` in AGENTS.md Phase 2.
+
+|`properties`
+|`kwenza.toml` itself
+|Not applicable — manifest has no computed/derived properties to surface.
+
+|`init`
+|None
+|Genuine gap, already tracked as `kwenza new` in AGENTS.md Future ideas.
+
+|`wrapper`
+|None (deliberate)
+|Considered divergence, already recorded — lean on asdf/mise/sdkman instead.
+
+|`build` (task)
+|`kwenza build` (compile-only, narrower)
+|Naming collision, not a gap — worth flagging so Gradle muscle memory doesn't mislead.
+
+|`assemble`
+|`kwenza build package`
+|Closely matches, finer-grained split.
+
+|`check` (task)
+|Name reserved, not yet built
+|Already tracked in AGENTS.md — future Checkstyle-style command, distinct from removed `kwenza check`.
+
+|`clean`
+|`kwenza clean`
+|Directly covered.
+|===
