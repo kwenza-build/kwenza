@@ -230,8 +230,73 @@ specific decision and its specific reasoning; that one is for the pattern.
 
 - **`--project <path>`** — every command currently only operates on the current working directory
   (see `docs/cli-reference.adoc`'s opening line). Small and standalone; a plausible easy first PR.
-- **AppCDS for kwenza's own cold-start** — see "Known, deliberate trade-off: no daemon" below. A
-  quantified, already-scoped performance item, not a new investigation.
+- **AppCDS for kwenza's own cold-start — tried, works, real but size-dependent win.** A
+  `-Xlog:class+load` trace confirmed the "no daemon" hypothesis below directly: a bare `java
+  -version` loads 383 classes (all covered by the JDK's default CDS archive); a `kwenza package`
+  on `examples/hello-world` loads 4029, of which 2751 aren't covered by that default archive —
+  1164 alone are `com.sun.tools` (javac internals). A second, previously-unconfirmed hypothesis
+  also checked out: `BuildState` constructs `MavenRepository.central(...)` (and with it a
+  `java.net.http.HttpClient`) unconditionally, even on the from-lock path where nothing gets
+  fetched — that pulls in ~250 `sun.security.ssl`/`javax.net.ssl`/`javax.crypto` classes every
+  invocation for no reason. Small, separate, still-open fix; not done as part of this.
+
+  Mechanism: `-XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=<path>` (available since JDK 19,
+  so covered by kwenza's own JDK 21 floor — `bootstrap.sh` compiles kwenza itself with `--release
+  21`). One flag pair, no separate dump/train step, no classlist to maintain — genuinely the
+  simplest of the mechanisms considered. First run creates the archive at roughly baseline cost;
+  every run after reuses it. **Gotcha found the hard way: don't pre-seed the file with
+  `-XX:ArchiveClassesAtExit` and then hand it to `AutoCreateSharedArchive` — on this JDK (Zulu
+  25) that combination reports `shared class paths mismatch` on *every* subsequent run and never
+  recovers, even though the jar's mtime never changed. Let `AutoCreateSharedArchive` own the
+  archive's entire lifecycle from a nonexistent file; it then self-heals correctly across real
+  jar-content changes (confirmed by rebuilding kwenza's own jar mid-experiment: the next run
+  detects the stale archive, silently regenerates it at exit with a JVM-level stderr warning,
+  and every run after that is clean and fast again).** One archive works for every project kwenza
+  builds — verified against both `examples/hello-world` and `examples/word-counter` — because
+  kwenza's own JVM classpath is always just the single `-jar` entry regardless of which project
+  it's building; only the spawned subprocess for `run`/`test` sees the project's own dependency
+  jars, on a separate JVM this doesn't touch. Also confirmed safe on a real cold run (deleted
+  `kwenza.lock`, forced an actual Maven Central fetch over TLS under the archive) and against
+  kwenza's own real self-test suite (`package test`, all 75 tests) — no correctness regressions
+  found anywhere.
+
+  Speed, measured via `KWENZA_TIMING` (N=10-15 per config, `examples/hello-world`, warm/from-lock
+  `package`): total time drops from ~420ms to ~285ms, a consistent ~32% reduction — almost
+  entirely from the `compile` phase (~415ms → ~195ms, since `com.sun.tools` is the single biggest
+  non-shared chunk) plus a smaller cut to the resolve phase (from the `HttpClient`/TLS classes
+  above). Wall-clock (`/usr/bin/time`, N=8, includes JVM process launch overhead `KWENZA_TIMING`
+  doesn't see) drops from a ~0.77s median to a stable ~0.65s, bringing kwenza close to
+  `benchmarks/hello-world`'s own Gradle-warm-daemon number (~0.60-0.61s) instead of trailing it by
+  25-30% — i.e. this measurably closes most of the actual gap this item exists to close.
+
+  **But the win shrinks with project size, and this matters:** the same test against kwenza's own
+  self-build (`package test`, 25 main + 15 test source files, real compile work rather than one
+  trivial class) showed *no measurable difference* (~530ms compile phase either way). CDS speeds
+  up one-time class *loading*, a fixed cost independent of how much actual javac work follows; for
+  a trivial project that fixed cost dominates, for a real one it doesn't. Net: worth having for
+  the tiny-project cold-start case this whole trade-off is about (exactly where Gradle's warm
+  daemon currently wins), not something that also speeds up kwenza's own larger builds.
+
+  Where the flag would live depends on what actually launches kwenza. A self-re-exec inside
+  `Main` (detect via `RuntimeMXBean.getInputArguments()` that the flag is missing, `ProcessBuilder`
+  itself into a second JVM that has it) was measured and works, but costs a real extra JVM boot
+  (~50ms wall-clock on this project, keeping about two-thirds of the raw win rather than all of
+  it) purely to avoid putting an optimization flag somewhere other than `Main.java`. Once kwenza
+  has a real installed-distribution story (see "Package-manager distribution" under Future ideas
+  / Delivery below) the better answer is simpler: the installed artifact is a jar plus a launch
+  script either way (the same `bin/kwenza` shape, just generated at package time instead of
+  hand-written), so the flag belongs in *that* script, no `Main.java` involvement or extra JVM hop
+  needed - it's install-environment tuning, not application behavior, same category as any other
+  JVM flag a packaged launcher already sets. The re-exec idea only earns its keep if kwenza is
+  ever invoked some other way that skips a controlled launch script entirely.
+
+  **Decision: not adopted for now.** The win is real but shrinks to nothing as project size grows
+  (measured directly above, on kwenza's own self-build vs `hello-world`), and kwenza's own
+  codebase is still small - not the size regime this would need to prove itself in. Revisit this
+  measurement as kwenza's own source tree (and ideally a real user project) grows large enough
+  that the class-loading-only fix might matter again, rather than assuming it stays negligible
+  forever. See the "no daemon" reconsideration under Future ideas / Performance below for the
+  more likely direction if cold-start ever becomes a real complaint before then.
 - **Checksum verification fails open, not closed.** `MavenRepository.fetchJarAsync` silently skips
   `.sha1` verification if fetching the checksum itself fails (`.exceptionally(ex -> null)`), and
   `kwenza.lock`'s per-entry `sha256` is written but never read back anywhere — `ensureFromLock`
@@ -255,15 +320,37 @@ Delivery & distribution
   not zips or tarballs, are the primary way most people actually ship applications now.
 - Publishing to Maven-compatible registries (Central, private/custom registries), including auth —
   the publish-side mirror of the existing consume-side `KWENZA_REPO` override.
-
-Developer experience
+- **Real cross-platform distribution for kwenza itself — the standard menu most dev tools offer:**
+  Homebrew (macOS/Linux), a `curl | sh` one-liner installer (the rustup/deno/uv pattern), and a
+  genuine Windows path (winget/Scoop/Chocolatey, or at minimum a native Windows launcher) — not
+  just one of these. Currently untackled entirely — `docs/getting-started.adoc`'s only install path
+  is `git clone` + `bootstrap.sh`, a source install, and `bin/kwenza` is a bash script with no
+  Windows equivalent at all today, which is the more fundamental gap underneath this: every
+  distribution channel needs *some* generated launch script, and right now there's only one
+  platform's shape of it. A packaged install would still be jar + a launch script per platform
+  (same shape as today's `bin/kwenza`, just generated per channel instead of hand-written) rather
+  than a bundled JVM, consistent with kwenza not vendoring a toolchain of its own - but *which* JDK
+  each generated script points at is a real, undecided question: trust the user's own
+  `JAVA_HOME`/`PATH` (matches "lean on version managers" below, no channel-specific JDK opinion)
+  versus a package manager pinning its own JDK dependency and baking an absolute path into the
+  script (more robust against multiple installed JDKs, more magic) - and Windows has its own
+  version of this question (`JAVA_HOME` vs whatever's on `PATH` vs the registry). `bin/kwenza`
+  itself doesn't reference `JAVA_HOME` today, only bare `java` off `PATH` - whatever gets decided
+  here should also settle whether that changes for the dev-loop script, not just packaged installs.
+  See also the version-manager (asdf/mise) item under Developer experience below - a version
+  manager plugin is the same underlying idea, just shaped to that tool's own plugin API.
 - IDE support: IntelliJ IDEA and Eclipse integration, flagged as important to land relatively
   early rather than as a late nice-to-have.
 - `kwenza new` — scaffold a new project quickly.
 - A `kwenza.dev` website (domain already owned) — simple to start.
 - Lean on version managers (asdf, mise, sdkman) for "which kwenza/JDK for this project" instead of
   a per-project wrapper script/jar the way Gradle and Maven each ship one — the cargo/rustup and
-  dotnet model of feeling bundled with the platform rather than vendored per-repo.
+  dotnet model of feeling bundled with the platform rather than vendored per-repo. Concretely, this
+  isn't automatic — asdf and mise each need someone to actually author and publish a plugin (an
+  `asdf-kwenza` plugin repo following asdf's plugin API; a mise registry entry/backend) before
+  either tool knows how to install or version-switch kwenza at all. Same underlying gap as the
+  cross-platform distribution item above (jar + a launch script, generated per channel) - a plugin
+  is just the asdf/mise-shaped version of that same launch script.
 - Semver-and-dependency-resolution semantics that feel intuitive to developers already fluent in
   Maven/Gradle's model, including SNAPSHOT-style pre-release handling.
 - **Open question: minimum supported Java version.** Some future features imply a floor — JPMS
@@ -306,6 +393,17 @@ Performance
   watch tooling, but needs *some* long-lived warm process to be fast enough to be worth it. If ever
   built, that's an explicit, opt-in, dev-loop-only exception to "no daemon," not a reversal of it
   for normal one-shot builds.
+- **Reconsider "no daemon" itself, not just as the watch-mode carve-out above — raised directly by
+  the AppCDS finding above.** CDS only removes fixed one-time class-loading cost, which is why its
+  win shrinks toward zero as a project's real compile work grows; a genuinely warm process that
+  dispatches build/compile/test work itself (or launches the user's `run`/`test` JVM from an
+  already-booted one) sidesteps the cold-boot tax regardless of project size instead - the same
+  reason Gradle's daemon keeps beating kwenza on tiny projects specifically. Real tension with
+  "no daemon" as a blanket policy (this is bigger than the opt-in dev-loop exception above) and
+  with "transparent, no magic" (a background process is a new thing to discover, reason about, and
+  kill) - needs a deliberate decision, not a default. Worth a concrete spike if cold-start on a
+  real project ever becomes an actual complaint, likely instead of chasing AppCDS further rather
+  than alongside it.
 
 Validation strategy
 - Retool real, complex, dependency-light Java projects with kwenza manifests as a stress test, in
