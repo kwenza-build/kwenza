@@ -215,6 +215,12 @@ specific decision and its specific reasoning; that one is for the pattern.
   command deciding on its own to terminate the process. `Main` itself is now just: parse args,
   build one `BuildState`, dispatch each command in the chain to its class.
 
+## Roadmap
+
+[ROADMAP.adoc](ROADMAP.adoc) is the ordered work list (what to tackle next, ticked off as it
+lands). The sections below hold the *reasoning* for those items; the roadmap holds only the
+*order*. When you finish a roadmap item, tick it off in the same PR.
+
 ## Explicitly deferred (Phase 2 — not oversights, don't "helpfully" half-implement these)
 
 - `kwenza tree` (dependency tree display)
@@ -536,7 +542,10 @@ close most of this gap — flagged as a real future optimization, intentionally 
 kwenza tests itself: `bin/kwenza test` runs a real JUnit 5 suite under `src/test/java`, mirroring
 the main package layout one test class per module (`toml/TomlTest`, `resolver/ResolverTest`,
 `commands/BuildStateTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
-pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test`. Beyond that:
+pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test`. CI
+(`.github/workflows/ci.yml`) runs that suite plus the three example checks below
+(`.github/scripts/smoke-examples.sh`) from a clean bootstrap on every push and PR. If you add or
+change one of those checks, keep the script in sync with this list. Beyond that:
 
 - [`examples/hello-world`](examples/hello-world) — a small real project (one Maven Central
   dependency) used as a manual end-to-end smoke test for resolve/compile/package/run.

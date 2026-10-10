@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / JDK ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        # 21 is kwenza's own java-version floor; 25 is the current LTS. Final JDK range for 0.1 is
+        # still an open roadmap item - widen this when it's decided.
+        java: ['21', '25']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      # kwenza shares Maven's ~/.m2/repository layout, so it caches like any Maven build. Keyed on
+      # every lockfile, since those pin exactly what gets downloaded.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ runner.os }}-${{ hashFiles('**/kwenza.lock') }}
+          restore-keys: m2-${{ runner.os }}-
+
+      # From a clean checkout: plain javac/jar first, then kwenza building itself twice - once with
+      # the bootstrap jar, once with the self-hosted jar that produced - so both self-hosting
+      # stages are proven, not just the bootstrap script.
+      - name: Bootstrap
+        run: ./bootstrap.sh
+
+      - name: Package (built by bootstrap jar)
+        run: bin/kwenza package
+
+      - name: Package (built by self-hosted jar)
+        run: bin/kwenza package
+
+      - name: Test
+        run: bin/kwenza test
+
+      - name: Example smoke checks
+        run: .github/scripts/smoke-examples.sh
