@@ -61,6 +61,19 @@ structure everything else builds on.
   handling, `kwenza --version` (stamped from the jar manifest, not hard-coded),
   `--help` / `kwenza help <command>`, and documented, stable exit codes. Audit error messages
   against "fail fast, with a specific and actionable message".
+* [ ] *Portable thin jars.* `kwenza package` writes absolute `file:` URIs into `~/.m2` in the
+  jar's `Class-Path`, so the jar only runs on the machine (and account) that built it. Copy the
+  dependency jars into `<output-dir>/lib/` and write relative `lib/...` entries instead, so
+  `target/` is a self-contained folder that can be zipped or copied into a container. See
+  AGENTS.md, "Also on the radar". _Done when:_ a packaged jar runs with `java -jar` from a copy
+  of its output directory on another path, with no `~/.m2` involved.
+* [ ] *Console output polish.* Status labels right-aligned in a fixed-width column, the way
+  Cargo does it (`   Compiling foo`, `    Finished ...`), with colour that carries meaning (one
+  colour for the step labels, errors in red, detail dimmed) and stays off for pipes and
+  `NO_COLOR`. A blank line between kwenza's own output and the output of what `run`/`test`
+  launch. Decide this with the CLI review above: it changes what every command prints. See
+  AGENTS.md, "Also on the radar". _Done when:_ the format is decided and implemented, and
+  kwenza.dev's home page shows it (its `kwenza run` transcript is captured from real output).
 * [ ] *Decide the supported JDK range for running kwenza.* This is part of AGENTS.md's open
   "minimum supported Java version" question, scoped to the runtime only (the JDK projects
   *target* is a separate question). Encode the answer in the CI matrix and in
