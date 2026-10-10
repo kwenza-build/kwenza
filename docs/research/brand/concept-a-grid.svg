@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="kwenza concept A: grid k">
+  <title>kwenza — concept A: grid k</title>
+  <style>.i{fill:var(--k-ink,#16181D)}.a{fill:var(--k-accent,#B87C0C)}.si{stroke:var(--k-ink,#16181D)}.sa{stroke:var(--k-accent,#B87C0C)}.p{fill:var(--k-paper,#FAF8F4)}@media (prefers-color-scheme:dark){:root{--k-ink:#ECE8E1;--k-accent:#EDB341;--k-paper:#141518}}</style>
+  <!-- A lowercase-proportioned k set on a 3x3 grid of blocks: built from parts, nothing hidden. The joint is the accent. -->
+  <rect class="i" x="2"  y="2"  width="8" height="8" rx="1.5"/>
+  <rect class="i" x="2"  y="12" width="8" height="8" rx="1.5"/>
+  <rect class="i" x="2"  y="22" width="8" height="8" rx="1.5"/>
+  <rect class="a" x="12" y="12" width="8" height="8" rx="1.5"/>
+  <rect class="i" x="22" y="2"  width="8" height="8" rx="1.5"/>
+  <rect class="i" x="22" y="22" width="8" height="8" rx="1.5"/>
+</svg>
