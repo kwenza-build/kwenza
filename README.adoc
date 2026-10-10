@@ -87,4 +87,4 @@ makes unenforced-but-inconsistent worse than just stating the convention. Follow
 
 == License
 
-MIT — see link:LICENSE[LICENSE].
+Apache License 2.0. See link:LICENSE[LICENSE].
