@@ -215,6 +215,12 @@ specific decision and its specific reasoning; that one is for the pattern.
   command deciding on its own to terminate the process. `Main` itself is now just: parse args,
   build one `BuildState`, dispatch each command in the chain to its class.
 
+## Roadmap
+
+[ROADMAP.adoc](ROADMAP.adoc) is the ordered work list (what to tackle next, ticked off as it
+lands). The sections below hold the *reasoning* for those items; the roadmap holds only the
+*order*. When you finish a roadmap item, tick it off in the same PR.
+
 ## Explicitly deferred (Phase 2 — not oversights, don't "helpfully" half-implement these)
 
 - `kwenza tree` (dependency tree display)

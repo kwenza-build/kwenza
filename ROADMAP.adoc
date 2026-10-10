@@ -1,0 +1,126 @@
+= kwenza Roadmap
+:toc:
+:toclevels: 1
+
+The ordered work list for getting kwenza from "works on my machine" to a released, installable
+0.1, and what comes straight after. Work top to bottom: each item assumes the ones above it are
+done. Tick an item off (`[x]`) in the same PR that finishes it.
+
+This file covers *order*, not *rationale*. The reasoning behind each item lives in
+link:AGENTS.md[AGENTS.md] (decisions, deferred work, known gaps) and
+link:docs/design-principles.adoc[docs/design-principles.adoc] (the principles to weigh it
+against). If an item here contradicts those, fix one of them; don't let them drift apart.
+
+== Milestone 0: Safety net
+
+Cheap work that makes everything after it safer to change.
+
+* [ ] *Housekeeping: `.gitignore`.* Add `.idea/` and `**/bin/` under the benchmark Gradle
+  directories, so `git add -A` can't pick up IDE or Gradle output.
+* [ ] *CI on every push and PR (GitHub Actions).* Run `bootstrap.sh`, then `bin/kwenza package`,
+  then `bin/kwenza test`, then the manual smoke checks from AGENTS.md's "Verification" section
+  (`examples/hello-world`, `examples/junit-word-count` including its jar `Class-Path` check,
+  `examples/testng-calculator`). Use a JDK matrix (21 plus the latest GA) on Linux and macOS.
+  This also proves bootstrap-from-scratch still works, which nobody checks by hand anymore.
+  _Done when:_ a red test fails the PR check.
+
+== Milestone 1: Harden before 0.1
+
+Anything that is a breaking change after release goes here: defaults, formats, and the code
+structure everything else builds on.
+
+* [ ] *Close the checksum fail-open gap.* Fail closed when `.sha1` can't be fetched or doesn't
+  match (`MavenRepository.fetchJarAsync`), and verify cache hits against the lock's `sha256` in
+  `ensureFromLock`. TDD, at the `MavenRepository`/`BuildState` seams. See "Secure by default".
+* [ ] *Decide annotation-processor discovery.* Pick explicitly: `-proc:none` by default with an
+  opt-in, or document "javac default" as a deliberate choice. Changing this default after 0.1
+  would silently change people's builds, so decide it now. Record it in AGENTS.md.
+* [ ] *Code-design pass* (`codebase-design` skill). Review the module boundaries before more
+  features land on them. Known candidates: `Timing` behind `Reporter`; whether `BuildState`
+  should own the project root (needed for `--project`, below); and whether the
+  `ensureMainResolved` second resolution should become scope-tagging now or stay deferred.
+  _Done when:_ the findings are either fixed or written up as decisions in AGENTS.md.
+* [ ] *Review the CLI and manifest design.* The code-design pass covers the internals; this
+  covers the *user-facing contract*, which is much harder to change after 0.1. Check it's
+  sensible today and has room for what AGENTS.md already plans, without breaking changes.
+** _Commands:_ naming and granularity; chaining semantics (`kwenza clean build run`); global vs.
+   per-command flags and where `--project`, `--offline`, `--verbose` and `--update` belong;
+   how `tree`, `new`, `check` and a `[scripts]` runner would fit; stdout vs. stderr conventions
+   and whether any output needs to be machine-readable.
+** _Manifest:_ table and key names (`[package]`, `java-version`, `output-dir`, ...); where
+   `[workspace]`, `[scripts]`, test configuration and future packaging targets (fat jar, OCI)
+   would go; how unknown keys are handled (a clear error or warning, never silently ignored);
+   whether the manifest needs an edition or schema version field.
+** _Lockfile:_ add a format version (`kwenza.lock` has none today), and check the entry shape
+   will hold up for workspaces and checksum verification.
+** _Done when:_ the decisions are recorded in AGENTS.md (or ADRs, if this produces enough of
+   them), the docs match, and any resulting changes are added as items below.
+* [ ] *`--project <path>`.* Thread an explicit project root through `BuildState` instead of
+  relying on the working directory. Small and standalone; it tests both review passes above.
+* [ ] *Apply the review's outcomes.* At minimum: the lockfile format version, unknown-key
+  handling, `kwenza --version` (stamped from the jar manifest, not hard-coded),
+  `--help` / `kwenza help <command>`, and documented, stable exit codes. Audit error messages
+  against "fail fast, with a specific and actionable message".
+* [ ] *Decide the supported JDK range for running kwenza.* This is part of AGENTS.md's open
+  "minimum supported Java version" question, scoped to the runtime only (the JDK projects
+  *target* is a separate question). Encode the answer in the CI matrix and in
+  `docs/getting-started.adoc`.
+
+== Milestone 2: Installable
+
+Today the only install path is `git clone` + `bootstrap.sh` + editing `PATH`. Goal: one command
+on each major platform, with version managers as the main route (see "Lean on version managers"
+in AGENTS.md).
+
+* [ ] *Distribution layout.* A versioned archive (`kwenza-<version>/bin/kwenza` plus
+  `lib/kwenza.jar`), with a launcher that works outside a source checkout. Today's `bin/kwenza`
+  assumes it's running in the repo (`target/` / `.bootstrap/`).
+* [ ] *Decide Windows support for 0.1.* Either ship a `kwenza.cmd` launcher and add Windows to
+  CI, or state that 0.1 is macOS/Linux only. Either is fine; say which.
+* [ ] *Release pipeline.* Pushing a `v*` tag builds the archive in CI and publishes a GitHub
+  Release with the archive and a `.sha256` per asset. Consider signing (Sigstore/cosign or
+  GitHub artifact attestations), which fits "secure by default".
+* [ ] *mise / asdf.* mise's GitHub-release backend can probably install straight from the
+  release with no plugin. Verify that, and document it.
+* [ ] *Homebrew tap* (`kwenza-build/homebrew-tap`), updated automatically by the release
+  pipeline.
+* [ ] *SDKMAN!* candidate. This needs SDKMAN's vendor onboarding, so start it early because it
+  depends on someone else's response time.
+
+== Milestone 3: kwenza.dev and the 0.1.0 release
+
+* [ ] *Docs site with Antora.* Restructure `docs/` into an Antora component
+  (`docs/antora.yml`, `modules/ROOT/pages/`, nav file). The content is already AsciiDoc, so this
+  is mostly moving files and fixing `link:` xrefs. Build it in CI and publish to GitHub Pages
+  under `kwenza.dev`. Versioned docs come for free from Antora once there's more than one
+  release.
+* [ ] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
+  install commands, linking into the docs. Start with the Antora UI or one static page, not a
+  separate site framework.
+* [ ] *Release 0.1.0.* Write `CHANGELOG.adoc`, tag `v0.1.0`, check that every install route in
+  Milestone 2 works from a clean machine, and announce it.
+
+== Milestone 4: After 0.1 (first iterations)
+
+Ordered by expected payoff. Re-order freely once real users start asking for things.
+
+* [ ] *IDE support: design spike first.* Compare the realistic options before building anything:
+  generating IDE project files, a Build Server Protocol (BSP) server, or a dedicated IntelliJ
+  plugin. Flagged in AGENTS.md as important to land early.
+* [ ] *`kwenza new`*: scaffold a project, so the first-run experience doesn't start from a blank
+  `kwenza.toml`.
+* [ ] *`--offline`*: the lockfile plus a warm `~/.m2` already make this mostly possible; make it
+  an explicit, enforced mode.
+* [ ] *`kwenza tree`*: dependency tree display.
+* [ ] *Validation ladder, step 1: agrona.* Build a real no-dependency project with kwenza. This
+  probably needs a source-directory override first (see "Validation strategy" in AGENTS.md).
+* [ ] *`[workspace]` multi-module support*: design pass first (`codebase-design` skill). This is
+  the biggest Phase 2 item, and it gates aeron.
+* [ ] *Validation ladder, steps 2 and 3: SBE, then aeron.* aeron doubles as the acceptance test
+  for `[workspace]`.
+* [ ] *`--fat` uber-jar packaging.*
+* [ ] *AppCDS for kwenza's own cold start* (see "Known, deliberate trade-off: no daemon").
+
+Everything else (OCI images, publishing, JPMS, multi-language, incremental compilation, watch
+mode, Checkstyle as `kwenza check`, Maven/Gradle migration) stays under "Future ideas" in
+AGENTS.md until it's scoped well enough to get a place in this list.
