@@ -96,6 +96,29 @@ specific decision and its specific reasoning; that one is for the pattern.
   JDK to be N or newer; kwenza checks this itself (`IncompatibleJdkException` in
   `JavaCompilation`) and gives a specific, actionable message instead of surfacing a raw javac error.
 
+- **Checksums fail closed.** `MavenRepository.fetchJarAsync` refuses a downloaded jar whose `.sha1`
+  is missing, unfetchable or empty, the same as a mismatch, and never writes an unverified jar to
+  the local cache. It used to treat a failed `.sha1` fetch as "no checksum, skip it"
+  (`.exceptionally(ex -> null)`), which let anyone able to block that one URL switch verification
+  off. `Resolver.ensureFromLock` checks every jar against the lock's `sha256` before use, cache
+  hits included, and a lock entry with no `sha256` is an error rather than a pass. A *fresh*
+  resolution (no lock yet, a changed manifest, or `--update`) never pins a jar nobody has
+  verified either: `Resolver.resolve` takes the lock it's replacing, checks any module resolved
+  at the same version that lock pinned against the old `sha256` (no network), and sends every
+  other jar through `MavenRepository.fetchJarVerifiedAsync`, which checks even a cache hit
+  against the *remote* `.sha1`. Never the `.jar.sha1` cached beside the jar: anyone who can
+  alter the jar can alter that too, so it would only catch accidental corruption. That costs
+  one small request per newly-pinned cached jar, which is fine on a path that's going to the
+  network anyway. `ensureMainResolved` passes the merged lock it has just verified, so its
+  second resolution still makes no network calls. Expected `.sha1`s always come from the
+  repository, never the local cache, for downloads too. There's
+  deliberately no opt-out flag yet: Central publishes `.sha1` for every artifact, and a
+  `--insecure`-style escape hatch should wait until a real repository without checksums (a
+  private registry, say) actually needs one. The mismatch message tells the user to delete the
+  cached jar rather than to run `--update`, because a changed jar means the cache is wrong, not the
+  lock (released artifacts on Central are immutable). See "Secure by default" in
+  docs/design-principles.adoc.
+
 - **The name.** "Kwenza" is isiXhosa for "to make" — chosen over several alternatives (including
   "Kiln," dropped after discovering real naming collisions with an existing Java-runtime project and
   a prominent AI-tooling brand of the same name) specifically because it's *not* Java-specific,
@@ -319,12 +342,6 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   that the class-loading-only fix might matter again, rather than assuming it stays negligible
   forever. See the "no daemon" reconsideration under Future ideas / Performance below for the
   more likely direction if cold-start ever becomes a real complaint before then.
-- **Checksum verification fails open, not closed.** `MavenRepository.fetchJarAsync` silently skips
-  `.sha1` verification if fetching the checksum itself fails (`.exceptionally(ex -> null)`), and
-  `kwenza.lock`'s per-entry `sha256` is written but never read back anywhere — `ensureFromLock`
-  trusts a cached jar from `~/.m2/repository` with no verification at all. See "Secure by default"
-  in docs/design-principles.adoc. A real gap to close (fail closed by default, actually verify
-  cache hits against the lock), not a speculative future feature.
 - **Annotation-processor discovery is uncontrolled.** `JavaCompilation` invokes `javac` without
   `-proc:none`, so whether a processor bundled in a resolved dependency runs automatically during
   `kwenza build` depends on the running JDK's own default behavior — not a deliberate kwenza

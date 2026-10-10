@@ -37,7 +37,10 @@ dependency graph.
 POMs for an entire resolution "level" (see below) are fetched concurrently, then winning JARs are
 downloaded concurrently too — POMs before JARs, not interleaved, since a POM's contents determine
 which JARs are even needed. Downloaded JARs are verified against Maven Central's published
-`.sha1` checksum before being trusted.
+`.sha1` checksum before being written to the local cache; a missing or unfetchable `.sha1` is
+refused just like a mismatch, never skipped. A JAR that's already cached is only trusted when
+something vouches for it: the previous `kwenza.lock`'s `sha256` for the same version, or else
+the repository's published `.sha1`.
 
 Everything lands in `~/.m2/repository`, byte-for-byte Maven's own local repository layout. This
 isn't just convention-following: kwenza and any existing Maven or Gradle installation on the same
@@ -60,7 +63,8 @@ this location when needed — see link:cli-reference.adoc[CLI Reference].
 == Reproducibility model
 
 `kwenza.lock` records a hash of the manifest's declared dependencies. Every `build`/`run`/`package`
-reuses the lock and skips network resolution entirely as long as that hash still matches — no
+reuses the lock and skips network resolution entirely as long as that hash still matches (each
+jar is still checked against the lock's recorded `sha256` before use, cache hit or not) — no
 "lockfile looks stale, hope the version range is still fine" ambiguity the way Maven's own
 re-resolution can have. A changed `kwenza.toml`, or an explicit `--update`, triggers a full
 re-resolution and rewrites the lock. This is the uv/Cargo "lockfile wins by default" pattern,

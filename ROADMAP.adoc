@@ -29,7 +29,7 @@ Cheap work that makes everything after it safer to change.
 Anything that is a breaking change after release goes here: defaults, formats, and the code
 structure everything else builds on.
 
-* [ ] *Close the checksum fail-open gap.* Fail closed when `.sha1` can't be fetched or doesn't
+* [x] *Close the checksum fail-open gap.* Fail closed when `.sha1` can't be fetched or doesn't
   match (`MavenRepository.fetchJarAsync`), and verify cache hits against the lock's `sha256` in
   `ensureFromLock`. TDD, at the `MavenRepository`/`BuildState` seams. See "Secure by default".
 * [ ] *Decide annotation-processor discovery.* Pick explicitly: `-proc:none` by default with an
