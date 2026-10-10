@@ -250,7 +250,16 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
 - `--fat` uber-jar packaging
 - `[workspace]` multi-module support
 - `[scripts]` task runner
-- `--offline` mode
+- `--offline` mode. Decided already, so it isn't redesigned from scratch: offline means "verified
+  from the lock, or refused". A lock-backed build already makes no network calls (jars are
+  checked against the lock's `sha256` locally), and `--update` can still carry the old lock's
+  pins forward for unchanged versions. But a cached jar the lock doesn't pin can only be
+  verified against the remote `.sha1` (see "Checksums fail closed" above), so offline it's an
+  error naming the jar, not a fallback. Don't fall back to the `.jar.sha1` cached beside it
+  (that only catches corruption, not tampering), and don't trust the cache the way Maven's
+  offline mode does (that reopens the gap the checksum work closed). Today, without the flag, a
+  fresh resolve with no network fails the same way, just with a raw connection error; the
+  `--offline` work should turn that into a clear "can't verify X offline" message.
 - `kwenza test` parallelism (`--test-threads` / multi-process sharding across several forked
   JVMs, the equivalent of Gradle's `maxParallelForks` or Surefire's `forkCount`) — see the
   "`kwenza test` forks a JVM..." decision above for what's already possible today without it.
