@@ -33,7 +33,7 @@ what was considered.
   AsciiDoc page with `:page-layout: home`. The look comes from Antora's default UI plus a small
   *supplemental UI* (header, footer, one `home.hbs` layout, one stylesheet of colour tokens with a
   `prefers-color-scheme` dark mode). Search uses `@antora/lunr-extension`. The playbook and UI live
-  in a separate `kwenza-build/kwenza.dev` repo that pulls `docs/` from the kwenza repo, so Node
+  in a separate `kwenza-build/kwenza-dev` repo that pulls `docs/` from the kwenza repo, so Node
   never enters kwenza's own zero-dependency build. Deploy uses GitHub's own Pages actions. The
   custom domain is set in repo settings, not with a `CNAME` file.
 * *Brand: an ochre accent on warm neutrals, IBM Plex Sans and Plex Mono, and three mark concepts.*
@@ -356,7 +356,7 @@ so the script should:
   `sudo`;
 * print each step it takes.
 
-Because the script lives in the `kwenza.dev` repo, that repo's branch protection and pinned
+Because the script lives in the `kwenza-dev` repo, that repo's branch protection and pinned
 dependencies matter as much as kwenza's own.
 
 === Band 4: why (four short cards)
@@ -458,7 +458,7 @@ UI changes. One caveat: it's still versioned `1.0.0-alpha.13` on npm and require
 Antora 3.2. Algolia DocSearch (used by JBang, Spring and docs.antora.org itself) is the hosted
 fallback if Lunr's quality isn't enough.
 
-=== 3.4 Where it lives: a separate `kwenza-build/kwenza.dev` repo (decided)
+=== 3.4 Where it lives: a separate `kwenza-build/kwenza-dev` repo (decided)
 
 Antora is a Node tool. The kwenza repo's defining property is zero external dependencies and a
 self-hosted build (AGENTS.md). A `package.json`, a playbook and a UI overlay in that repo would be
@@ -468,7 +468,7 @@ the first Node in it.
 
 * *The kwenza repo keeps the content.* `docs/` gains an `antora.yml` and moves into Antora's
   `modules/ROOT/pages/` layout, so the manual is still versioned with the code it describes.
-* *A new `kwenza-build/kwenza.dev` repo holds* the playbook, `package.json` (Antora plus the Lunr
+* *A new `kwenza-build/kwenza-dev` repo holds* the playbook, `package.json` (Antora plus the Lunr
   extension), the supplemental UI and the Pages workflow. The playbook's `content.sources` points
   at the kwenza repo with `start_path: docs`.
 * *`docs/research/` is excluded* from the published site. It's maintainer material, and
@@ -711,7 +711,7 @@ On 2026-10-10 the maintainer chose:
 * *Accent colour: ochre.* That's `#B87C0C` on light and `#EDB341` on dark, with `#8F5E00` for
   accent-coloured text on light (4.2).
 
-*Site repo:* the site gets its own public repo, `kwenza-build/kwenza.dev` (3.4).
+*Site repo:* the site gets its own public repo, https://github.com/kwenza-build/kwenza-dev[`kwenza-build/kwenza-dev`] (3.4), created 2026-10-10 with GitHub Pages set to deploy from Actions.
 
 *Install channels:* one per OS (Homebrew on macOS, `install.sh` on Linux, Scoop on Windows), plus
 mise and asdf as version managers. SDKMAN is deferred because it needs approval (Band 3).
