@@ -15,7 +15,7 @@ against). If an item here contradicts those, fix one of them; don't let them dri
 
 Cheap work that makes everything after it safer to change.
 
-* [ ] *Housekeeping: `.gitignore`.* Add `.idea/` and `**/bin/` under the benchmark Gradle
+* [x] *Housekeeping: `.gitignore`.* Add `.idea/` and `**/bin/` under the benchmark Gradle
   directories, so `git add -A` can't pick up IDE or Gradle output.
 * [ ] *CI on every push and PR (GitHub Actions).* Run `bootstrap.sh`, then `bin/kwenza package`,
   then `bin/kwenza test`, then the manual smoke checks from AGENTS.md's "Verification" section

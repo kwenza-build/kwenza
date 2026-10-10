@@ -10,8 +10,15 @@
 # Gradle project-local state - benchmarks always use an isolated GRADLE_USER_HOME instead
 **/.gradle/
 
+# IDE-generated Gradle output (Buildship / VS Code Java) in the benchmark Gradle variants. Scoped
+# deliberately: the repo's own bin/kwenza launcher is tracked
+benchmarks/*/gradle/bin/
+
 # Isolated, regenerable dependency caches used by benchmarks/Bench.java
 benchmarks/*/.cache/
+
+# IDEs
+.idea/
 
 # macOS
 .DS_Store
