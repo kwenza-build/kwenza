@@ -104,8 +104,9 @@ in AGENTS.md).
 * [ ] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
   install commands, linking into the docs. Start with the Antora UI or one static page, not a
   separate site framework.
-* [ ] *Release 0.1.0.* Write `CHANGELOG.adoc`, tag `v0.1.0`, check that every install route in
-  Milestone 2 works from a clean machine, and announce it.
+* [ ] *Release 0.1.0.* Rename `CHANGELOG.md`'s `[Unreleased]` section to `[0.1.0]` with the
+  date, tag `v0.1.0`, check that every install route in Milestone 2 works from a clean machine,
+  and announce it.
 
 == Milestone 4: After 0.1 (first iterations)
 
