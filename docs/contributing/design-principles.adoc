@@ -2,8 +2,12 @@
 :toc:
 :toclevels: 2
 
+NOTE: This is the long version, for contributors. kwenza.dev publishes a short one
+(link:../modules/ROOT/pages/design-principles.adoc[`docs/modules/ROOT/pages/design-principles.adoc`]); keep the two in
+step.
+
 Every individual decision behind kwenza is recorded, with its own specific reasoning, in
-link:../AGENTS.md[AGENTS.md]. This page is the layer above that: the mission, the pillars, and the
+https://github.com/kwenza-build/kwenza/blob/main/AGENTS.md[AGENTS.md]. This page is the layer above that: the mission, the pillars, and the
 principles those decisions keep falling out of. If you're weighing a new feature or a design fork
 and none of AGENTS.md's existing decisions answer it directly, check it against these first —
 they're the thing new decisions should be consistent with, not just the old ones.
@@ -211,7 +215,7 @@ purpose.
 
 This extends to documentation, not just runtime behavior. Maven and Gradle both have plenty of
 documentation; the problem is rarely coverage, it's that it's hard to tell how the pieces fit
-together. `docs/architecture.adoc` says outright that it's "the how" to AGENTS.md's "the why," and
+together. `docs/contributing/architecture.adoc` says outright that it's "the how" to AGENTS.md's "the why," and
 the getting-started/manifest-reference/cli-reference split exists so each doc answers one kind of
 question instead of one document trying to answer all of them. Every future doc — this one
 included, the eventual website, IDE-setup guides — should stay small and separated by *kind* of

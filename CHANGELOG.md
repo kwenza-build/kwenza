@@ -75,7 +75,7 @@ Everything below will ship in kwenza's first release, 0.1.0.
   (TestNG through the JUnit Platform).
 - Benchmarks that compare kwenza with Maven and Gradle, cold and warm, using isolated caches.
 - Documentation: Getting Started, Manifest Reference, CLI Reference, Architecture, and Design
-  Principles.
+  Principles, published with a home page at https://kwenza.dev.
 - Released under the Apache License 2.0.
 
 ### Security

@@ -1,0 +1,51 @@
+= Architecture
+:toc:
+:toclevels: 1
+
+How kwenza works, in brief.
+
+== Resolving dependencies
+
+kwenza reads each dependency's POM from Maven Central, following `<parent>` POMs and BOM imports
+the way Maven does. It fetches one level of the dependency tree at a time, in parallel.
+
+[[mediation]]
+When two versions of the same library meet, the one nearest your project wins, and a version you
+declare yourself always wins. That's Maven's rule, so kwenza resolves the same versions Maven and
+Gradle would.
+
+Every jar is checked against the repository's published checksum before it's used. Everything is
+cached in `~/.m2/repository`, in Maven's layout, so kwenza shares one cache with Maven and Gradle.
+`KWENZA_REPO` points it somewhere else.
+
+[[reproducible]]
+== The lockfile
+
+`kwenza.lock` records every resolved version and its `sha256`. While your declared dependencies
+are unchanged, builds use the lock and skip the network, and still check each jar against it.
+Changing `kwenza.toml` or passing `--update` resolves again and rewrites the lock.
+
+[[compilation]]
+== Compiling
+
+kwenza compiles in-process with the JDK's own compiler. `java-version` becomes `javac --release`,
+which needs a JDK at least that new, so kwenza checks that first and says which JDK you need.
+
+== Packaging
+
+`kwenza package` writes a thin jar: your classes and resources, plus a `Class-Path` entry listing
+the dependency jars in your local cache. It runs with `java -jar` on the machine that built it.
+
+== Running and testing
+
+`kwenza run` and `kwenza test` start a fresh JVM for your code, so a call to `System.exit()` can't
+take kwenza down with it. Tests run on the JUnit Platform, which finds any test engine on your
+test classpath.
+
+[[startup]]
+== Startup time
+
+kwenza starts a fresh JVM every time instead of keeping a background daemon. Its own work takes
+about 400 ms on a small project; starting the JVM and loading the compiler adds roughly as much
+again. That's why a warm Gradle daemon can be quicker on very small projects. `KWENZA_TIMING`
+shows the split.

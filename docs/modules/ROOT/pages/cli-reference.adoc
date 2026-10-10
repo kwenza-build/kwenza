@@ -65,10 +65,10 @@ classpath.
 
 This needs a dev-dependency that provides the `org.junit.platform.console.ConsoleLauncher` class —
 `org.junit.platform:junit-platform-console-standalone` is the one that bundles it together with
-the launcher and every JUnit engine, see link:manifest-reference.adoc[Manifest Reference]. kwenza
+the launcher and every JUnit engine, see xref:manifest-reference.adoc[Manifest Reference]. kwenza
 doesn't care which JUnit Platform *engine* ends up running your tests (Jupiter, Vintage, or a
 third-party one) — the console launcher discovers whatever's on the classpath itself. See
-link:../examples/testng-calculator[`examples/testng-calculator`] for a genuine third-party case: TestNG tests
+https://github.com/kwenza-build/kwenza/tree/main/examples/testng-calculator[`examples/testng-calculator`] for a genuine third-party case: TestNG tests
 run unmodified by adding `org.testng:testng` and the JUnit-team-maintained
 `org.junit.support:testng-engine` bridge as `[dev-dependencies]` — no kwenza changes, no extra CLI
 flags, and `--verbose` output shows a `TestNG` line in the tree alongside Jupiter/Vintage. A test
@@ -111,7 +111,7 @@ adds the literal command as a gray detail line underneath, exactly like `run --v
 
 Runs `build`, then writes `<output-dir>/<name>-<version>.jar` — a thin jar containing only your
 project's own classes/resources, with a `Class-Path` manifest entry pointing at the cached
-dependency jars (see link:architecture.adoc[Architecture]). Runnable directly:
+dependency jars (see xref:architecture.adoc[Architecture]). Runnable directly:
 
 [source,bash]
 ----
@@ -191,7 +191,7 @@ one-liner.
 
 |`KWENZA_REPO`
 |Overrides the local dependency cache directory (default: `~/.m2/repository`). Used internally by
-link:../benchmarks/hello-world/run.sh[`benchmarks/hello-world/run.sh`] to keep benchmark runs
+https://github.com/kwenza-build/kwenza/blob/main/benchmarks/hello-world/run.sh[`benchmarks/hello-world/run.sh`] to keep benchmark runs
 fully isolated from your real Maven cache, but it's a generally useful override on its own — e.g.
 for CI, or keeping multiple unrelated cache states around.
 
@@ -199,8 +199,8 @@ for CI, or keeping multiple unrelated cache states around.
 |Set to any value to print a phase-timing breakdown to stderr: JVM bootstrap time, then the
 elapsed time between each of manifest-load / resolve / compile / package. Distinguishes JVM
 startup overhead (invisible to a shell-level wall-clock timer) from time spent in kwenza's own
-logic — see link:architecture.adoc[Architecture] for how this was used to diagnose kwenza's
-own cold-start cost.
+logic — see xref:architecture.adoc#startup[Architecture] for what it shows about kwenza's own
+startup cost.
 |===
 
 Example `KWENZA_TIMING` output:

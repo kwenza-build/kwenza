@@ -8,7 +8,7 @@ done. Tick an item off (`[x]`) in the same PR that finishes it.
 
 This file covers *order*, not *rationale*. The reasoning behind each item lives in
 link:AGENTS.md[AGENTS.md] (decisions, deferred work, known gaps) and
-link:docs/design-principles.adoc[docs/design-principles.adoc] (the principles to weigh it
+link:docs/contributing/design-principles.adoc[docs/contributing/design-principles.adoc] (the principles to weigh it
 against). If an item here contradicts those, fix one of them; don't let them drift apart.
 
 == Milestone 0: Safety net
@@ -64,7 +64,7 @@ structure everything else builds on.
 * [ ] *Decide the supported JDK range for running kwenza.* This is part of AGENTS.md's open
   "minimum supported Java version" question, scoped to the runtime only (the JDK projects
   *target* is a separate question). Encode the answer in the CI matrix and in
-  `docs/getting-started.adoc`.
+  `docs/modules/ROOT/pages/getting-started.adoc`.
 
 == Milestone 2: Installable
 
@@ -111,12 +111,12 @@ SDKMAN! is deferred to after 0.1 (see Milestone 4), because it needs vendor appr
   chosen and committed as SVG. Done in #4: `docs/research/kwenza-dev-design.adoc`, with mark B
   (`docs/research/brand/concept-b-table.svg`), the wordmark and the ochre accent chosen. The site
   lives in `kwenza-build/kwenza-dev`, and kwenza.dev is verified and served over HTTPS.
-* [ ] *Docs site with Antora.* Restructure `docs/` into an Antora component
+* [x] *Docs site with Antora.* Restructure `docs/` into an Antora component
   (`docs/antora.yml`, `modules/ROOT/pages/`, nav file). The content is already AsciiDoc, so this
   is mostly moving files and fixing `link:` xrefs. Build it in CI and publish to GitHub Pages
   under `kwenza.dev`. Versioned docs come for free from Antora once there's more than one
   release.
-* [ ] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
+* [x] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
   install commands, linking into the docs. Start with the Antora UI or one static page, not a
   separate site framework.
 * [ ] *Release 0.1.0.* Rename `CHANGELOG.md`'s `[Unreleased]` section to `[0.1.0]` with the

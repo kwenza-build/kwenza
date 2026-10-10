@@ -13,7 +13,7 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
 ## Design decisions and why
 
 For the higher-level principles these decisions keep falling out of, see
-[docs/design-principles.adoc](docs/design-principles.adoc). This section stays the place for the
+[docs/contributing/design-principles.adoc](docs/contributing/design-principles.adoc). This section stays the place for the
 specific decision and its specific reasoning; that one is for the pattern.
 
 - **TOML, with Gradle-version-catalog-style dependency notation** (`module = "group:artifact"`,
@@ -117,7 +117,7 @@ specific decision and its specific reasoning; that one is for the pattern.
   private registry, say) actually needs one. The mismatch message tells the user to delete the
   cached jar rather than to run `--update`, because a changed jar means the cache is wrong, not the
   lock (released artifacts on Central are immutable). See "Secure by default" in
-  docs/design-principles.adoc.
+  docs/contributing/design-principles.adoc.
 
 - **The name.** "Kwenza" is isiXhosa for "to make" — chosen over several alternatives (including
   "Kiln," dropped after discovering real naming collisions with an existing Java-runtime project and
@@ -162,7 +162,7 @@ specific decision and its specific reasoning; that one is for the pattern.
   behavior) regardless of whether a launcher is even resolvable; real test classes with no
   launcher dev-dependency is a genuine misconfiguration and fails fast with a specific message
   naming the fix, per "fail fast, with a specific and actionable message" in
-  docs/design-principles.adoc — silently saying "no tests found" there would hide a real mistake
+  docs/contributing/design-principles.adoc — silently saying "no tests found" there would hide a real mistake
   instead of catching it.
 
 - **No test-framework plugin system.** `kwenza test` always drives
@@ -213,11 +213,29 @@ specific decision and its specific reasoning; that one is for the pattern.
   of what it measures, and a directory-level symlink would make that delete the example's own
   committed lockfile as a side effect. See `benchmarks/README.adoc` for the full convention.
 
+- **`docs/` is an Antora component; the site that publishes it lives in a separate repo.**
+  The manual sits in `docs/modules/ROOT/pages/` with `docs/antora.yml` (unversioned,
+  `version: ~`) so it stays versioned with the code it describes, while the playbook, UI overlay,
+  home page and Pages workflow live in
+  [kwenza-build/kwenza-dev](https://github.com/kwenza-build/kwenza-dev), so Node never enters
+  this repo (see "Zero external dependencies" above). Page-to-page links are `xref:`, which both
+  Antora and GitHub's renderer resolve; links out of `docs/` (AGENTS.md, `examples/`,
+  `benchmarks/`) are absolute GitHub URLs, because Antora only sees `docs/`. `docs/research/` and
+  `docs/contributing/` are outside `modules/`, so they're never published. Architecture and
+  design principles exist twice on purpose: short, user-facing pages on the site, and the long
+  versions with the reasoning, history and open questions in `docs/contributing/`, which is what
+  this file's references point at. A change to a principle or to how kwenza works updates both. The home page's example manifest and terminal
+  session are symlinks under `docs/modules/ROOT/examples/` into `examples/hello-world`, same
+  no-drift reasoning as the benchmark symlinks above; `kwenza-run.txt` there is a real
+  `kwenza run` transcript that `smoke-examples.sh` diffs against kwenza's actual output on every
+  CI run. The design research behind all of this is
+  [docs/research/kwenza-dev-design.adoc](docs/research/kwenza-dev-design.adoc).
+
 - **`kwenza check` (a compile-only pass into a scratch directory, no artifact) was added, then
   removed.** It was modeled on `cargo check`, but the reason `cargo check` earns its keep doesn't
   carry over: it exists because `rustc` codegen is slow enough that skipping it is a real, distinct
   speedup over `cargo build`. `javac` doesn't have that gap — kwenza's own compile step is already
-  fast (see "Fast is not a trade-off to apologize for" in docs/design-principles.adoc) — so a
+  fast (see "Fast is not a trade-off to apologize for" in docs/contributing/design-principles.adoc) — so a
   separate check-only command was solving a problem kwenza doesn't have, just because another
   tool's ecosystem has a command with that name. The `check` name is free again for something that
   would actually earn it — Checkstyle-style verification is the leading candidate, see "Future
@@ -283,7 +301,7 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   (Maven's `maven-surefire-report-plugin`; Gradle only because it owns its listener). Sourcing in
   [docs/research/junit-launching-and-reporting.adoc](docs/research/junit-launching-and-reporting.adoc).
 - **`--project <path>`** — every command currently only operates on the current working directory
-  (see `docs/cli-reference.adoc`'s opening line). Small and standalone; a plausible easy first PR.
+  (see `docs/modules/ROOT/pages/cli-reference.adoc`'s opening line). Small and standalone; a plausible easy first PR.
 - **AppCDS for kwenza's own cold-start — tried, works, real but size-dependent win.** A
   `-Xlog:class+load` trace confirmed the "no daemon" hypothesis below directly: a bare `java
   -version` loads 383 classes (all covered by the JDK's default CDS archive); a `kwenza package`
@@ -360,7 +378,7 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
 
 Bigger and vaguer than anything above — these haven't been triaged, sized, or committed to. Don't
 treat absence from "Explicitly deferred" as "not planned," and don't treat presence here as "will
-definitely happen." See [docs/design-principles.adoc](docs/design-principles.adoc) for the
+definitely happen." See [docs/contributing/design-principles.adoc](docs/contributing/design-principles.adoc) for the
 principles these should be weighed against once any of them gets scoped for real.
 
 Delivery & distribution
@@ -371,7 +389,7 @@ Delivery & distribution
 - **Real cross-platform distribution for kwenza itself — the standard menu most dev tools offer:**
   Homebrew (macOS/Linux), a `curl | sh` one-liner installer (the rustup/deno/uv pattern), and a
   genuine Windows path (winget/Scoop/Chocolatey, or at minimum a native Windows launcher) — not
-  just one of these. Currently untackled entirely — `docs/getting-started.adoc`'s only install path
+  just one of these. Currently untackled entirely — `docs/modules/ROOT/pages/getting-started.adoc`'s only install path
   is `git clone` + `bootstrap.sh`, a source install, and `bin/kwenza` is a bash script with no
   Windows equivalent at all today, which is the more fundamental gap underneath this: every
   distribution channel needs *some* generated launch script, and right now there's only one
@@ -408,14 +426,14 @@ Delivery & distribution
 - **Maybe: an auto-migration tool from Maven/Gradle projects.** Attractive if it works, but real
   Maven/Gradle builds lean heavily on plugin-specific and DSL-scripted customization that has no
   clean data-shaped equivalent in kwenza (see "the manifest is data" in
-  docs/design-principles.adoc) — unclear whether the achievable subset (straightforward POMs/build
+  docs/contributing/design-principles.adoc) — unclear whether the achievable subset (straightforward POMs/build
   scripts) is worth the effort relative to how much real-world usage actually stays that simple.
   Parked as an idea, not a commitment.
 
 Extensibility
 - A `build-dependencies`-style mechanism (Cargo-inspired) for custom build-time logic — explicitly
   *not* Cargo's `build.rs` arbitrary-scripting model. See "Extensibility through JVM discovery" in
-  docs/design-principles.adoc for the leading shape (annotation processors,
+  docs/contributing/design-principles.adoc for the leading shape (annotation processors,
   `ServiceLoader`-discovered participants resolved as ordinary dependencies).
 - Builtin support for standard, commonly-expected Java tooling that's painful to wire up in
   Gradle/Maven — Checkstyle is the concrete example. A plausible future home for the `check`
@@ -429,7 +447,7 @@ Compiler & language
   `[workspace]` (module boundaries vs. multiple manifests in one repo) — they compose, they don't
   substitute for each other.
 - Multi-JVM-language support (Kotlin, Scala, ...) — see "Multi-JVM-language support is a real
-  direction" in docs/design-principles.adoc. Java-first: a real direction, not near-term work.
+  direction" in docs/contributing/design-principles.adoc. Java-first: a real direction, not near-term work.
 
 Testing & reporting
 - **Own test console output levels and format, instead of `ConsoleLauncher`'s presets.**
@@ -581,7 +599,10 @@ pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test
 change one of those checks, keep the script in sync with this list. Beyond that:
 
 - [`examples/hello-world`](examples/hello-world) — a small real project (one Maven Central
-  dependency) used as a manual end-to-end smoke test for resolve/compile/package/run.
+  dependency) used as a manual end-to-end smoke test for resolve/compile/package/run. CI also
+  checks that `kwenza run`'s output still matches its committed `kwenza-run.txt`, which
+  kwenza.dev's home page shows; re-capture it (`kwenza clean && kwenza run > kwenza-run.txt
+  2>&1`) whenever that output deliberately changes.
 - [`examples/junit-word-count`](examples/junit-word-count) — a small library (no `main-class`) with real
   JUnit 5 and Mockito tests, used as the manual end-to-end smoke test for `kwenza test`
   specifically: dev-dependency resolution, `src/test/java` compilation, and that main/test

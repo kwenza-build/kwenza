@@ -14,9 +14,17 @@ class_path_of() {
         | grep '^Class-Path:' || true
 }
 
-echo "::group::hello-world: clean run"
+echo "::group::hello-world: clean run, output matches kwenza-run.txt"
 cd "$ROOT/examples/hello-world"
-"$KWENZA" clean run
+"$KWENZA" clean
+# kwenza.dev's home page shows kwenza-run.txt as a real `kwenza run` of this example, so the
+# committed transcript has to stay exactly what kwenza prints.
+output="$("$KWENZA" run 2>&1)"
+echo "$output"
+if ! diff -u kwenza-run.txt - <<<"$output"; then
+    echo "::error::kwenza run output no longer matches examples/hello-world/kwenza-run.txt - re-capture it with: kwenza clean && kwenza run > kwenza-run.txt 2>&1"
+    exit 1
+fi
 echo "::endgroup::"
 
 echo "::group::junit-word-count: clean test, then package without dev-dependencies"

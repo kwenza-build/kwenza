@@ -274,7 +274,7 @@ Scan gives; a shareable report is a distinct, larger feature nobody has asked fo
 in-task parallel work; defaults to the number of processors.
 |Not applicable yet — with no task graph and no `--parallel` equivalent, there's nothing to bound
 the worker count of. kwenza's own dependency resolution already fetches POMs and JARs
-concurrently internally (see link:../architecture.adoc[Architecture]) but exposes no user-facing
+concurrently internally (see link:../contributing/architecture.adoc[Architecture]) but exposes no user-facing
 concurrency knob for it.
 |===
 
@@ -289,7 +289,7 @@ concurrency knob for it.
 background process for that invocation.
 |Inverted default, not a missing feature: kwenza has no daemon at all — every invocation is
 already what `gradle --no-daemon` gives you, permanently, per the "no daemon" trade-off in
-AGENTS.md and link:../architecture.adoc[Architecture]. There is no kwenza flag for this because
+AGENTS.md and link:../contributing/architecture.adoc[Architecture]. There is no kwenza flag for this because
 there is no daemon mode to opt out of.
 
 |`--foreground`
@@ -306,7 +306,7 @@ there is no daemon mode to opt out of.
 |===
 
 Directly against kwenza's own documented no-daemon trade-off
-(link:../architecture.adoc[Architecture], "Why kwenza has no daemon (and what that costs)"): every
+(link:../contributing/architecture.adoc[Architecture], "Why kwenza has no daemon (and what that costs)"): every
 one of these four flags exists purely to manage a warm background process. kwenza's flag surface
 is smaller here not because these are unbuilt features but because the thing they'd control
 doesn't exist — consistent with the already-recorded, measured decision, not a new finding.

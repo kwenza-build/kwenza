@@ -1,0 +1,48 @@
+= Design Principles
+:toc:
+:toclevels: 1
+
+Make builds with Java fun and easy again. kwenza should feel like it shipped with the JDK, the
+way `cargo` feels part of Rust. Five principles guide it. They sometimes pull against each other;
+the aim underneath all of them is that the easy path and the correct path are the same path.
+
+== Fast
+
+Speed is measured, never assumed. kwenza starts a fresh JVM for every command rather than keeping
+a daemon running, and the cost of that is measured and documented, not hidden. With a lockfile in
+place, a build doesn't touch the network at all.
+
+== Simple
+
+There's one correct way to do each thing: a thin jar, plain version strings, compilation in the
+same process. An option gets added when a real need shows up, not because another tool has it.
+
+The conventions you already know still hold: Maven Central, the `~/.m2/repository` cache,
+`src/main/java` and Gradle's version-catalog notation all work as you expect, so your IDE, your
+cache and other tools keep working too.
+
+== Declarative
+
+`kwenza.toml` is data. It has no scripts, no plugins and no computed values, so reading it is
+enough to know what a build does, and it has no API to break between releases. `kwenza.lock`
+records exactly what that data resolved to, and wins until you change your dependencies or pass
+`--update`, so the same build gives the same result.
+
+kwenza has no plugin API. It uses the discovery the JVM already has: add any JUnit Platform test
+engine (TestNG's, say) as a dev-dependency and `kwenza test` runs it, with nothing else to
+configure.
+
+== Transparent
+
+kwenza shows what it does: `kwenza run` prints the command it ran, `--verbose` shows what was
+resolved, and `KWENZA_TIMING` shows where the time went. Mistakes like a mismatched JDK, a
+`version.ref` with no matching version, or an unknown command are caught before anything runs,
+with a message that says what to change.
+
+== Secure
+
+Every jar is verified before it's used: downloads against the repository's checksums, cached jars
+against `kwenza.lock`. If a check can't be made, kwenza stops rather than skipping it.
+
+kwenza itself has no dependencies. It builds itself with itself, from nothing but a JDK, so there
+is nothing upstream that could be compromised and passed on to your build.

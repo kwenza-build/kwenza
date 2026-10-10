@@ -4,8 +4,8 @@
 :source-highlighter: none
 
 This walks through installing kwenza and building your first project. For the full field-by-field
-manifest schema, see link:manifest-reference.adoc[Manifest Reference]; for every command and flag,
-see link:cli-reference.adoc[CLI Reference].
+manifest schema, see xref:manifest-reference.adoc[Manifest Reference]; for every command and flag,
+see xref:cli-reference.adoc[CLI Reference].
 
 == Prerequisites
 
@@ -16,7 +16,7 @@ see link:cli-reference.adoc[CLI Reference].
 
 TIP: Projects *you build with* kwenza can target an older `java-version` than the JDK running
 kwenza — the constraint is only that the running JDK must be at least as new as whatever
-`java-version` is requested. See link:architecture.adoc[Architecture] for why.
+`java-version` is requested. See xref:architecture.adoc#compilation[Architecture] for why.
 
 == Installing kwenza
 
@@ -25,7 +25,7 @@ first jar has to come from somewhere else: a small `bootstrap.sh` script using p
 
 [source,bash]
 ----
-git clone <this-repo> && cd kwenza
+git clone https://github.com/kwenza-build/kwenza.git && cd kwenza
 ./bootstrap.sh
 ----
 
@@ -77,7 +77,7 @@ guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
 ----
 
 NOTE: `name` was left out deliberately — it defaults to the containing directory's name (`hello`,
-here). See link:manifest-reference.adoc[Manifest Reference] for every field and its default.
+here). See xref:manifest-reference.adoc[Manifest Reference] for every field and its default.
 
 [source,java]
 ----
@@ -117,9 +117,9 @@ java -jar target/hello-0.1.0.jar
 == Where to go next
 
 * A complete, working example (this same walkthrough, already set up) lives at
-  link:../examples/hello-world[`examples/hello-world`].
-* link:manifest-reference.adoc[Manifest Reference] covers every `kwenza.toml` field and the
+  https://github.com/kwenza-build/kwenza/tree/main/examples/hello-world[`examples/hello-world`].
+* xref:manifest-reference.adoc[Manifest Reference] covers every `kwenza.toml` field and the
   `kwenza.lock` format.
-* link:cli-reference.adoc[CLI Reference] covers every command, flag, and environment variable.
-* link:architecture.adoc[Architecture] explains how resolution, compilation, and packaging work
+* xref:cli-reference.adoc[CLI Reference] covers every command, flag, and environment variable.
+* xref:architecture.adoc[Architecture] explains how resolution, compilation, and packaging work
   under the hood.
