@@ -99,7 +99,7 @@ public final class BuildState {
         List<Dependency> allDeps = new ArrayList<>();
         allDeps.addAll(manifest.dependencies.values());
         allDeps.addAll(manifest.devDependencies.values());
-        Resolver.Resolution fresh = resolver.resolve(allDeps);
+        Resolver.Resolution fresh = resolver.resolve(allDeps, existingLock);
         fresh.lock().save(lockPath, KwenzaLock.hashDependencies(manifest));
         if (verbose) {
             for (Resolver.ResolvedArtifact artifact : fresh.artifacts()) {
@@ -124,7 +124,8 @@ public final class BuildState {
         ensureResolved();
         if (mainResolution == null) {
             Resolver resolver = new Resolver(MavenRepository.central(localRepo));
-            mainResolution = resolver.resolve(manifest.dependencies.values());
+            // The merged lock was verified moments ago, so its pins cover every jar this needs.
+            mainResolution = resolver.resolve(manifest.dependencies.values(), resolution.lock());
         }
         return mainResolution;
     }

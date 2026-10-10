@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,6 +62,17 @@ public final class Resolver {
 
     /** Full transitive resolution against Maven Central. Writes a fresh lockfile's worth of entries. */
     public Resolution resolve(Collection<Dependency> rootDeps) {
+        return resolve(rootDeps, KwenzaLock.empty());
+    }
+
+    /**
+     * Full resolution. {@code previous} is the lock being replaced (or any lock whose pins are
+     * already trusted): a module resolved at the same version it pins is checked against that
+     * sha256 with no network call, and everything else is checked against the repository's
+     * published .sha1 even when it's already in the local cache - so a fresh resolve never pins a
+     * jar nobody has verified.
+     */
+    public Resolution resolve(Collection<Dependency> rootDeps, KwenzaLock previous) {
         Map<String, Node> chosen = new LinkedHashMap<>();
         Map<String, PomParser.ParsedPom> pomCache = new HashMap<>();
 
@@ -104,7 +116,7 @@ public final class Resolver {
                 try {
                     pom = e.getValue().join();
                 } catch (Exception ex) {
-                    throw new ResolutionException("Failed to resolve " + e.getKey() + ":" + n.version, ex);
+                    throw new ResolutionException("Failed to resolve " + e.getKey() + ":" + n.version + ": " + causeMessage(ex), ex);
                 }
                 Map<String, String> management = buildManagementMap(pom, pomCache);
                 for (PomParser.RawDependency rd : pom.dependencies()) {
@@ -125,10 +137,14 @@ public final class Resolver {
             currentLevel = nextLevel;
         }
 
-        return download(chosen);
+        return download(chosen, previous);
     }
 
-    /** Fast path: trust an existing lock, only downloading jars missing from the local cache. */
+    /**
+     * Fast path: reuse an existing lock, only downloading jars missing from the local cache. Every
+     * jar - cache hit or fresh download - must still match the lock's recorded sha256 before it's
+     * trusted, so a jar altered in ~/.m2 after the lock was written is caught, not used.
+     */
     public Resolution ensureFromLock(KwenzaLock lock) {
         List<ResolvedArtifact> artifacts = new ArrayList<>();
         Map<String, CompletableFuture<Path>> futures = new LinkedHashMap<>();
@@ -142,12 +158,34 @@ public final class Resolver {
             try {
                 jarPath = futures.get(entry.module).join();
             } catch (Exception ex) {
-                throw new ResolutionException("Failed to fetch locked dependency " + entry.module, ex);
+                throw new ResolutionException("Failed to fetch locked dependency " + entry.module + ": " + causeMessage(ex), ex);
             }
+            verifyAgainstLock(entry, jarPath);
             artifacts.add(new ResolvedArtifact(entry.module, parts[0], parts[1], entry.version, jarPath,
                     new LinkedHashSet<>(entry.requestedBy)));
         }
         return new Resolution(artifacts, lock);
+    }
+
+    /** The underlying failure's own message, unwrapped from the CompletionException join() adds. */
+    private static String causeMessage(Throwable ex) {
+        Throwable cause = ex instanceof CompletionException && ex.getCause() != null ? ex.getCause() : ex;
+        return cause.getMessage() != null ? cause.getMessage() : cause.toString();
+    }
+
+    private static void verifyAgainstLock(KwenzaLock.Entry entry, Path jarPath) {
+        String gav = entry.module + ":" + entry.version;
+        if (entry.sha256 == null || entry.sha256.isBlank()) {
+            throw new ResolutionException("kwenza.lock has no sha256 for " + gav
+                    + ", so its jar can't be verified. Re-run with --update to regenerate the lock.");
+        }
+        String actual = sha256Hex(jarPath);
+        if (!actual.equalsIgnoreCase(entry.sha256)) {
+            throw new ResolutionException("Checksum mismatch for " + gav + ": kwenza.lock expects sha256 "
+                    + entry.sha256 + " but " + jarPath + " has " + actual
+                    + ". The cached jar has changed since the lock was written; delete it so kwenza"
+                    + " re-downloads and re-verifies it.");
+        }
     }
 
     private static String[] splitModule(String moduleId) {
@@ -155,11 +193,19 @@ public final class Resolver {
         return new String[]{moduleId.substring(0, colon), moduleId.substring(colon + 1)};
     }
 
-    private Resolution download(Map<String, Node> chosen) {
+    private Resolution download(Map<String, Node> chosen, KwenzaLock previous) {
+        Map<String, KwenzaLock.Entry> pinned = new LinkedHashMap<>();
+        for (KwenzaLock.Entry entry : previous.entries) {
+            if (entry.sha256 != null && !entry.sha256.isBlank()) {
+                pinned.put(entry.module + ":" + entry.version, entry);
+            }
+        }
         Map<String, CompletableFuture<Path>> jarFutures = new LinkedHashMap<>();
         for (Map.Entry<String, Node> e : chosen.entrySet()) {
             Node n = e.getValue();
-            jarFutures.put(e.getKey(), repo.fetchJarAsync(n.group, n.artifact, n.version));
+            jarFutures.put(e.getKey(), pinned.containsKey(e.getKey() + ":" + n.version)
+                    ? repo.fetchJarAsync(n.group, n.artifact, n.version)
+                    : repo.fetchJarVerifiedAsync(n.group, n.artifact, n.version));
         }
 
         List<ResolvedArtifact> artifacts = new ArrayList<>();
@@ -170,7 +216,11 @@ public final class Resolver {
             try {
                 jarPath = jarFutures.get(e.getKey()).join();
             } catch (Exception ex) {
-                throw new ResolutionException("Failed to download " + e.getKey() + ":" + n.version, ex);
+                throw new ResolutionException("Failed to download " + e.getKey() + ":" + n.version + ": " + causeMessage(ex), ex);
+            }
+            KwenzaLock.Entry pin = pinned.get(e.getKey() + ":" + n.version);
+            if (pin != null) {
+                verifyAgainstLock(pin, jarPath);
             }
             artifacts.add(new ResolvedArtifact(e.getKey(), n.group, n.artifact, n.version, jarPath, n.requestedBy));
             lockEntries.add(new KwenzaLock.Entry(e.getKey(), n.version, sha256Hex(jarPath), new ArrayList<>(n.requestedBy)));

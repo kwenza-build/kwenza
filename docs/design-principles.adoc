@@ -135,24 +135,29 @@ to exist first — it's already present the moment a resolved jar's code runs du
 needs to be a first-class design constraint from the start of anything that touches it, not
 something discovered after the fact.
 
-Some of this is already real: a freshly-downloaded jar is verified against Maven Central's
-published `.sha1` checksum before being trusted (`MavenRepository.fetchJarAsync`), and
-`kwenza.lock` records each resolved artifact's own `sha256`. Zero dependencies for kwenza's own
+Concretely, today: a freshly-downloaded jar is verified against the repository's published
+`.sha1` checksum before it's written to the local cache (`MavenRepository.fetchJarAsync`), and
+`kwenza.lock` records each resolved artifact's own `sha256`, which every lock-backed build checks
+again before using the jar (`Resolver.ensureFromLock`). Zero dependencies for kwenza's own
 build (below) is a security property too, not just a bootstrapping one — every dependency kwenza
 doesn't have is one less thing that could be compromised upstream and pulled straight into every
 kwenza user's build.
 
-But "secure by default" means the verification has to actually hold in the failure cases, not just
-the happy path — and right now it doesn't, in ways worth fixing rather than filing away as a future
-idea. `fetchJarAsync` treats a *failed* `.sha1` fetch as "no checksum available" and silently skips
-verification (`.exceptionally(ex -> null)`) instead of refusing to trust the jar — fails open, not
-closed. And `kwenza.lock`'s recorded `sha256` per entry, despite looking exactly like the integrity
-pin `Cargo.lock`/`package-lock.json` provide, is currently write-only: nothing in `ensureFromLock`
-(the path used on nearly every build once a lock exists) ever reads it back to verify a cached
-jar — a jar served straight from `~/.m2/repository` gets no verification of any kind. A jar
-tampered with once in the local cache — a compromised mirror, a machine shared with another tool,
-disk-level tampering — would be trusted silently, forever, even by a project that did everything
-right by committing its lockfile.
+"Secure by default" means the verification has to hold in the failure cases, not just the happy
+path, so both checks fail closed. A `.sha1` that's missing, unfetchable or empty is refused exactly
+like a mismatch, never treated as "no checksum available, skip it" — an earlier version did exactly
+that (`.exceptionally(ex -> null)`), which meant an attacker who could block one URL could switch
+verification off. And `kwenza.lock`'s `sha256` is an integrity pin, the same thing
+`Cargo.lock`/`package-lock.json` provide, not just a record: a cached jar that no longer matches it
+(a compromised mirror, a machine shared with another tool, disk-level tampering) stops the build
+with a message naming the jar, rather than being trusted silently forever. An earlier version wrote
+that hash but never read it back.
+
+A *fresh* resolution (no lock yet, a changed manifest, or `--update`) can't lean on the lock
+it's about to replace for everything, but it never pins a jar nobody has verified. A module
+resolved at the same version the old lock pinned is checked against that pin. Any other jar
+already in `~/.m2/repository` is checked against the repository's published `.sha1`, never the
+copy cached beside it, which anyone able to alter the jar could alter too.
 
 Separately, and specific to extensibility: `javax.tools.JavaCompiler` is invoked today without
 `-proc:none`, so whether an annotation processor bundled in a resolved dependency runs

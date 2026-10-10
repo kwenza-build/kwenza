@@ -17,7 +17,7 @@ Cheap work that makes everything after it safer to change.
 
 * [x] *Housekeeping: `.gitignore`.* Add `.idea/` and `**/bin/` under the benchmark Gradle
   directories, so `git add -A` can't pick up IDE or Gradle output.
-* [ ] *CI on every push and PR (GitHub Actions).* Run `bootstrap.sh`, then `bin/kwenza package`,
+* [x] *CI on every push and PR (GitHub Actions).* Run `bootstrap.sh`, then `bin/kwenza package`,
   then `bin/kwenza test`, then the manual smoke checks from AGENTS.md's "Verification" section
   (`examples/hello-world`, `examples/junit-word-count` including its jar `Class-Path` check,
   `examples/testng-calculator`). Use a JDK matrix (21 plus the latest GA) on Linux and macOS.
@@ -29,7 +29,7 @@ Cheap work that makes everything after it safer to change.
 Anything that is a breaking change after release goes here: defaults, formats, and the code
 structure everything else builds on.
 
-* [ ] *Close the checksum fail-open gap.* Fail closed when `.sha1` can't be fetched or doesn't
+* [x] *Close the checksum fail-open gap.* Fail closed when `.sha1` can't be fetched or doesn't
   match (`MavenRepository.fetchJarAsync`), and verify cache hits against the lock's `sha256` in
   `ensureFromLock`. TDD, at the `MavenRepository`/`BuildState` seams. See "Secure by default".
 * [ ] *Decide annotation-processor discovery.* Pick explicitly: `-proc:none` by default with an
