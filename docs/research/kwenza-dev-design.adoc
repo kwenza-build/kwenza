@@ -215,7 +215,7 @@ and is deliberately shorter than Bun, Deno or Gradle.
 
 * *Headline: "A simple, declarative build tool for the JVM."* That's eight words, and it's the
   README's own first line, so the site and the repo say the same thing. The mission line ("Make
-  builds with Java fun and easy again", from link:../design-principles.adoc[design principles]) is
+  builds with Java fun and easy again", from link:../modules/ROOT/pages/design-principles.adoc[design principles]) is
   warmer but less descriptive. It fits better as the docs home's opening than as the headline.
 * *Sub-line:* the declarative claim, then the three interop facts a Java developer will check first.
   Every claim must be true today. No claims about speed above the fold until the benchmarks back
@@ -524,7 +524,7 @@ Three things, in this order:
 . *Making.* "Kwenza" is isiXhosa for "to make". The tool makes things (jars, a lockfile, a classpath)
   out of a declaration.
 . *Declared, not scripted.* The manifest is data, not a program (see
-  link:../design-principles.adoc[design principles]). This is kwenza's one real difference from
+  link:../modules/ROOT/pages/design-principles.adoc[design principles]). This is kwenza's one real difference from
   Maven and Gradle, and the one thing a mark can usefully hint at.
 . *Small and fast.* Nothing ornamental. A mark built from a few flat shapes on a grid, one accent
   colour, no gradients.

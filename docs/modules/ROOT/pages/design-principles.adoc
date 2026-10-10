@@ -3,7 +3,7 @@
 :toclevels: 2
 
 Every individual decision behind kwenza is recorded, with its own specific reasoning, in
-link:../AGENTS.md[AGENTS.md]. This page is the layer above that: the mission, the pillars, and the
+https://github.com/kwenza-build/kwenza/blob/main/AGENTS.md[AGENTS.md]. This page is the layer above that: the mission, the pillars, and the
 principles those decisions keep falling out of. If you're weighing a new feature or a design fork
 and none of AGENTS.md's existing decisions answer it directly, check it against these first —
 they're the thing new decisions should be consistent with, not just the old ones.

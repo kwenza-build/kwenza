@@ -1,0 +1,10 @@
+# Antora component descriptor. The kwenza.dev site (github.com/kwenza-build/kwenza-dev) reads
+# this directory as its docs component. Only docs/modules/ is published; docs/research/ stays
+# maintainer material on GitHub.
+name: docs
+title: kwenza
+# Unversioned while there's one release line, so URLs carry no version segment.
+version: ~
+start_page: getting-started.adoc
+nav:
+- modules/ROOT/nav.adoc

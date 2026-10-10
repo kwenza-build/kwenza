@@ -8,7 +8,7 @@ done. Tick an item off (`[x]`) in the same PR that finishes it.
 
 This file covers *order*, not *rationale*. The reasoning behind each item lives in
 link:AGENTS.md[AGENTS.md] (decisions, deferred work, known gaps) and
-link:docs/design-principles.adoc[docs/design-principles.adoc] (the principles to weigh it
+link:docs/modules/ROOT/pages/design-principles.adoc[docs/design-principles.adoc] (the principles to weigh it
 against). If an item here contradicts those, fix one of them; don't let them drift apart.
 
 == Milestone 0: Safety net
@@ -64,7 +64,7 @@ structure everything else builds on.
 * [ ] *Decide the supported JDK range for running kwenza.* This is part of AGENTS.md's open
   "minimum supported Java version" question, scoped to the runtime only (the JDK projects
   *target* is a separate question). Encode the answer in the CI matrix and in
-  `docs/getting-started.adoc`.
+  `docs/modules/ROOT/pages/getting-started.adoc`.
 
 == Milestone 2: Installable
 
@@ -89,19 +89,19 @@ in AGENTS.md).
 
 == Milestone 3: kwenza.dev and the 0.1.0 release
 
-* [ ] *Research the site design and brand.* This doesn't depend on any code, so it can run in
+* [x] *Research the site design and brand.* This doesn't depend on any code, so it can run in
   parallel with anything above. Survey well-regarded dev-tool sites (language toolchains, build
   tools, CLIs) for what makes a clean, simple landing page and docs experience, and pick a
   direction for kwenza.dev. kwenza also needs an icon and brand: a logo mark that works as a
   favicon, GitHub org avatar and README header, plus a small palette and type choice.
   _Done when:_ a research write-up with a recommended direction is in the repo, and the icon is
   chosen and committed as SVG.
-* [ ] *Docs site with Antora.* Restructure `docs/` into an Antora component
+* [x] *Docs site with Antora.* Restructure `docs/` into an Antora component
   (`docs/antora.yml`, `modules/ROOT/pages/`, nav file). The content is already AsciiDoc, so this
   is mostly moving files and fixing `link:` xrefs. Build it in CI and publish to GitHub Pages
   under `kwenza.dev`. Versioned docs come for free from Antora once there's more than one
   release.
-* [ ] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
+* [x] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
   install commands, linking into the docs. Start with the Antora UI or one static page, not a
   separate site framework.
 * [ ] *Release 0.1.0.* Write `CHANGELOG.adoc`, tag `v0.1.0`, check that every install route in

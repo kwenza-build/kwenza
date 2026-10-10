@@ -3,7 +3,7 @@
 :toclevels: 2
 
 How kwenza actually works, for anyone curious or debugging something. For *why* it's built this
-way rather than some other way, see link:../AGENTS.md[AGENTS.md] — this page is the "how," that
+way rather than some other way, see https://github.com/kwenza-build/kwenza/blob/main/AGENTS.md[AGENTS.md] — this page is the "how," that
 one's the "why."
 
 == Dependency resolution
@@ -46,7 +46,7 @@ Everything lands in `~/.m2/repository`, byte-for-byte Maven's own local reposito
 isn't just convention-following: kwenza and any existing Maven or Gradle installation on the same
 machine share one warm cache, verified for real during development (kwenza builds have picked up
 artifacts an existing Maven install had already cached, and vice versa). `KWENZA_REPO` overrides
-this location when needed — see link:cli-reference.adoc[CLI Reference].
+this location when needed — see xref:cli-reference.adoc[CLI Reference].
 
 === The resolution algorithm, roughly
 
@@ -58,7 +58,7 @@ this location when needed — see link:cli-reference.adoc[CLI Reference].
    versions to any dependency that omits an explicit version, and enqueue the next level.
 4. Once no new modules appear, download every winning module's JAR concurrently and verify
    checksums.
-5. Write `kwenza.lock` (see link:manifest-reference.adoc[Manifest Reference] for its format).
+5. Write `kwenza.lock` (see xref:manifest-reference.adoc[Manifest Reference] for its format).
 
 == Reproducibility model
 
@@ -76,14 +76,14 @@ In-process, via `javax.tools.JavaCompiler` — no subprocess `javac` spawned. Be
 kwenza checks the requested `[package] java-version` against the JDK actually running it
 (`javac --release N` can never target a release newer than its own JDK) and fails fast with a
 specific message rather than letting a cryptic javac error surface. See
-link:manifest-reference.adoc[Manifest Reference] for details.
+xref:manifest-reference.adoc[Manifest Reference] for details.
 
 == Packaging
 
 A thin jar by default: your project's own compiled classes and resources, plus a `Class-Path`
 manifest entry listing every resolved dependency jar's location in the local cache. No shading,
 no uber-jar class conflicts, and the result runs directly with `java -jar`. A `--fat` uber-jar
-option is planned but not yet built (see link:../AGENTS.md[AGENTS.md] for what's deliberately
+option is planned but not yet built (see https://github.com/kwenza-build/kwenza/blob/main/AGENTS.md[AGENTS.md] for what's deliberately
 Phase 2).
 
 == Zero external dependencies
@@ -106,7 +106,7 @@ only for the very first jar, or disaster recovery; day-to-day rebuilds go throug
 
 Unlike Gradle, kwenza launches a fresh JVM on every single invocation rather than keeping a
 persistent daemon process warm. This was measured directly, using the phase-timing diagnostics
-described in link:cli-reference.adoc[CLI Reference] (`KWENZA_TIMING=1`):
+described in xref:cli-reference.adoc[CLI Reference] (`KWENZA_TIMING=1`):
 
 * kwenza's own resolve/compile/package logic is fast and consistent — around 400ms total for a
   trivial single-file project, every single run, with no meaningful variance.
@@ -118,7 +118,7 @@ described in link:cli-reference.adoc[CLI Reference] (`KWENZA_TIMING=1`):
 
 That's the direct, quantified reason Gradle's warm daemon edges out kwenza on tiny projects
 despite kwenza's simpler internals — and why a custom AppCDS archive for kwenza's own class
-footprint is flagged in link:../AGENTS.md[AGENTS.md] as a real future optimization, not yet built.
+footprint is flagged in https://github.com/kwenza-build/kwenza/blob/main/AGENTS.md[AGENTS.md] as a real future optimization, not yet built.
 
 == Project layout
 

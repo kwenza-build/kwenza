@@ -1,0 +1,7 @@
+* xref:getting-started.adoc[]
+* Reference
+** xref:manifest-reference.adoc[]
+** xref:cli-reference.adoc[]
+* Background
+** xref:architecture.adoc[]
+** xref:design-principles.adoc[]

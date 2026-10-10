@@ -49,19 +49,23 @@ kwenza run        # build + execute [package].main-class
 kwenza package    # build + produce a runnable thin jar
 ----
 
-See link:docs/getting-started.adoc[Getting Started] for the full walkthrough, including a
-from-scratch new project.
+See link:docs/modules/ROOT/pages/getting-started.adoc[Getting Started] for the full walkthrough,
+including a from-scratch new project.
 
 == Documentation
 
-* link:docs/getting-started.adoc[Getting Started] — install, `PATH` setup, your first project
-* link:docs/manifest-reference.adoc[Manifest Reference] — every `kwenza.toml` field, `kwenza.lock`
-  format
-* link:docs/cli-reference.adoc[CLI Reference] — every command, flag, and environment variable
-* link:docs/architecture.adoc[Architecture] — how resolution, compilation, and packaging actually
-  work
-* link:docs/design-principles.adoc[Design Principles] — the handful of principles kwenza's design
-  decisions keep falling out of
+The manual is an https://antora.org[Antora] component under `docs/`, published at
+https://kwenza.dev by https://github.com/kwenza-build/kwenza-dev[kwenza-build/kwenza-dev].
+
+* link:docs/modules/ROOT/pages/getting-started.adoc[Getting Started] — install, `PATH` setup, your first project
+* link:docs/modules/ROOT/pages/manifest-reference.adoc[Manifest Reference] — every `kwenza.toml` field,
+  `kwenza.lock` format
+* link:docs/modules/ROOT/pages/cli-reference.adoc[CLI Reference] — every command, flag, and environment
+  variable
+* link:docs/modules/ROOT/pages/architecture.adoc[Architecture] — how resolution, compilation, and packaging
+  actually work
+* link:docs/modules/ROOT/pages/design-principles.adoc[Design Principles] — the handful of principles kwenza's
+  design decisions keep falling out of
 * link:AGENTS.md[AGENTS.md] — design decisions and trade-offs, for contributors (human or AI)
 
 == Benchmarks

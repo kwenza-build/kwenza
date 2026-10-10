@@ -1,0 +1,4 @@
+resolve: using locked dependencies (kwenza.lock)
+compile: target/classes
+run: java -cp target/classes (+7 dependency jars) com.example.Main
+Hello from Kwenza: kwenza builds java
