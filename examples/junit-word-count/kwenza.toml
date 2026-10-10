@@ -1,5 +1,5 @@
 [package]
-name = "word-counter"
+name = "junit-word-count"
 group = "com.example.wordcounter"
 version = "0.1.0"
 java-version = "21"

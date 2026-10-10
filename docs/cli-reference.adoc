@@ -67,7 +67,11 @@ This needs a dev-dependency that provides the `org.junit.platform.console.Consol
 `org.junit.platform:junit-platform-console-standalone` is the one that bundles it together with
 the launcher and every JUnit engine, see link:manifest-reference.adoc[Manifest Reference]. kwenza
 doesn't care which JUnit Platform *engine* ends up running your tests (Jupiter, Vintage, or a
-third-party one) — the console launcher discovers whatever's on the classpath itself. A test
+third-party one) — the console launcher discovers whatever's on the classpath itself. See
+link:../examples/testng-calculator[`examples/testng-calculator`] for a genuine third-party case: TestNG tests
+run unmodified by adding `org.testng:testng` and the JUnit-team-maintained
+`org.junit.support:testng-engine` bridge as `[dev-dependencies]` — no kwenza changes, no extra CLI
+flags, and `--verbose` output shows a `TestNG` line in the tree alongside Jupiter/Vintage. A test
 library that isn't a JUnit Platform engine (Mockito, AssertJ, ...) is a normal dev-dependency,
 resolved onto the test classpath like anything else — with one exception: if
 `org.mockito:mockito-core` resolves, its jar is loaded as an explicit `-javaagent` on the forked
