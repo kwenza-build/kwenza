@@ -351,6 +351,21 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   that the class-loading-only fix might matter again, rather than assuming it stays negligible
   forever. See the "no daemon" reconsideration under Future ideas / Performance below for the
   more likely direction if cold-start ever becomes a real complaint before then.
+- **Console output: aligned status labels and meaningful colour.** Today `ConsoleReporter` prints
+  `step: detail` lines (`resolve: ...`, `compile: ...`, `run: ...`) in one colour per level
+  (cyan info, red error, grey detail), and a `run`/`test` subprocess's own output follows on the
+  very next line. Cargo's model is worth copying: the step label is a verb right-aligned in a
+  fixed-width column, so every line's detail starts at the same column and a long build scans
+  as a list, and the label is the coloured, bold part rather than the whole line. Open choices:
+  keep the colon (`   compile: target/classes`) or drop it as Cargo does; which colours mean
+  what (one for step labels, red for errors, dim for detail, perhaps one more for the final
+  "finished" line); whether to print a closing summary line with timing. Two constraints carry
+  over: colour stays off when stderr isn't a terminal or `NO_COLOR` is set (as now), and a blank
+  line should separate kwenza's own output from whatever `run`/`test` launch, so the program's
+  output never reads as kwenza's. This changes `examples/hello-world/kwenza-run.txt`, which
+  kwenza.dev's home page shows and `smoke-examples.sh` checks, so re-capture it in the same
+  change. The home page could then show colour too, if the transcript keeps it in a form the
+  site can render.
 - **Annotation-processor discovery is uncontrolled.** `JavaCompilation` invokes `javac` without
   `-proc:none`, so whether a processor bundled in a resolved dependency runs automatically during
   `kwenza build` depends on the running JDK's own default behavior — not a deliberate kwenza
