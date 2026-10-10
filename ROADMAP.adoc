@@ -17,7 +17,7 @@ Cheap work that makes everything after it safer to change.
 
 * [x] *Housekeeping: `.gitignore`.* Add `.idea/` and `**/bin/` under the benchmark Gradle
   directories, so `git add -A` can't pick up IDE or Gradle output.
-* [ ] *CI on every push and PR (GitHub Actions).* Run `bootstrap.sh`, then `bin/kwenza package`,
+* [x] *CI on every push and PR (GitHub Actions).* Run `bootstrap.sh`, then `bin/kwenza package`,
   then `bin/kwenza test`, then the manual smoke checks from AGENTS.md's "Verification" section
   (`examples/hello-world`, `examples/junit-word-count` including its jar `Class-Path` check,
   `examples/testng-calculator`). Use a JDK matrix (21 plus the latest GA) on Linux and macOS.
