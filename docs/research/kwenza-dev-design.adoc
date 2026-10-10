@@ -267,39 +267,97 @@ tabs at most.
 
 === Band 3: install
 
-Tabs for *mise | Homebrew | SDKMAN*, one line each, with a copy button and an "other options" link
-to the docs' install page. These are the channels the task asked for. None of them exists yet, so
-each line is a promise the distribution work (AGENTS.md, "Real cross-platform distribution") has to
-keep before the page ships.
+*Decided 2026-10-10* (see <<decision>>): one tab per OS, each showing that platform's usual way
+to install a dev tool, plus a second row for the version managers people use to pin tools per
+project. SDKMAN waits until later (see below). Every line has a copy button, and an "other options"
+link goes to the docs' install page.
 
-[cols="1,2,3",options="header"]
+----
+  macOS  |  Linux  |  Windows                 mise  |  asdf
+----
+
+[cols="1,3,4",options="header"]
 |===
-| Channel | Command | What has to exist first
+| Tab | Command | What has to exist first
+
+| macOS
+| `brew install kwenza-build/tap/kwenza`
+| A `kwenza-build/homebrew-tap` repo with a `kwenza` formula. Installing by the fully qualified
+  name trusts just that formula, in one step (https://docs.brew.sh/Taps[Homebrew: Taps]). The same
+  command works with Homebrew on Linux, which the Linux tab can mention.
+
+| Linux
+| `curl -fsSL https://kwenza.dev/install.sh \| sh`
+| An install script served from the site itself. This is the uv/Bun/Deno/mise pattern from the
+  survey, and the script also works on macOS for people without Homebrew. See the notes below:
+  the script is the one channel kwenza owns end to end, so it carries the most security weight.
+
+| Windows
+| `scoop bucket add kwenza https://github.com/kwenza-build/scoop-bucket` +
+  `scoop install kwenza/kwenza`
+| A `kwenza-build/scoop-bucket` repo with a JSON manifest. Self-hosted buckets need no approval
+  from anyone (https://github.com/ScoopInstaller/Scoop/wiki/Buckets[Scoop: Buckets]). Optionally
+  add a PowerShell one-liner, `irm https://kwenza.dev/install.ps1 \| iex`, as the Windows twin of
+  `install.sh` (uv, Bun and Deno all pair the two).
 
 | mise
 | `mise use -g github:kwenza-build/kwenza`
-| GitHub releases with platform-named archives. mise's `github:` backend picks the asset for the
-  OS and architecture, verifies it and extracts it. It's a documented, non-experimental backend
-  (https://mise.jdx.dev/dev-tools/backends/github.html[mise docs]). A shorter `mise use -g kwenza`
-  needs a registry entry later.
+| Only GitHub releases. mise's `github:` backend needs no approval: it picks a release asset,
+  verifies it and extracts it (https://mise.jdx.dev/dev-tools/backends/github.html[mise docs]).
+  The short form `mise use -g kwenza` needs an entry in mise's registry, which is curated and
+  reserved for "widely used tools" (https://mise.jdx.dev/registry.html[mise registry]), so that
+  comes later.
 
-| Homebrew
-| `brew install kwenza-build/tap/kwenza`
-| A `kwenza-build/homebrew-tap` repo with a `kwenza` formula. The fully qualified name installs
-  and trusts just that formula, in one step (https://docs.brew.sh/Taps[Homebrew: Taps]).
-
-| SDKMAN
-| `sdk install kwenza`
-| A candidate registered by emailing the SDKMAN team (JVM-ecosystem tools are eligible), then
-  releases pushed through their State API as well-formed SDK archives
-  (https://sdkman.io/vendors[SDKMAN vendors]). It's the channel Java developers already trust, and
-  it's also the one with the longest lead time, so start it first.
+| asdf
+| `asdf plugin add kwenza https://github.com/kwenza-build/asdf-kwenza` +
+  `asdf install kwenza latest`
+| A `kwenza-build/asdf-kwenza` plugin repo with three scripts, `bin/list-all`, `bin/download` and
+  `bin/install`, plus the recommended `bin/latest-stable`
+  (https://asdf-vm.com/plugins/create.html[asdf: creating plugins]). Adding a plugin by URL needs
+  no approval. The short form `asdf plugin add kwenza` needs a PR to
+  https://github.com/asdf-vm/asdf-plugins[asdf-vm/asdf-plugins], which can come later.
 |===
 
-A `curl | sh` tab is deliberately *not* proposed for 0.1: every JVM user already has one of the
-three above, or can get one, and a pipe-to-shell installer is one more security surface to own
-(design principles, "Secure by default"). A Windows story is still missing whichever way this
-goes. That's AGENTS.md's open distribution question, not a site question.
+*Why Scoop rather than winget for Windows.* winget ships with Windows, so it's the most "default"
+choice. But every package is a PR to Microsoft's `winget-pkgs` repo that goes through review and
+validation, and its installers must support silent install
+(https://learn.microsoft.com/en-us/windows/package-manager/package/manifest[winget manifests]).
+It's also _unverified_ whether winget's "portable" install type accepts a script launcher
+(`kwenza.cmd` plus a jar) rather than an `.exe`. If it doesn't, winget needs a native Windows
+launcher first. Scoop is the common Windows dev-tool channel with no gatekeeper, so it can ship at
+launch, and winget becomes a follow-up.
+
+*Deferred: SDKMAN.* It's the channel Java developers trust most, but it's gated: you register a
+candidate by emailing the SDKMAN team, then push releases through their State API
+(https://sdkman.io/vendors[SDKMAN vendors]). It waits until kwenza is ready to apply.
+
+*What every channel needs underneath:*
+
+* *One release archive per version.* kwenza is a jar plus launch scripts, so the same archive
+  (`kwenza-<version>.zip` containing `lib/kwenza-<version>.jar`, `bin/kwenza` and
+  `bin/kwenza.cmd`) can serve every OS. Each release also needs a `SHA256SUMS` file.
+  _Unverified:_ whether mise's `github:` backend picks an asset that has no OS or architecture in
+  its name. If it doesn't, the release may need per-platform copies or a `matching` option.
+* *A JDK is a prerequisite, not bundled.* That's consistent with AGENTS.md. Each channel should
+  check for Java 21+ and fail fast with a message saying how to get one. Homebrew is the exception:
+  a formula can declare a JDK dependency. Choosing that settles part of AGENTS.md's open "which JDK
+  does the launcher use" question for that channel, so it should be decided deliberately, not by
+  default.
+* *A Windows launcher* (`bin/kwenza.cmd` or `.ps1`). It doesn't exist today: `bin/kwenza` is bash
+  only (AGENTS.md, "Real cross-platform distribution").
+
+*The install script is the security-critical piece.* `curl | sh` runs whatever kwenza.dev serves,
+so the script should:
+
+* download from GitHub releases only;
+* verify the archive against `SHA256SUMS` and refuse to continue on a mismatch, *fail closed*
+  (design principles, "Secure by default");
+* install to a user directory (for example `~/.kwenza`, linked into `~/.local/bin`), never use
+  `sudo`;
+* print each step it takes.
+
+Because the script lives in the `kwenza.dev` repo, that repo's branch protection and pinned
+dependencies matter as much as kwenza's own.
 
 === Band 4: why (four short cards)
 
@@ -400,7 +458,7 @@ UI changes. One caveat: it's still versioned `1.0.0-alpha.13` on npm and require
 Antora 3.2. Algolia DocSearch (used by JBang, Spring and docs.antora.org itself) is the hosted
 fallback if Lunr's quality isn't enough.
 
-=== 3.4 Where it lives: a separate `kwenza-build/kwenza.dev` repo
+=== 3.4 Where it lives: a separate `kwenza-build/kwenza.dev` repo (decided)
 
 Antora is a Node tool. The kwenza repo's defining property is zero external dependencies and a
 self-hosted build (AGENTS.md). A `package.json`, a playbook and a UI overlay in that repo would be
@@ -653,16 +711,20 @@ On 2026-10-10 the maintainer chose:
 * *Accent colour: ochre.* That's `#B87C0C` on light and `#EDB341` on dark, with `#8F5E00` for
   accent-coloured text on light (4.2).
 
-These files are now the source for the favicon, the GitHub org avatar, the README header and the
+*Site repo:* the site gets its own public repo, `kwenza-build/kwenza.dev` (3.4).
+
+*Install channels:* one per OS (Homebrew on macOS, `install.sh` on Linux, Scoop on Windows), plus
+mise and asdf as version managers. SDKMAN is deferred because it needs approval (Band 3).
+
+The brand files are now the source for the favicon, the GitHub org avatar, the README header and the
 kwenza.dev header. One follow-up from 4.5 still applies to the chosen mark: compare it against
 Square's logo and run a real trademark clearance search before it goes on anything official.
 
 == 6. Still open
 
 . *Plex everywhere, or system fonts plus Plex Mono only* (4.3)?
-. *Separate `kwenza.dev` repo* (3.4), or accept Node tooling inside the kwenza repo?
-. *Which install channels ship with 0.1?* The landing page should list only the ones that exist on
-  launch day.
+. *winget* as a follow-up to Scoop, once it's clear whether it needs a native launcher (Band 3).
+. *Homebrew's JDK dependency*: declare one in the formula, or rely on the user's Java (Band 3)?
 . *A real trademark clearance search* before the mark goes on anything official. 4.5 is a visual
   collision check, not a legal one.
 
