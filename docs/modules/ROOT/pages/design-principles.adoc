@@ -3,72 +3,57 @@
 :toclevels: 1
 
 Make builds with Java fun and easy again. kwenza should feel like it shipped with the JDK, the
-way `cargo` feels part of Rust.
+way `cargo` feels part of Rust. Five principles guide it. They sometimes pull against each other;
+the aim underneath all of them is that the easy path and the correct path are the same path.
 
-== Pillars
+== Fast
 
-* *Fast.* Measured, never assumed.
-* *Simple.* One correct way to do each thing.
-* *Declarative.* The manifest is data. Reading it tells you everything.
-* *Transparent.* kwenza shows what it ran and says exactly why it failed.
-* *Secure.* Every dependency is verified before it's used.
-
-They will sometimes pull against each other. The aim underneath all of them is that the easy
-path and the correct path are the same path.
-
-== The manifest is data, never a program
-
-`kwenza.toml` has no scripts, no plugins and no computed values, so reading it is enough to know
-what a build does. That also keeps it stable: data has no API to break between releases.
+Speed is measured, never assumed. kwenza starts a fresh JVM for every command rather than keeping
+a daemon running, and the cost of that is measured and documented, not hidden. With a lockfile in
+place, a build doesn't touch the network at all.
 
 [[interop]]
-== Match existing conventions where something depends on them
+== Simple
 
-Maven Central, the `~/.m2/repository` cache, `src/main/java` and Gradle's version-catalog
-notation are all kept exactly, because your IDE, your cache and other tools read them too. Where
-nothing outside kwenza looks, kwenza is free to differ: the output directory defaults to `target`
-but is one line to change.
+There's one correct way to do each thing: a thin jar, plain version strings, compilation in the
+same process. An option gets added when a real need shows up, not because another tool has it.
 
-== One correct way to do each thing
+Existing conventions are kept wherever something depends on them. Maven Central, the
+`~/.m2/repository` cache, `src/main/java` and Gradle's version-catalog notation all work as you
+expect, because your IDE, your cache and other tools read them too. Where nothing outside kwenza
+looks, kwenza is free to differ: the output directory defaults to `target` but is one line to
+change.
 
-kwenza picks one good default instead of offering every option: a thin jar, plain version
-strings, in-process compilation. An option gets added when a real need shows up, not because
-another tool has it.
+== Declarative
 
-[[reproducible]]
-== Reproducible by default
-
-`kwenza.lock` wins until you change your dependencies or pass `--update`. The same build gives
-the same result, and doesn't touch the network.
-
-== Verified, and refused when it can't be
-
-Downloaded jars are checked against the repository's checksums, and cached jars against
-`kwenza.lock`. If a check can't be made, kwenza stops rather than skipping it.
-
-== Fail fast, with the fix
-
-A mismatched JDK, a `version.ref` with no matching version, or an unknown command is reported
-before anything runs, with a message that says what to change.
-
-== Extensible through the JVM, not plugins
+`kwenza.toml` is data. It has no scripts, no plugins and no computed values, so reading it is
+enough to know what a build does, and it has no API to break between releases. `kwenza.lock`
+records exactly what that data resolved to, and wins until you change your dependencies or pass
+`--update`, so the same build gives the same result.
 
 kwenza has no plugin API. It uses the discovery the JVM already has: add any JUnit Platform test
 engine (TestNG's, say) as a dev-dependency and `kwenza test` runs it, with nothing else to
 configure.
 
-== Built from nothing but a JDK
+== Transparent
 
-kwenza has no dependencies of its own and builds itself with itself. One small script makes the
-very first jar.
+kwenza shows what it does: `kwenza run` prints the command it ran, `--verbose` shows what was
+resolved, and `KWENZA_TIMING` shows where the time went. Mistakes like a mismatched JDK, a
+`version.ref` with no matching version, or an unknown command are caught before anything runs,
+with a message that says what to change.
 
-== Java first
+== Secure
 
-The name isn't Java-specific on purpose, so other JVM languages can come later. Making Java
-builds great comes first.
+Every jar is verified before it's used: downloads against the repository's checksums, cached jars
+against `kwenza.lock`. If a check can't be made, kwenza stops rather than skipping it.
+
+kwenza itself has no dependencies. It builds itself with itself, from nothing but a JDK, so there
+is nothing upstream that could be compromised and passed on to your build.
 
 '''
 
-For contributors: the reasoning, trade-offs and open questions behind each principle are in the
+kwenza starts with Java. Its name isn't Java-specific, so other JVM languages can follow later.
+
+For contributors: the reasoning, trade-offs and open questions behind these principles are in the
 https://github.com/kwenza-build/kwenza/blob/main/docs/contributing/design-principles.adoc[long
 version] in the repo.
