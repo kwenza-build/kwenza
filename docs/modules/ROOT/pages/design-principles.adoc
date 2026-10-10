@@ -12,17 +12,14 @@ Speed is measured, never assumed. kwenza starts a fresh JVM for every command ra
 a daemon running, and the cost of that is measured and documented, not hidden. With a lockfile in
 place, a build doesn't touch the network at all.
 
-[[interop]]
 == Simple
 
 There's one correct way to do each thing: a thin jar, plain version strings, compilation in the
 same process. An option gets added when a real need shows up, not because another tool has it.
 
-Existing conventions are kept wherever something depends on them. Maven Central, the
-`~/.m2/repository` cache, `src/main/java` and Gradle's version-catalog notation all work as you
-expect, because your IDE, your cache and other tools read them too. Where nothing outside kwenza
-looks, kwenza is free to differ: the output directory defaults to `target` but is one line to
-change.
+The conventions you already know still hold: Maven Central, the `~/.m2/repository` cache,
+`src/main/java` and Gradle's version-catalog notation all work as you expect, so your IDE, your
+cache and other tools keep working too.
 
 == Declarative
 
@@ -49,11 +46,3 @@ against `kwenza.lock`. If a check can't be made, kwenza stops rather than skippi
 
 kwenza itself has no dependencies. It builds itself with itself, from nothing but a JDK, so there
 is nothing upstream that could be compromised and passed on to your build.
-
-'''
-
-kwenza starts with Java. Its name isn't Java-specific, so other JVM languages can follow later.
-
-For contributors: the reasoning, trade-offs and open questions behind these principles are in the
-https://github.com/kwenza-build/kwenza/blob/main/docs/contributing/design-principles.adoc[long
-version] in the repo.

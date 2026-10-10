@@ -38,9 +38,7 @@ jar's `Main-Class` manifest attribute.
 |`output-dir`
 |No — defaults to `"target"`
 |Where build output goes (`<output-dir>/classes`, `<output-dir>/<name>-<version>.jar`). Override
-if you'd rather match Gradle's `build`, or anything else. See xref:design-principles.adoc#interop[Design Principles]
-for why this one field was left freely overridable while most of kwenza's other conventions
-deliberately aren't.
+if you'd rather match Gradle's `build`, or anything else.
 |===
 
 [source,toml]

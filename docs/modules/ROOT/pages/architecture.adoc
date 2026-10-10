@@ -49,9 +49,3 @@ kwenza starts a fresh JVM every time instead of keeping a background daemon. Its
 about 400 ms on a small project; starting the JVM and loading the compiler adds roughly as much
 again. That's why a warm Gradle daemon can be quicker on very small projects. `KWENZA_TIMING`
 shows the split.
-
-'''
-
-For contributors: the detailed version, with the resolution algorithm, measurements and project
-layout, is in the
-https://github.com/kwenza-build/kwenza/blob/main/docs/contributing/architecture.adoc[repo].
