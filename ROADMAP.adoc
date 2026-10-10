@@ -75,27 +75,42 @@ in AGENTS.md).
 * [ ] *Distribution layout.* A versioned archive (`kwenza-<version>/bin/kwenza` plus
   `lib/kwenza.jar`), with a launcher that works outside a source checkout. Today's `bin/kwenza`
   assumes it's running in the repo (`target/` / `.bootstrap/`).
-* [ ] *Decide Windows support for 0.1.* Either ship a `kwenza.cmd` launcher and add Windows to
-  CI, or state that 0.1 is macOS/Linux only. Either is fine; say which.
+* [ ] *Windows support for 0.1.* Decided 2026-10-10: Windows is supported, installed through
+  Scoop (see below). That needs a `kwenza.cmd` (or `.ps1`) launcher and Windows added to the CI
+  matrix.
 * [ ] *Release pipeline.* Pushing a `v*` tag builds the archive in CI and publishes a GitHub
   Release with the archive and a `.sha256` per asset. Consider signing (Sigstore/cosign or
   GitHub artifact attestations), which fits "secure by default".
-* [ ] *mise / asdf.* mise's GitHub-release backend can probably install straight from the
-  release with no plugin. Verify that, and document it.
+* [ ] *mise.* `mise use -g github:kwenza-build/kwenza` installs straight from the GitHub release
+  with no plugin. Verify that it picks the right asset (the archive has no OS in its name), and
+  document it. The short `mise use kwenza` needs mise's curated registry, so it comes later.
+* [ ] *asdf plugin* (`kwenza-build/asdf-kwenza`): `bin/list-all`, `bin/download`, `bin/install`,
+  plus `bin/latest-stable`. Installed by URL at first; the asdf-plugins shortname index comes later.
 * [ ] *Homebrew tap* (`kwenza-build/homebrew-tap`), updated automatically by the release
-  pipeline.
-* [ ] *SDKMAN!* candidate. This needs SDKMAN's vendor onboarding, so start it early because it
-  depends on someone else's response time.
+  pipeline. Decide whether the formula declares a JDK dependency or relies on the user's Java.
+* [ ] *Scoop bucket* (`kwenza-build/scoop-bucket`) for Windows, updated by the release pipeline.
+  winget is a later follow-up: its submissions are reviewed by Microsoft and may need a native
+  `.exe` launcher.
+* [ ] *Install script* served from the site: `https://kwenza.dev/install.sh` (Linux, and macOS
+  without Homebrew), optionally with an `install.ps1` twin. It downloads only from GitHub
+  releases, verifies the archive's SHA-256 and fails closed on a mismatch, installs into the user's
+  home directory without `sudo`, and prints each step.
+
+Every channel checks for Java 21+ and fails fast with a clear message, since kwenza doesn't bundle
+a JDK. The channel decisions are recorded in `docs/research/kwenza-dev-design.adoc` (Band 3).
+SDKMAN! is deferred to after 0.1 (see Milestone 4), because it needs vendor approval.
 
 == Milestone 3: kwenza.dev and the 0.1.0 release
 
-* [ ] *Research the site design and brand.* This doesn't depend on any code, so it can run in
+* [x] *Research the site design and brand.* This doesn't depend on any code, so it can run in
   parallel with anything above. Survey well-regarded dev-tool sites (language toolchains, build
   tools, CLIs) for what makes a clean, simple landing page and docs experience, and pick a
   direction for kwenza.dev. kwenza also needs an icon and brand: a logo mark that works as a
   favicon, GitHub org avatar and README header, plus a small palette and type choice.
   _Done when:_ a research write-up with a recommended direction is in the repo, and the icon is
-  chosen and committed as SVG.
+  chosen and committed as SVG. Done in #4: `docs/research/kwenza-dev-design.adoc`, with mark B
+  (`docs/research/brand/concept-b-table.svg`), the wordmark and the ochre accent chosen. The site
+  lives in `kwenza-build/kwenza-dev`, and kwenza.dev is verified and served over HTTPS.
 * [ ] *Docs site with Antora.* Restructure `docs/` into an Antora component
   (`docs/antora.yml`, `modules/ROOT/pages/`, nav file). The content is already AsciiDoc, so this
   is mostly moving files and fixing `link:` xrefs. Build it in CI and publish to GitHub Pages
@@ -104,8 +119,9 @@ in AGENTS.md).
 * [ ] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
   install commands, linking into the docs. Start with the Antora UI or one static page, not a
   separate site framework.
-* [ ] *Release 0.1.0.* Write `CHANGELOG.adoc`, tag `v0.1.0`, check that every install route in
-  Milestone 2 works from a clean machine, and announce it.
+* [ ] *Release 0.1.0.* Rename `CHANGELOG.md`'s `[Unreleased]` section to `[0.1.0]` with the
+  date, tag `v0.1.0`, check that every install route in Milestone 2 works from a clean machine,
+  and announce it.
 
 == Milestone 4: After 0.1 (first iterations)
 
@@ -114,6 +130,8 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
 * [ ] *IDE support: design spike first.* Compare the realistic options before building anything:
   generating IDE project files, a Build Server Protocol (BSP) server, or a dedicated IntelliJ
   plugin. Flagged in AGENTS.md as important to land early.
+* [ ] *SDKMAN! candidate.* Deferred from Milestone 2 because it needs SDKMAN's vendor
+  onboarding (email the SDKMAN team, then publish through their State API).
 * [ ] *`kwenza new`*: scaffold a project, so the first-run experience doesn't start from a blank
   `kwenza.toml`.
 * [ ] *`--offline`*: the lockfile plus a warm `~/.m2` already make this mostly possible; make it

@@ -542,6 +542,13 @@ close most of this gap — flagged as a real future optimization, intentionally 
   Node/Python dependency (Husky, pre-commit) or `bootstrap.sh` reaching beyond its actual job of
   bootstrapping the build. Unenforced-for-some-contributors was judged worse than not enforced at
   all, so it's just a documented convention now.
+- **Every PR brings the project's records up to date in the same PR.** A user-facing change (a
+  new or changed command, flag, manifest field, behaviour, or a fix a user would notice) adds an
+  entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md), using Keep a Changelog's
+  categories (Added, Changed, Deprecated, Removed, Fixed, Security). A PR that finishes a
+  [ROADMAP.adoc](ROADMAP.adoc) item ticks it (`[x]`). Docs-only, CI and internal-refactor PRs need
+  no changelog entry. The checklist in `.github/pull_request_template.md` asks for both, so a
+  reviewer catches a miss.
 - New work follows TDD: agree the seam under test before writing anything (don't test unconfirmed
   internals), red before green, one seam/one test/one minimal change per cycle - not writing a pile
   of tests before any of the matching implementation exists. Mock only real external-API
