@@ -25,7 +25,7 @@ first jar has to come from somewhere else: a small `bootstrap.sh` script using p
 
 [source,bash]
 ----
-git clone <this-repo> && cd kwenza
+git clone https://github.com/kwenza-build/kwenza.git && cd kwenza
 ./bootstrap.sh
 ----
 
