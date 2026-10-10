@@ -717,16 +717,14 @@ On 2026-10-10 the maintainer chose:
 mise and asdf as version managers. SDKMAN is deferred because it needs approval (Band 3).
 
 The brand files are now the source for the favicon, the GitHub org avatar, the README header and the
-kwenza.dev header. One follow-up from 4.5 still applies to the chosen mark: compare it against
-Square's logo and run a real trademark clearance search before it goes on anything official.
+kwenza.dev header. Trademark checks on the name and the chosen mark are tracked separately, outside
+this repository.
 
 == 6. Still open
 
 . *Plex everywhere, or system fonts plus Plex Mono only* (4.3)?
 . *winget* as a follow-up to Scoop, once it's clear whether it needs a native launcher (Band 3).
 . *Homebrew's JDK dependency*: declare one in the formula, or rely on the user's Java (Band 3)?
-. *A real trademark clearance search* before the mark goes on anything official. 4.5 is a visual
-  collision check, not a legal one.
 
 Practical notes for whoever builds it:
 
