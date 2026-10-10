@@ -404,7 +404,10 @@ close most of this gap — flagged as a real future optimization, intentionally 
 kwenza tests itself: `bin/kwenza test` runs a real JUnit 5 suite under `src/test/java`, mirroring
 the main package layout one test class per module (`toml/TomlTest`, `resolver/ResolverTest`,
 `commands/BuildStateTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
-pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test`. Beyond that:
+pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test`. CI
+(`.github/workflows/ci.yml`) runs that suite plus the three example checks below
+(`.github/scripts/smoke-examples.sh`) from a clean bootstrap on every push and PR. If you add or
+change one of those checks, keep the script in sync with this list. Beyond that:
 
 - [`examples/hello-world`](examples/hello-world) — a small real project (one Maven Central
   dependency) used as a manual end-to-end smoke test for resolve/compile/package/run.
