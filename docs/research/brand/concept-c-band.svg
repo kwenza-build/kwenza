@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="kwenza concept C: bead band">
+  <title>kwenza — concept C: bead band</title>
+  <style>.i{fill:var(--k-ink,#16181D)}.a{fill:var(--k-accent,#B87C0C)}.si{stroke:var(--k-ink,#16181D)}.sa{stroke:var(--k-accent,#B87C0C)}.p{fill:var(--k-paper,#FAF8F4)}@media (prefers-color-scheme:dark){:root{--k-ink:#ECE8E1;--k-accent:#EDB341;--k-paper:#141518}}</style>
+  <!-- A band of interlocking triangles, a nod to the geometric bands of Southern African beadwork:
+       something made by hand from one small unit, repeated. -->
+  <path class="i" d="M0.5 15L5.75 3 11.0 15z M10.75 15L16.0 3 21.25 15z M21 15L26.25 3 31.5 15z"/>
+  <path class="a" d="M6.75 3h8.5L11.0 13.6z M17.0 3h8.5L21.25 13.6z"/>
+  <path class="a" d="M0.5 29L5.75 17 11.0 29z M10.75 29L16.0 17 21.25 29z M21 29L26.25 17 31.5 29z"/>
+  <path class="i" d="M6.75 17h8.5L11.0 27.6z M17.0 17h8.5L21.25 27.6z"/>
+</svg>

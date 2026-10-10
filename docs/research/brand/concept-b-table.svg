@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="kwenza concept B: declared block">
+  <title>kwenza — concept B: declared block</title>
+  <style>.i{fill:var(--k-ink,#16181D)}.a{fill:var(--k-accent,#B87C0C)}.si{stroke:var(--k-ink,#16181D)}.sa{stroke:var(--k-accent,#B87C0C)}.p{fill:var(--k-paper,#FAF8F4)}@media (prefers-color-scheme:dark){:root{--k-ink:#ECE8E1;--k-accent:#EDB341;--k-paper:#141518}}</style>
+  <!-- A TOML table header's brackets around a solid block: you declare the thing, kwenza makes it. -->
+  <path class="si" d="M11 3.5H4.5v25H11M21 3.5h6.5v25H21" fill="none" stroke-width="4"/>
+  <rect class="a" x="11" y="11" width="10" height="10" rx="1"/>
+</svg>

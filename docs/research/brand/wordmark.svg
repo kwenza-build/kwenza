@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -2 109 28" width="218" height="56" role="img" aria-label="kwenza">
+  <title>kwenza wordmark</title>
+  <style>.i{fill:var(--k-ink,#16181D)}.a{fill:var(--k-accent,#B87C0C)}.si{stroke:var(--k-ink,#16181D)}.sa{stroke:var(--k-accent,#B87C0C)}.p{fill:var(--k-paper,#FAF8F4)}@media (prefers-color-scheme:dark){:root{--k-ink:#ECE8E1;--k-accent:#EDB341;--k-paper:#141518}}</style>
+  <!-- Hand-drawn monoline geometric lowercase; no font dependency. Baseline y=24, x-height y=8. -->
+  <g class="si" fill="none" stroke-width="3.4" stroke-linecap="butt" stroke-linejoin="round" stroke-miterlimit="1">
+    <path d="M2 0v24M13 8l-8.6 8.4M7.2 13.6L13.5 24"/>
+    <path d="M17.5 8l3.6 16 3.6-12 3.6 12 3.6-16"/>
+    <path d="M36.5 16h15.5a7.75 7.75 0 1 0-2.27 5.48"/>
+    <path d="M57 24V8M57 14.5a6 6 0 0 1 12 0V24"/>
+    <path d="M73 9.7h12L73 22.3h12.5"/>
+    <circle cx="97" cy="16" r="6.3"/><path d="M104.6 8v16"/>
+  </g>
+</svg>

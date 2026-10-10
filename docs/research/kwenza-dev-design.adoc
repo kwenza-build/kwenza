@@ -1,0 +1,661 @@
+= kwenza.dev: site design and brand research
+:toc:
+:toclevels: 2
+
+This is research for a maintainer, not a decision record. It is the first step of the kwenza.dev
+work: a home page plus the AsciiDoc manual as an Antora site, hosted on GitHub Pages under the
+already-owned `kwenza.dev` domain. It covers:
+
+* a survey of developer-tool websites,
+* *one* recommended direction for the site,
+* a brand proposal: palette, type and three logo-mark concepts.
+
+The concepts are drawn as SVGs under link:brand/[`brand/`] and compared side by side in
+link:brand/preview.html[`brand/preview.html`]. Nothing here builds the site or picks the final
+icon. The icon choice is left open on purpose.
+
+== Summary
+
+* *What clean dev-tool sites have in common* is a short list, and every item is cheap to copy:
+** a one-line pitch;
+** the real artifact above the fold (for the tools closest to kwenza, mise and Mill, that's the
+   manifest itself);
+** one copyable install line, with tabs only where the commands differ;
+** 3–5 nav items;
+** an off-the-shelf docs generator with a three-column layout, client-side search and light
+   theming;
+** one sans, one mono, one accent colour, and dark mode that follows the system.
+* *Recommended direction: one Antora site, not two generators.* The home page is an ordinary
+  AsciiDoc page with `:page-layout: home`. The look comes from Antora's default UI plus a small
+  *supplemental UI* (header, footer, one `home.hbs` layout, one stylesheet of colour tokens with a
+  `prefers-color-scheme` dark mode). Search uses `@antora/lunr-extension`. The playbook and UI live
+  in a separate `kwenza-build/kwenza.dev` repo that pulls `docs/` from the kwenza repo, so Node
+  never enters kwenza's own zero-dependency build. Deploy uses GitHub's own Pages actions. The
+  custom domain is set in repo settings, not with a `CNAME` file.
+* *Brand: an ochre accent on warm neutrals, IBM Plex Sans and Plex Mono, and three mark concepts.*
+  The recommendation is *concept B, "declared block"* `[■]`: TOML's table brackets around the thing
+  being made. It is the only concept that points at kwenza's real difference (the manifest is
+  data). It isn't a letter, so it stays out of the crowded "K" field, and it's crisp at 16px. A
+  collision check against about 120 existing marks led to dropping two earlier concepts (one was
+  too close to KuCoin and Kotlin). The remaining near neighbours are listed in 4.5.
+
+'''
+
+== 1. Survey: what the clean ones do
+
+All pages were fetched on 2026-10-10. The pages were read directly, and fonts, colours and the
+generator were pulled from each site's own HTML and CSS. Where a fact couldn't be confirmed from
+the source it is marked _unverified_.
+
+[cols="1,2,2,2,2",options="header"]
+|===
+| Site | Pitch / above the fold | Install | Docs stack | Look
+
+| https://docs.astral.sh/uv/[uv] (https://astral.sh/[Astral])
+| "An extremely fast Python package and project manager, written in Rust." Then a benchmark bar
+  chart.
+| `curl … \| sh`, tabs for macOS and Linux / Windows, copy button.
+| MkDocs Material, left nav, right TOC, built-in client-side search. No versions.
+| Stock Material with a colour swap: aubergine `#261230`, lime `#d7ff64`. Three-state theme toggle
+  (auto, light, dark). Roboto/Roboto Mono.
+
+| https://bun.sh/[Bun]
+| "Bun is a fast JavaScript runtime & toolkit. All in one." Benchmark chart beside it. A release
+  pill above.
+| `curl -fsSL https://bun.sh/install \| bash`, macOS & Linux / Windows tabs, "View install script".
+| Custom generator with Pagefind search. Left nav, "Copy page", "Edit on GitHub".
+| Archivo display face, system UI body, Martian Mono. Pink and cream accents. Clear hero, but
+  dense below it (10+ sections).
+
+| https://deno.com/[Deno]
+| "Better, faster JavaScript". An animated list of subcommands.
+| `curl … \| sh`, MacOS/Linux / Windows tabs.
+| Custom generator (_unverified_: Lume) with Orama search. Top tabs, left nav, right TOC, theme
+  toggle, `llms.txt`.
+| Inter. Dino mark in a circle with a lowercase wordmark. Crisp hero, about 17 sections below it.
+
+| https://doc.rust-lang.org/cargo/[Cargo]
+| No hero: "The Cargo Book" plus one paragraph.
+| Hands off to rustup.
+| mdBook: collapsible chapter sidebar, `S`/`/` search, theme picker (Auto plus 5 themes),
+  prev/next.
+| Open Sans and Source Code Pro. No logo in the page chrome. Just a book.
+
+| https://rustup.rs/[rustup]
+| The page _is_ the install command.
+| OS auto-detect ("You appear to be running Unix"), one command, a copy button.
+| None.
+| Fira Sans/Mono, teal links, follows the system dark mode. The minimal extreme.
+
+| https://mise.jdx.dev/[mise]
+| "Dev tools, env vars, and tasks in one CLI". The hero visual is a *tabbed `mise.toml`* with
+  example terminal output.
+| `curl -fsSL https://mise.run \| sh`, copy button, link to Windows.
+| VitePress, left nav, right outline, Algolia, appearance toggle.
+| Rose accent on dark. The closest analogue to kwenza: a TOML manifest *is* the pitch.
+
+| https://biomejs.dev/[Biome]
+| "One toolchain for your web project" / "Format, lint, and more in a fraction of a second."
+| Package-manager tabs (npm/pnpm/bun/deno/yarn).
+| Astro Starlight with Pagefind, a version selector and about 9 languages.
+| Geist and JetBrains Mono, blue accent. Three nav items.
+
+| https://vite.dev/[Vite]
+| "The Build Tool for the Web" plus one sentence, then a terminal `npm create vite@latest`.
+| Package-manager tabs.
+| VitePress with *local* search (not Algolia), a version list and a theme toggle.
+| Near-black background with blue and purple accents.
+
+| https://gleam.run/[Gleam]
+| "Gleam is a friendly language for building type-safe systems that scale!" Hello-world code
+  directly below.
+| A separate `/install` page.
+| Hand-written static pages, no sidebar, no search.
+| Two named colours (pink `#ffaff3`, cream) and a mascot. Lexend, Outfit and Cascadia Mono. *No
+  dark mode.*
+
+| https://ziglang.org/[Zig]
+| One-sentence pitch with real Zig test code and its output above the fold.
+| A getting-started page listing downloads and package managers. No one-liner.
+| Plain static pages, no search.
+| *System fonts only, no webfonts.* About 13 KB of HTML. `color-scheme: light dark` follows the
+  system. Orange `#f7a41d`.
+
+| https://www.jbang.dev/[JBang] (JVM)
+| About 17 words over a stock photo of coffee and a laptop. No code on the home page.
+| `/download`: Windows/Linux/macOS tabs listing about 15 channels (curl, PowerShell, SDKMAN,
+  Homebrew tap, Scoop, mise, …).
+| *Antora 3.2.1, near-stock default UI*, Algolia. The landing page uses a *different generator*
+  (Quarkus Roq) and the docs live under `/documentation/`.
+| Montserrat landing, Roboto docs, red accent. No dark mode. Dated landing, generic docs.
+
+| https://mill-build.org/[Mill] (JVM build tool)
+| *No landing page*: `/` redirects into the Antora docs, whose home page leads with "Simpler than
+  Maven / Easier than Gradle / Faster" and `build.mill.yaml` next to the equivalent `pom.xml`.
+| In the docs only.
+| *Antora 3.1.12, default UI* with a dark navbar and *Lunr* search. Version selector.
+| Roboto, link blue `#1565c0`. No dark mode. Serviceable but generic, and the default UI's
+  placeholder "Product B / Service A" menu items are still in the markup.
+
+| https://gradle.org/[Gradle]
+| About 35 words of corporate pitch, announcement bars, a course promo, a cookie banner.
+| Not on the home page.
+| Plain Asciidoctor (*not* Antora) with custom chrome and Algolia.
+| Lato and Inconsolata, navy and teal. Marketing-heavy.
+
+| https://maven.apache.org/[Maven]
+| "Welcome to Apache Maven" and a grid of links.
+| Separate pages.
+| Maven Doxia with the Fluido skin (Bootstrap 2 era).
+| Helvetica, no dark mode. The baseline to avoid.
+
+| https://antora.org/[Antora] / https://docs.antora.org/antora/latest/[docs]
+| "The single or multi-repository documentation site generator for tech writers who ♡ writing in
+  AsciiDoc."
+| —
+| docs.antora.org *is* the default UI: dark `#191919` navbar, left nav with component/version
+  selector, breadcrumbs, "Edit this Page", right "Contents".
+| Roboto/Roboto Mono, `#1565c0` links, *no dark mode*.
+|===
+
+=== Patterns worth copying
+
+. *The pitch is one line.* Name plus "what it is" in 15 words or fewer: uv 14, Biome 7, Vite 6,
+  Deno 3. The sub-line is one benefit sentence. Long heroes (Gradle, JBang) read as marketing.
+. *Above the fold is a real artifact, not prose.* That's a config file (mise's `mise.toml`, Mill's
+  `build.mill.yaml` against `pom.xml`), code (Zig, Gleam), a command (Vite) or a benchmark (uv,
+  Bun). The two tools closest to kwenza both lead with *the manifest itself*.
+. *Install is one copyable line.* Tabs appear only where commands actually differ: OS tabs for
+  uv, Bun and Deno, package-manager tabs for Vite and Biome, auto-detect for rustup. Everything
+  else goes behind an "other install options" link. JBang shows how a list of 15 channels belongs
+  on its own page, not the home page.
+. *The nav has 3–5 items* plus search and a GitHub link. Gradle and Maven are the outliers.
+. *Docs use three columns:* left nav, content, right on-page TOC, plus `/` or ⌘K search,
+  prev/next and "Edit this page". Search is usually *client-side and self-hosted*: Material's
+  built-in, VitePress local, Pagefind, Orama, mdBook, Antora Lunr. Algolia DocSearch is the hosted
+  alternative.
+. *An off-the-shelf generator, lightly themed.* The brand comes from colour tokens and at most one
+  display font, not a custom layout (Material for uv, Starlight for Biome, VitePress for Vite and
+  mise). Stock Antora (Mill, JBang) works but looks circa 2018: Roboto, `#1565c0`, no dark mode.
+  That's the specific gap kwenza would need to close.
+. *Type is one sans and one mono.* A display face is optional. Zig shows that system fonts alone
+  can look clean.
+. *Colour is one neutral base and one saturated accent:* uv lime, Zig orange, Gleam pink, Biome
+  blue. *Dark mode follows the system* almost everywhere, usually with a toggle. Gleam, Maven and
+  the Antora default UI are the exceptions.
+. *The logo is one idea in one or two colours,* usually a mark plus wordmark lockup (Deno, Zig,
+  Biome, Gleam, JBang's `#!`). Some use a pure wordmark (rustup, Astral, mise).
+. *A version pill or "latest release" sits near the hero* (Bun, Deno, Zig). A docs version
+  selector appears only once more than one release line is supported (Vite, Biome, Mill, Spring).
+
+'''
+
+== 2. Recommended direction: the landing page
+
+One page and four bands, nothing below them except the footer. It follows the clean pattern above
+and is deliberately shorter than Bun, Deno or Gradle.
+
+=== Band 1: pitch
+
+----
+[■] kwenza                                     Docs   Reference   GitHub   🔍
+───────────────────────────────────────────────────────────────────────────────
+
+  A simple, declarative build tool for the JVM.
+
+  Your build is a TOML file, not a program. Real Maven Central dependencies,
+  your existing ~/.m2 cache, standard src/main/java.
+
+  [ Get started ]   v0.1.0 · release notes
+----
+
+* *Headline: "A simple, declarative build tool for the JVM."* That's eight words, and it's the
+  README's own first line, so the site and the repo say the same thing. The mission line ("Make
+  builds with Java fun and easy again", from link:../design-principles.adoc[design principles]) is
+  warmer but less descriptive. It fits better as the docs home's opening than as the headline.
+* *Sub-line:* the declarative claim, then the three interop facts a Java developer will check first.
+  Every claim must be true today. No claims about speed above the fold until the benchmarks back
+  them for the scenario a visitor would assume (see link:../../benchmarks/README.adoc[benchmarks]:
+  kwenza wins cold resolution and loses to a warm Gradle daemon on tiny projects. The page should
+  say exactly that, or say nothing).
+* *Nav: Docs, Reference, GitHub, plus search.* Three items. "Reference" goes straight to the CLI
+  and manifest references, which is where returning users go.
+* *A version pill* links to the GitHub release.
+
+=== Band 2: the first 30 seconds
+
+The manifest on the left and a real terminal session on the right, like mise and Mill. This is the
+whole pitch: there's nothing else to read.
+
+[source,toml]
+----
+# kwenza.toml
+[package]
+group = "com.example"
+version = "0.1.0"
+java-version = "21"
+main-class = "com.example.Main"
+
+[dependencies]
+guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
+----
+
+[source,console]
+----
+$ kwenza run
+resolve: using locked dependencies (kwenza.lock)
+compile: target/classes
+run: java -cp target/classes (+7 dependency jars) com.example.Main
+Hello from Kwenza: kwenza builds java
+----
+
+The manifest is `examples/hello-world/kwenza.toml` verbatim. The terminal output is a real
+`kwenza run` of that example, captured on 2026-10-10. When the site is built, both should be
+*included from the repo*, not pasted, so they can't drift: Antora `include::` of the example's own
+file, plus a transcript captured in CI. That's the same reasoning as the
+`benchmarks/*/src` → `examples/*/src` symlink rule in AGENTS.md. The `run:` line showing the exact
+`java` command is worth keeping on the page, because it's *transparent* demonstrated rather than
+claimed.
+
+Optional tabs above the manifest, mise-style: *App* (the above), *Tests* (`[dev-dependencies]`
+plus `kwenza test`) and *Package* (`kwenza package` and the thin jar's `Class-Path`). Two or three
+tabs at most.
+
+=== Band 3: install
+
+Tabs for *mise | Homebrew | SDKMAN*, one line each, with a copy button and an "other options" link
+to the docs' install page. These are the channels the task asked for. None of them exists yet, so
+each line is a promise the distribution work (AGENTS.md, "Real cross-platform distribution") has to
+keep before the page ships.
+
+[cols="1,2,3",options="header"]
+|===
+| Channel | Command | What has to exist first
+
+| mise
+| `mise use -g github:kwenza-build/kwenza`
+| GitHub releases with platform-named archives. mise's `github:` backend picks the asset for the
+  OS and architecture, verifies it and extracts it. It's a documented, non-experimental backend
+  (https://mise.jdx.dev/dev-tools/backends/github.html[mise docs]). A shorter `mise use -g kwenza`
+  needs a registry entry later.
+
+| Homebrew
+| `brew install kwenza-build/tap/kwenza`
+| A `kwenza-build/homebrew-tap` repo with a `kwenza` formula. The fully qualified name installs
+  and trusts just that formula, in one step (https://docs.brew.sh/Taps[Homebrew: Taps]).
+
+| SDKMAN
+| `sdk install kwenza`
+| A candidate registered by emailing the SDKMAN team (JVM-ecosystem tools are eligible), then
+  releases pushed through their State API as well-formed SDK archives
+  (https://sdkman.io/vendors[SDKMAN vendors]). It's the channel Java developers already trust, and
+  it's also the one with the longest lead time, so start it first.
+|===
+
+A `curl | sh` tab is deliberately *not* proposed for 0.1: every JVM user already has one of the
+three above, or can get one, and a pipe-to-shell installer is one more security surface to own
+(design principles, "Secure by default"). A Windows story is still missing whichever way this
+goes. That's AGENTS.md's open distribution question, not a site question.
+
+=== Band 4: why (four short cards)
+
+One sentence each, each linking to the doc that proves it. They map one-to-one to the pillars:
+
+* *Declarative:* "The manifest is data. It never runs, so reading it tells you everything." →
+  manifest reference.
+* *Interoperable:* "Maven Central, `~/.m2`, `src/main/java`. Your IDE and cache keep working." →
+  architecture.
+* *Reproducible:* "`kwenza.lock` wins by default. No network unless your dependencies changed." →
+  lockfile docs.
+* *Transparent:* "Every command prints what it actually ran." → CLI reference.
+
+Leave "Fast" off until it can be stated without an asterisk (see Band 1).
+
+Then the footer: GitHub, licence, "kwenza is isiXhosa for _to make_", and an "Edit this page"
+link.
+
+'''
+
+== 3. Recommended direction: how it is built
+
+=== 3.1 One Antora site, with the home page as an Antora page
+
+Three ways of joining a landing page to Antora docs turned up in the survey:
+
+[cols="2,3,3",options="header"]
+|===
+| Option | Seen at | Cost for kwenza
+
+| *A. Custom home page inside the Antora site* (`:page-layout: home`)
+| docs.couchbase.com (`<body class="landing-page">`), docs.asciidoctor.org (custom `home` role)
+| One generator, one build, one deploy, one stylesheet. The home page is AsciiDoc like everything
+  else and shares the header, footer and search for free.
+
+| B. Separate static landing page at `/`, Antora under a path
+| jbang.dev (Quarkus Roq at `/`, Antora at `/documentation/`)
+| Two generators, two headers and stylesheets to keep in sync, two build steps. JBang's landing and
+  docs visibly look like two different sites.
+
+| C. No landing page: `/` redirects into the docs
+| mill-build.org
+| Simplest, but you lose the first-30-seconds band entirely, and that band is the pitch.
+|===
+
+*Recommendation: A.* The mechanics are all stock Antora (https://docs.antora.org/antora/latest/[docs]):
+
+* `docs/antora.yml` declares a single component with *`version: ~`* (unversioned). URLs then carry
+  no version segment, which is right while there's one release line. Add versions only when a
+  second supported line exists, same as Vite, Biome and Mill.
+* The home page is `modules/ROOT/pages/index.adoc` with `:page-layout: home`. The `page-layout`
+  attribute picks `layouts/home.hbs` for just that page. `site.start_page` points the site root at
+  it.
+* The page's bands are ordinary AsciiDoc blocks with roles (`[.hero]`, `[.cards]`), styled by the
+  supplemental stylesheet. The landing page stays as editable as any other doc.
+
+=== 3.2 The UI: default bundle plus supplemental files, not a forked bundle
+
+Antora's look comes from a *UI bundle*: a zip of Handlebars layouts, partials, CSS and JS, built
+with Gulp. A *supplemental UI* (`ui.supplemental_files` in the playbook) is overlaid on the bundle
+file by file: the same path replaces a file, a new path adds one. Files listed under
+`static_files` in a supplemental `ui.yml` are published to the site root.
+
+*Recommendation: start from the default UI with a small supplemental UI.* The overlay is:
+
+* `partials/header-content.hbs`: logo lockup, Docs, Reference, GitHub, search. This also removes
+  the default UI's placeholder Products/Services menus, which mill-build.org still ships hidden in
+  its markup.
+* `partials/footer-content.hbs`.
+* `partials/head-meta.hbs`: the SVG favicon, a PNG fallback, `theme-color` for light and dark, and
+  the `kwenza.css` link.
+* `layouts/home.hbs`: the landing page layout (no left nav, no TOC).
+* `css/kwenza.css`: the `--k-*` tokens from section 4.2, the font faces, and the band and card
+  styles.
+* `fonts/*.woff2`: self-hosted IBM Plex.
+* `img/`: the mark and the lockup.
+
+That's about eight small files and no build toolchain of their own. Forking the whole UI bundle is
+the documented heavier alternative (`ui.bundle.url` pointing at kwenza's own zip), but it means
+owning a Gulp and Node build forever.
+
+*The one known pressure point is dark mode.* The default UI has no dark mode and hard-codes its
+colours across many selectors (link blue `#1565c0`, greys `#fafafa`/`#f0f0f0`/`#e1e1e1`, navbar
+`#191919`). Following `prefers-color-scheme` from a supplemental stylesheet means overriding each
+of those. That's tedious but bounded, and a system-following dark mode with *no toggle* (the
+Zig/rustup approach) needs no JavaScript at all. If those overrides grow past one readable
+stylesheet, that's the signal to fork the bundle. Spring did, and its own Antora UI has a dark
+toggle (docs.spring.io). Fork when that signal fires, not up front.
+
+=== 3.3 Search: `@antora/lunr-extension`
+
+Search should be client-side and self-hosted, matching the survey's majority, with no third-party
+service or account. The extension is `@antora/lunr-extension`, registered under
+`antora.extensions` in the playbook. It writes a `search-index.js` to the site root with
+*relative* result URLs, so search works on any host. The default UI already fulfils the
+extension's UI contract (`#search-input` plus the `search-scripts` partial), so it works with zero
+UI changes. One caveat: it's still versioned `1.0.0-alpha.13` on npm and requires Node 20+ and
+Antora 3.2. Algolia DocSearch (used by JBang, Spring and docs.antora.org itself) is the hosted
+fallback if Lunr's quality isn't enough.
+
+=== 3.4 Where it lives: a separate `kwenza-build/kwenza.dev` repo
+
+Antora is a Node tool. The kwenza repo's defining property is zero external dependencies and a
+self-hosted build (AGENTS.md). A `package.json`, a playbook and a UI overlay in that repo would be
+the first Node in it.
+
+*Recommendation:*
+
+* *The kwenza repo keeps the content.* `docs/` gains an `antora.yml` and moves into Antora's
+  `modules/ROOT/pages/` layout, so the manual is still versioned with the code it describes.
+* *A new `kwenza-build/kwenza.dev` repo holds* the playbook, `package.json` (Antora plus the Lunr
+  extension), the supplemental UI and the Pages workflow. The playbook's `content.sources` points
+  at the kwenza repo with `start_path: docs`.
+* *`docs/research/` is excluded* from the published site. It's maintainer material, and
+  AGENTS.md's own links into it should keep working on GitHub.
+
+Moving `docs/*.adoc` into `docs/modules/ROOT/pages/` breaks the README's existing relative links.
+Update them in the same change. That move is real work for the site-building milestone, not
+something to do as part of this research.
+
+=== 3.5 Hosting: GitHub Pages with Actions, on kwenza.dev
+
+From GitHub's docs (https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site[custom domains],
+https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages[custom workflows],
+https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https[HTTPS]):
+
+* *Source = GitHub Actions* (Settings → Pages). The workflow runs:
+** `actions/checkout`, then `npx antora antora-playbook.yml`;
+** `actions/configure-pages@v5`;
+** `actions/upload-pages-artifact@v4` with `path: build/site` (its default `_site/` is wrong for
+   Antora);
+** `actions/deploy-pages@v4`, in a job with `permissions: pages: write, id-token: write` and the
+   `github-pages` environment.
++
+Antora's own guide uses the same actions
+(https://docs.antora.org/antora/latest/publish-to-github-pages/[Antora: publish to GitHub Pages]).
+* *DNS for the apex `kwenza.dev`:*
+** A records to `185.199.108.153`, `.109.153`, `.110.153` and `.111.153`;
+** AAAA records to `2606:50c0:8000::153` through `8003::153`;
+** `www` as a CNAME to `kwenza-build.github.io`. GitHub redirects between the apex and `www` once
+   both are configured.
+* *Verify the domain* at the organisation level first, to rule out takeover.
+* *No `CNAME` file.* With an Actions workflow, GitHub ignores any `CNAME` file, so the custom domain
+  is set in Settings → Pages. `.nojekyll` is also unnecessary, because no Jekyll build runs on the
+  Actions path. Both only matter for branch publishing.
+* *Enforce HTTPS* in the same settings page. The Let's Encrypt certificate can take up to an hour.
+  If the domain ever has CAA records, one must allow `letsencrypt.org`. `.dev` is HSTS-preloaded,
+  so nothing works over plain HTTP anyway until that certificate exists.
+
+'''
+
+== 4. Brand proposal
+
+Everything in this section is a proposal for the user to pick from. Nothing is final. The SVGs live
+in link:brand/[`brand/`], and link:brand/preview.html[`brand/preview.html`] shows every concept at
+16, 32 and 128px, as a browser-tab favicon, and cropped to a circular GitHub org avatar, on both the
+light and dark backgrounds. Open it locally in a browser; it is a single self-contained file.
+
+=== 4.1 What the brand has to say
+
+Three things, in this order:
+
+. *Making.* "Kwenza" is isiXhosa for "to make". The tool makes things (jars, a lockfile, a classpath)
+  out of a declaration.
+. *Declared, not scripted.* The manifest is data, not a program (see
+  link:../design-principles.adoc[design principles]). This is kwenza's one real difference from
+  Maven and Gradle, and the one thing a mark can usefully hint at.
+. *Small and fast.* Nothing ornamental. A mark built from a few flat shapes on a grid, one accent
+  colour, no gradients.
+
+It should also *not* say "Java". The name was chosen to leave room for other JVM languages (see
+AGENTS.md, "The name"), so coffee cups, steam, beans and Duke are out, and so is the red/orange and
+blue of Java's own palette.
+
+=== 4.2 Palette
+
+Two neutrals and one accent per theme. The accent is an *ochre*: the colour of earth pigment and
+fired clay, a material for making things. It also sits clear of the colours its neighbours own:
+Java and Maven (red and orange), Kotlin (purple-to-orange gradient), Gradle (dark teal), Spring and
+Bazel (green), and Scala (red).
+
+[cols="2,1,1,3",options="header"]
+|===
+| Role | Light | Dark | Notes
+
+| Background (`--k-paper`)
+| `#FAF8F4`
+| `#141518`
+| A warm off-white and a near-black with a hint of blue. Both are deliberately not pure
+  `#FFF`/`#000`.
+
+| Ink, i.e. text and the mark (`--k-ink`)
+| `#16181D`
+| `#ECE8E1`
+| Contrast with the background is 16.7:1 (light) and 15.0:1 (dark).
+
+| Muted text
+| `#5D6068`
+| `#9A9DA4`
+| 5.9:1 and 6.7:1, so it passes WCAG AA for body text.
+
+| Accent, used for the mark and graphics (`--k-accent`)
+| `#B87C0C`
+| `#EDB341`
+| 3.3:1 on light and 9.7:1 on dark, which passes WCAG 1.4.11 (3:1) for non-text graphics. The light
+  value is *not* dark enough for body text.
+
+| Accent text, used for links on light (`--k-accent-text`)
+| `#8F5E00`
+| `#EDB341`
+| 5.3:1 on light. Use this one, not `--k-accent`, wherever the accent colours text.
+|===
+
+The contrast ratios were computed with the WCAG 2.x relative-luminance formula. They weren't
+eyeballed.
+
+=== 4.3 Type
+
+*Recommendation: IBM Plex Sans for text and headings, IBM Plex Mono for code.* Both are SIL Open Font
+License 1.1 (https://github.com/IBM/plex[github.com/IBM/plex]).
+
+* *One superfamily.* The sans and mono were drawn together, so a heading, a sentence and an inline
+  `kwenza.toml` key all sit on the same metrics without any tuning.
+* *The mono does the heavy lifting.* Most of kwenza's pages are TOML and terminal sessions. Plex Mono
+  has unambiguous `0/O`, `1/l/I` and a clear `[`/`]` (the brackets matter here, see concept B).
+* *Not owned by a dev tool.* JetBrains Mono would read as "Kotlin/IntelliJ", and Geist as "Vercel".
+  Plex is IBM's corporate face, but it's widely used outside IBM and isn't associated with any build
+  tool.
+* *Self-host the `woff2` files* in the site's own assets rather than loading them from Google Fonts.
+  That means no third-party request on a page about a tool that cares about supply-chain trust,
+  and it works the same under Antora's UI bundle (fonts are just static files in the bundle).
+
+The simplest fallback is a system font stack for text (`system-ui, -apple-system, "Segoe UI",
+Roboto, sans-serif`) with Plex Mono kept for code only. That means one font download instead of
+three. It's worth considering if page weight ends up mattering more than a consistent look.
+
+The *wordmark doesn't use either font.* It's hand-drawn monoline geometry
+(link:brand/wordmark.svg[`wordmark.svg`]), so it renders identically everywhere with no font
+dependency and no font licence question for the logo itself.
+
+=== 4.4 Logo-mark concepts
+
+All three are hand-written SVG on a 32×32 grid with whole- or half-unit coordinates, so they snap to
+the pixel grid at 16px and 32px. Each file carries its own light and dark colours: a `<style>` block
+with CSS custom properties and a `prefers-color-scheme: dark` override. As a favicon it follows the
+OS theme (supported for SVG favicons in Chromium and Firefox), and inlined on a page it takes the
+page's `--k-*` variables.
+
+==== Concept A: Grid k (link:brand/concept-a-grid.svg[`concept-a-grid.svg`])
+
+A `k` made of six rounded blocks on a 3×3 grid: a stem of three, the two arm ends, and the joint in
+the middle in the accent colour.
+
+* *Why:* "made from simple parts, nothing hidden". Each block is visible and countable, a direct
+  picture of *transparent* and *simple*. The joint is where the parts become a thing.
+* *At 16px:* every block is a clean 4×4px square with a 1px gap. It's the crispest of the three at
+  favicon size.
+* *Weakness:* it's a letter, and K marks are a crowded field (see 4.5). The nearest neighbour is
+  Kick's blocky stepped `K`. This one differs in having separate blocks with gaps and an accent
+  joint, but the family resemblance is there. Its meaning ("blocks") is also generic. It says
+  "builds" but not "declares".
+
+==== Concept B: Declared block (link:brand/concept-b-table.svg[`concept-b-table.svg`]), recommended
+
+A solid ochre block between a pair of square brackets: `[■]`.
+
+* *Why:* the brackets are TOML's table header, `[package]`, `[dependencies]`, the first thing anyone
+  sees in a `kwenza.toml`. The block inside is the thing that gets made. You declare it, kwenza
+  makes it. This is the only one of the three concepts that points at kwenza's actual difference
+  (the manifest is data). It's also not a letter, so it doesn't compete in the crowded K space and
+  doesn't tie the brand to Java or to any one language.
+* *At 16px:* 2px brackets and a 5px block. It reads clearly, the open top and bottom keep it from
+  turning into a solid square, and it survives a circular avatar crop with room to spare.
+* *Weakness:* brackets are a common "code" motif. The nearest marks found were Square's (Block Inc.)
+  logo, a closed rounded ring around a small square, and RoboStrategy's outward-facing `][`. B
+  differs from both: its brackets are open at the top and bottom and face inward, it uses a
+  two-colour treatment, and it relates specifically to TOML. But the user should look at it next to
+  Square's mark before adopting it.
+* Works as a text motif too: `[■] kwenza` or `[kwenza]` echo naturally in docs headings and the
+  README header.
+
+==== Concept C: Bead band (link:brand/concept-c-band.svg[`concept-c-band.svg`])
+
+Two rows of interlocking triangles in alternating ink and ochre. It's a nod to the geometric bands
+of Southern African beadwork, the most recognisable visual craft associated with isiXhosa-speaking
+communities.
+
+* *Why:* it's the only concept that carries the name's origin rather than the tool's function:
+  something made by hand, from one small unit repeated. That makes it the most distinctive of the
+  three. Nothing in the K or build-tool set looks like it.
+* *At 16px:* it's legible, but it reads as *texture* rather than a shape. It's the weakest of the
+  three at favicon size, and it's busier than "simple" asks for.
+* *Weakness, and a real caution:* beadwork patterns carry meaning in the communities that make them.
+  Borrowing the look without that knowledge risks being decorative at best and wrong at worst. If
+  this direction appeals, it should be reviewed with (or commissioned from) someone from that
+  tradition before adoption, not shipped on a build-tool designer's reading of it.
+
+==== Wordmark and lockup
+
+link:brand/wordmark.svg[`wordmark.svg`] is a lowercase `kwenza` in monoline strokes, with
+x-height 16 and ascender 24 units. Lowercase matches how the project already writes its name
+everywhere (`kwenza`, `kwenza.toml`, `kwenza.dev`). The `e`/`a` are built on circles and the `w`
+and `z` use rounded joins. It pairs with any of the three marks.
+
+link:brand/lockup-b-table.svg[`lockup-b-table.svg`] is the horizontal lockup for the recommended
+concept B. The mark is set at the wordmark's ascender height, with a gap of half the mark's width.
+This is the README header and the top-left of kwenza.dev.
+
+=== 4.5 Collision check: method and results
+
+Method: the three concepts were rendered at 40px next to every brand in the
+https://simpleicons.org[Simple Icons] set whose name starts with *K* (about 90 marks, including
+Kotlin, Ktor, Kick, KuCoin, Keystone, Klook, Knative, Kongregate, Konva and Kaufland), plus the
+build and dev tools kwenza will sit next to: Gradle, Apache Maven, Apache Ant, Bazel, OpenJDK,
+Spring, Scala, Bun, Deno, Gleam, Zig, Rust, Vite, Biome, Astral/uv, Buildkite, Codeberg and Coder.
+Icons were fetched from
+https://github.com/simple-icons/simple-icons[simple-icons/simple-icons] (`develop` branch) on
+2026-10-10. This was backed up by web searches for bracket-and-square and chevron marks. It's a
+reasonable first pass, not a trademark search. A real clearance search (EUIPO/USPTO, class 9 and 42)
+is still needed before the mark goes on anything official.
+
+What the check changed:
+
+* *Dropped: a `[<` "bracket k"* (the TOML bracket as the stem of a `k`, a chevron as its arms). It
+  was almost the same construction as *KuCoin*'s mark, and the `<` notch also echoes *Kotlin*'s
+  current mark (a square with a triangular notch), which is the worst possible neighbour for a JVM
+  build tool.
+* *Dropped: a "maker's mark"* (a `k` knocked out of a solid chamfered tile, like a craftsman's
+  punch). The idea is good but the shape isn't: "letter K reversed out of a filled shape" is already
+  Keystone, Klook, Knative, Kongregate, Konva and Kodular. It would have been forgettable at best.
+* *Avoided: stacked blocks or cubes.* Bazel's mark is three blocks, so blocks-as-pile is taken by
+  a build tool.
+* *Avoided: double chevrons.* It's a generic "scroll to top" UI icon in every icon set.
+
+Nearest remaining neighbours: A is close to *Kick*. B is close to *Square* and *RoboStrategy*. C had
+no close match found.
+
+'''
+
+== 5. Open choices for the user
+
+These are the decisions this research deliberately leaves open:
+
+. *Which mark?* The recommendation is B. If B is chosen, look at it next to Square's logo first
+  (4.5). If C appeals, it needs the cultural review described under concept C before adoption.
+. *Ochre or not?* The palette is built so swapping the accent means changing two hex values. The
+  ink, paper and muted values stand on their own.
+. *Plex everywhere, or system fonts plus Plex Mono only* (4.3)?
+. *Separate `kwenza.dev` repo* (3.4), or accept Node tooling inside the kwenza repo?
+. *Which install channels ship with 0.1?* The landing page should list only the ones that exist on
+  launch day.
+. *A real trademark clearance search* before the mark goes on anything official. 4.5 is a visual
+  collision check, not a legal one.
+
+Practical notes for whoever builds it:
+
+* Ship `favicon.svg` (the chosen concept, which already follows the OS theme) plus a 32px
+  `favicon.ico` or PNG fallback, because Safari's SVG favicon support has historically lagged (current Safari behaviour _unverified_).
+* The GitHub org avatar should be a 512px PNG rendered from the SVG on the *light* background,
+  since GitHub doesn't theme avatars.
+* `brand/preview.html` inlines each SVG so the page's light and dark panels can recolour them. If a
+  concept SVG changes, regenerate the preview (it is a plain static file with no build step; the
+  concept files are the source of truth).
