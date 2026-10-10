@@ -1,0 +1,12 @@
+[package]
+name = "testng-calculator"
+group = "com.example.testngdemo"
+version = "0.1.0"
+java-version = "21"
+
+[dev-dependencies]
+junit-console = { module = "org.junit.platform:junit-platform-console-standalone", version = "6.1.3" }
+testng = { module = "org.testng:testng", version = "7.10.2" }
+testng-engine = { module = "org.junit.support:testng-engine", version = "1.1.0" }
+# Silences testng's own unbound slf4j-api warning; pinned to match the version testng resolves.
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version = "1.7.36" }

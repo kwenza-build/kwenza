@@ -12,7 +12,7 @@ how to actually run it and the general harness conventions.
 [source]
 ----
 word-counter/
-  kwenza/     kwenza.toml + src (symlink -> ../../../examples/word-counter/src)
+  kwenza/     kwenza.toml + src (symlink -> ../../../examples/junit-word-count/src)
   maven/      pom.xml + src (same symlink), Maven wrapper committed
   gradle/     build.gradle.kts + src (same symlink), Gradle wrapper committed
   .cache/     isolated dependency caches (gitignored, regenerated on demand)

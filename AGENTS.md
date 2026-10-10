@@ -124,7 +124,7 @@ specific decision and its specific reasoning; that one is for the pattern.
   `junit.jupiter.execution.parallel.*` configuration (auto-discovered from a
   `junit-platform.properties` file, which `kwenza test` copies from `src/test/resources` alongside
   the compiled test classes, same as `build` already does for `src/main/resources`) works today
-  with zero kwenza-specific flags — see `examples/word-counter` for a working example. Running
+  with zero kwenza-specific flags — see `examples/junit-word-count` for a working example. Running
   disjoint *shards* of a suite across several forked JVMs at once is a different, larger feature,
   deliberately deferred (see below).
 
@@ -150,7 +150,22 @@ specific decision and its specific reasoning; that one is for the pattern.
   (`useJUnitPlatform()`) both lean on. Supporting another JVM test framework is a matter of it
   shipping a JUnit Platform engine and the user declaring it as a dev-dependency — never a reason
   to build a plugin system of kwenza's own, consistent with the manifest staying data, not a
-  program.
+  program. Confirmed for real with a genuinely third-party, separately-declared engine, not just
+  the Jupiter+Vintage pair bundled inside `junit-platform-console-standalone`: see
+  `examples/testng-calculator` — TestNG via `org.testng:testng` +
+  `org.junit.support:testng-engine` (the JUnit-team-maintained bridge, not TestNG's own bundled
+  runner) needs zero kwenza changes and zero extra CLI flags, `--scan-classpath` alone finds it.
+  Two real caveats worth knowing if this ever gets extended: `testng.xml` suite files aren't
+  supported by that engine at all (plain `@Test`-annotated classes only), and TestNG `groups`
+  filtered as JUnit tags can skip `@BeforeGroups`/`@AfterGroups` on some TestNG versions — use the
+  engine's `testng.groups`/`testng.excludedGroups` config params instead of tag filters if that
+  ever matters. `org.testng:testng` itself depends on `slf4j-api` for its own internal logging but
+  ships no binding — without one, SLF4J prints a harmless
+  `Failed to load class "org.slf4j.impl.StaticLoggerBinder"` warning and silently falls back to a
+  no-op logger anyway; the example adds `org.slf4j:slf4j-nop` (pinned to the same `1.7.36` that
+  `testng` itself resolves, to keep version mediation a no-op) as a fourth dev-dependency to make
+  that explicit and silence the warning — a real, legitimate optional dependency of TestNG's own
+  logging setup, not a kwenza-specific workaround.
 
 - **`resolve()` still merges `[dependencies]` and `[dev-dependencies]` into one `Resolution` for
   `kwenza.lock`, but `build`/`package`/`run` now use a second, dependencies-only
@@ -387,15 +402,18 @@ pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test
 
 - [`examples/hello-world`](examples/hello-world) — a small real project (one Maven Central
   dependency) used as a manual end-to-end smoke test for resolve/compile/package/run.
-- [`examples/word-counter`](examples/word-counter) — a small library (no `main-class`) with real
+- [`examples/junit-word-count`](examples/junit-word-count) — a small library (no `main-class`) with real
   JUnit 5 and Mockito tests, used as the manual end-to-end smoke test for `kwenza test`
   specifically: dev-dependency resolution, `src/test/java` compilation, and that main/test
   classpath scoping actually holds (`kwenza package` on it must not embed JUnit/Mockito).
+- [`examples/testng-calculator`](examples/testng-calculator) — a small library with a plain TestNG test class
+  (no `testng.xml`, no groups), the concrete proof behind the "no test-framework plugin system"
+  decision above: `kwenza test --verbose` on it must show a `TestNG` line in the engine tree.
 - [`benchmarks/`](benchmarks/README.adoc) (`java Bench.java`) — safe to re-run anytime
   (`cold`/`warm`/`both` modes, per scenario or all of them), uses fully isolated caches under each
   scenario's `.cache/`, never touches your real `~/.m2` or `~/.gradle`.
 - Any change to the resolver, compiler, or packager should be manually verified against
   `examples/hello-world` (`kwenza clean && kwenza run`) before being considered done. Any change
   touching `kwenza test`, dev-dependency resolution, or main/test classpath scoping should
-  additionally be verified against `examples/word-counter` (`kwenza clean && kwenza test`, and a
+  additionally be verified against `examples/junit-word-count` (`kwenza clean && kwenza test`, and a
   `kwenza package` check that its jar's `Class-Path` doesn't include JUnit/Mockito).
