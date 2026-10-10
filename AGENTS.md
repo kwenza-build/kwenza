@@ -13,7 +13,7 @@ the user-facing pitch and current command surface, and [docs/](docs/) for the fu
 ## Design decisions and why
 
 For the higher-level principles these decisions keep falling out of, see
-[docs/design-principles.adoc](docs/modules/ROOT/pages/design-principles.adoc). This section stays the place for the
+[docs/contributing/design-principles.adoc](docs/contributing/design-principles.adoc). This section stays the place for the
 specific decision and its specific reasoning; that one is for the pattern.
 
 - **TOML, with Gradle-version-catalog-style dependency notation** (`module = "group:artifact"`,
@@ -117,7 +117,7 @@ specific decision and its specific reasoning; that one is for the pattern.
   private registry, say) actually needs one. The mismatch message tells the user to delete the
   cached jar rather than to run `--update`, because a changed jar means the cache is wrong, not the
   lock (released artifacts on Central are immutable). See "Secure by default" in
-  docs/modules/ROOT/pages/design-principles.adoc.
+  docs/contributing/design-principles.adoc.
 
 - **The name.** "Kwenza" is isiXhosa for "to make" — chosen over several alternatives (including
   "Kiln," dropped after discovering real naming collisions with an existing Java-runtime project and
@@ -162,7 +162,7 @@ specific decision and its specific reasoning; that one is for the pattern.
   behavior) regardless of whether a launcher is even resolvable; real test classes with no
   launcher dev-dependency is a genuine misconfiguration and fails fast with a specific message
   naming the fix, per "fail fast, with a specific and actionable message" in
-  docs/modules/ROOT/pages/design-principles.adoc — silently saying "no tests found" there would hide a real mistake
+  docs/contributing/design-principles.adoc — silently saying "no tests found" there would hide a real mistake
   instead of catching it.
 
 - **No test-framework plugin system.** `kwenza test` always drives
@@ -220,8 +220,11 @@ specific decision and its specific reasoning; that one is for the pattern.
   [kwenza-build/kwenza-dev](https://github.com/kwenza-build/kwenza-dev), so Node never enters
   this repo (see "Zero external dependencies" above). Page-to-page links are `xref:`, which both
   Antora and GitHub's renderer resolve; links out of `docs/` (AGENTS.md, `examples/`,
-  `benchmarks/`) are absolute GitHub URLs, because Antora only sees `docs/`. `docs/research/` is
-  outside `modules/`, so it's never published. The home page's example manifest and terminal
+  `benchmarks/`) are absolute GitHub URLs, because Antora only sees `docs/`. `docs/research/` and
+  `docs/contributing/` are outside `modules/`, so they're never published. Architecture and
+  design principles exist twice on purpose: short, user-facing pages on the site, and the long
+  versions with the reasoning, history and open questions in `docs/contributing/`, which is what
+  this file's references point at. A change to a principle or to how kwenza works updates both. The home page's example manifest and terminal
   session are symlinks under `docs/modules/ROOT/examples/` into `examples/hello-world`, same
   no-drift reasoning as the benchmark symlinks above; `kwenza-run.txt` there is a real
   `kwenza run` transcript that `smoke-examples.sh` diffs against kwenza's actual output on every
@@ -232,7 +235,7 @@ specific decision and its specific reasoning; that one is for the pattern.
   removed.** It was modeled on `cargo check`, but the reason `cargo check` earns its keep doesn't
   carry over: it exists because `rustc` codegen is slow enough that skipping it is a real, distinct
   speedup over `cargo build`. `javac` doesn't have that gap — kwenza's own compile step is already
-  fast (see "Fast is not a trade-off to apologize for" in docs/modules/ROOT/pages/design-principles.adoc) — so a
+  fast (see "Fast is not a trade-off to apologize for" in docs/contributing/design-principles.adoc) — so a
   separate check-only command was solving a problem kwenza doesn't have, just because another
   tool's ecosystem has a command with that name. The `check` name is free again for something that
   would actually earn it — Checkstyle-style verification is the leading candidate, see "Future
@@ -375,7 +378,7 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
 
 Bigger and vaguer than anything above — these haven't been triaged, sized, or committed to. Don't
 treat absence from "Explicitly deferred" as "not planned," and don't treat presence here as "will
-definitely happen." See [docs/design-principles.adoc](docs/modules/ROOT/pages/design-principles.adoc) for the
+definitely happen." See [docs/contributing/design-principles.adoc](docs/contributing/design-principles.adoc) for the
 principles these should be weighed against once any of them gets scoped for real.
 
 Delivery & distribution
@@ -423,14 +426,14 @@ Delivery & distribution
 - **Maybe: an auto-migration tool from Maven/Gradle projects.** Attractive if it works, but real
   Maven/Gradle builds lean heavily on plugin-specific and DSL-scripted customization that has no
   clean data-shaped equivalent in kwenza (see "the manifest is data" in
-  docs/modules/ROOT/pages/design-principles.adoc) — unclear whether the achievable subset (straightforward POMs/build
+  docs/contributing/design-principles.adoc) — unclear whether the achievable subset (straightforward POMs/build
   scripts) is worth the effort relative to how much real-world usage actually stays that simple.
   Parked as an idea, not a commitment.
 
 Extensibility
 - A `build-dependencies`-style mechanism (Cargo-inspired) for custom build-time logic — explicitly
   *not* Cargo's `build.rs` arbitrary-scripting model. See "Extensibility through JVM discovery" in
-  docs/modules/ROOT/pages/design-principles.adoc for the leading shape (annotation processors,
+  docs/contributing/design-principles.adoc for the leading shape (annotation processors,
   `ServiceLoader`-discovered participants resolved as ordinary dependencies).
 - Builtin support for standard, commonly-expected Java tooling that's painful to wire up in
   Gradle/Maven — Checkstyle is the concrete example. A plausible future home for the `check`
@@ -444,7 +447,7 @@ Compiler & language
   `[workspace]` (module boundaries vs. multiple manifests in one repo) — they compose, they don't
   substitute for each other.
 - Multi-JVM-language support (Kotlin, Scala, ...) — see "Multi-JVM-language support is a real
-  direction" in docs/modules/ROOT/pages/design-principles.adoc. Java-first: a real direction, not near-term work.
+  direction" in docs/contributing/design-principles.adoc. Java-first: a real direction, not near-term work.
 
 Testing & reporting
 - **Own test console output levels and format, instead of `ConsoleLauncher`'s presets.**

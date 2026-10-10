@@ -16,7 +16,7 @@ see xref:cli-reference.adoc[CLI Reference].
 
 TIP: Projects *you build with* kwenza can target an older `java-version` than the JDK running
 kwenza — the constraint is only that the running JDK must be at least as new as whatever
-`java-version` is requested. See xref:architecture.adoc[Architecture] for why.
+`java-version` is requested. See xref:architecture.adoc#compilation[Architecture] for why.
 
 == Installing kwenza
 

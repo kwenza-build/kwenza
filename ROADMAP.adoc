@@ -8,7 +8,7 @@ done. Tick an item off (`[x]`) in the same PR that finishes it.
 
 This file covers *order*, not *rationale*. The reasoning behind each item lives in
 link:AGENTS.md[AGENTS.md] (decisions, deferred work, known gaps) and
-link:docs/modules/ROOT/pages/design-principles.adoc[docs/design-principles.adoc] (the principles to weigh it
+link:docs/contributing/design-principles.adoc[docs/contributing/design-principles.adoc] (the principles to weigh it
 against). If an item here contradicts those, fix one of them; don't let them drift apart.
 
 == Milestone 0: Safety net

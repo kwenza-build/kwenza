@@ -3,7 +3,7 @@
 :toclevels: 2
 
 This is research output for a maintainer, not a decision record — nothing here has been folded into
-link:../../AGENTS.md[AGENTS.md] or link:../design-principles.adoc[design-principles.adoc] yet, and
+link:../../AGENTS.md[AGENTS.md] or link:../contributing/design-principles.adoc[design-principles.adoc] yet, and
 this file doesn't modify either.
 
 == Scope: what this document is, and isn't
@@ -139,7 +139,7 @@ even if the normal interval would otherwise trigger one.
 |===
 
 *Direct comparison to kwenza's own model* (see "Reproducible by default" in
-link:../design-principles.adoc[design-principles.adoc]): these three flags exist *because* Maven's
+link:../contributing/design-principles.adoc[design-principles.adoc]): these three flags exist *because* Maven's
 default behavior is to re-resolve against the network and re-check SNAPSHOTs on every build subject
 to a time-based cache policy — "hoping a version range still resolves the same way it did yesterday,"
 as design-principles.adoc puts it. `-o`/`-U`/`-nsu` are three different knobs for tuning how

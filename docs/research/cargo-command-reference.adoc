@@ -3,7 +3,7 @@
 :toclevels: 2
 
 This is research output for a maintainer, not a decision record — nothing here has been folded into
-link:../../AGENTS.md[AGENTS.md] or link:../design-principles.adoc[design-principles.adoc] yet, and
+link:../../AGENTS.md[AGENTS.md] or link:../contributing/design-principles.adoc[design-principles.adoc] yet, and
 this file doesn't modify either, nor
 link:gradle-maven-feature-analysis.adoc[gradle-maven-feature-analysis.adoc] or
 link:gradle-maven-plugin-census.adoc[gradle-maven-plugin-census.adoc].
@@ -11,7 +11,7 @@ link:gradle-maven-plugin-census.adoc[gradle-maven-plugin-census.adoc].
 == The question this answers
 
 Cargo isn't a new comparison being introduced here — it's already kwenza's stated design reference.
-link:../design-principles.adoc[design-principles.adoc]'s mission statement says kwenza "should feel
+link:../contributing/design-principles.adoc[design-principles.adoc]'s mission statement says kwenza "should feel
 like a build-and-dependency tool that shipped with the JDK itself — the way `cargo` feels
 inseparable from Rust," and AGENTS.md already models several concrete kwenza decisions directly on
 Cargo: reproducible-by-default resolution ("This is the uv/Cargo 'lockfile wins by default'

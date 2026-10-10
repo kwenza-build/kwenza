@@ -5,7 +5,7 @@
 Research output for a maintainer to fold into link:../../AGENTS.md[AGENTS.md]'s unscoped
 "everything Gradle and Maven can do, within reason" future-idea. Not itself a decision record —
 nothing here is a commitment, and nothing here should be read as superseding
-link:../design-principles.adoc[docs/design-principles.adoc].
+link:../contributing/design-principles.adoc[docs/design-principles.adoc].
 
 This document is deliberately narrower and more code-grounded than a docs-only feature comparison:
 Part 1 looks at the *actual source code* of Maven, maven-resolver, and Gradle rather than their

@@ -1,0 +1,252 @@
+= Design Principles
+:toc:
+:toclevels: 2
+
+NOTE: This is the long version, for contributors. kwenza.dev publishes a short one
+(link:../modules/ROOT/pages/design-principles.adoc[`docs/modules/ROOT/pages/design-principles.adoc`]); keep the two in
+step.
+
+Every individual decision behind kwenza is recorded, with its own specific reasoning, in
+https://github.com/kwenza-build/kwenza/blob/main/AGENTS.md[AGENTS.md]. This page is the layer above that: the mission, the pillars, and the
+principles those decisions keep falling out of. If you're weighing a new feature or a design fork
+and none of AGENTS.md's existing decisions answer it directly, check it against these first —
+they're the thing new decisions should be consistent with, not just the old ones.
+
+== Mission
+
+Make builds with Java fun and easy again. kwenza should feel like a build-and-dependency tool that
+shipped with the JDK itself — the way `cargo` feels inseparable from Rust, or `dotnet` from .NET —
+not one more layer bolted on top of it.
+
+== Pillars
+
+Five things matter most, in no settled order yet:
+
+* *Fast.* Every invocation is a fresh JVM with no daemon (see AGENTS.md's "no daemon" trade-off) —
+  that choice only stays defensible if kwenza keeps being measured against it, not excused for it.
+  Performance is a constraint every future feature gets weighed against, not a trade-off to
+  apologize for after the fact.
+* *Simple.* One correct way to do each thing. Every configurable knob Maven/Gradle expose is a
+  question kwenza should try not to make you answer.
+* *Declarative.* The manifest is data. It never runs, so it can always be fully understood by
+  reading it.
+* *Transparent.* No magic. You can always see exactly what kwenza is doing and why, from the exact
+  command it ran to the exact reason it failed.
+* *Secure.* Every dependency kwenza pulls, and every future extension point built on
+  "extensibility through JVM discovery" below, is code kwenza is choosing to trust. That has to be
+  a first-class constraint, not an afterthought discovered after something built on it ships.
+
+These will conflict with each other in real design decisions — "fast" pulling toward complexity
+that "simple" pulls back against, "declarative" ruling out the scripting-based answer that might
+otherwise be the easiest one, "secure" pulling toward friction (verification, prompts) that "fast"
+and "simple" both push back against. Aeron's own
+link:https://github.com/aeron-io/aeron/wiki/Design-Principles[design principles] handle exactly
+this by ranking their principles explicitly, so "when two or more design principles conflict with
+each other, the one with the highest rank wins" — a real answer instead of an ad-hoc one each time
+it comes up. kwenza should eventually rank these five the same way; that ranking hasn't been done
+yet, and is worth doing deliberately rather than defaulting to the order they happened to be
+written down in.
+
+Underneath all four is the same idea, sometimes called the
+https://blog.codinghorror.com/falling-into-the-pit-of-success/["pit of success"]: a well-designed
+tool makes the easy path and the correct path the same path, so people succeed by default instead
+of needing discipline to avoid a footgun. Several of the principles below are really this one idea
+wearing a specific hat — fail-fast turns a silent footgun into an immediate, actionable stop;
+reproducible-by-default protects you from "works on my machine"; one-correct-way removes the
+decision paralysis that leads to inconsistent, fragile setups.
+
+== Interop where it pays off, nowhere else
+
+kwenza matches an existing ecosystem convention exactly whenever something *outside* kwenza
+actually depends on the match — and diverges freely wherever nothing does.
+
+That's why dependency resolution targets Maven Central with Maven's own GAV-to-URL mapping and
+nearest-wins mediation, the local cache is byte-for-byte `~/.m2/repository`, source lives in
+standard `src/main/java`, and `[versions]`/`version.ref` copies Gradle's version-catalog syntax
+verbatim. In every one of those cases, an existing tool, cache, or IDE reads or writes the same
+thing kwenza does, so matching it means Java tooling that already exists keeps working with zero
+adapter layer.
+
+It's also why the build output directory (`target` by default) is a one-line override
+(`[package] output-dir`) rather than a fixed convention: nothing outside kwenza ever reads that
+directory, so there's no interop cost to letting a project rename it, and no reason to pretend
+matching Maven/Cargo here is anything more than a starting default.
+
+When adding something new, ask which side of this line it's on before defaulting to "match the
+big tools" or "do our own thing" — the answer depends entirely on whether something else reads it.
+
+== The manifest is data, never a program
+
+`kwenza.toml` has no scripting hooks, no plugin DSL, and no planned path to either. This is called
+out explicitly in AGENTS.md as the actual thing that makes Maven and Gradle hard to reason about —
+not their XML or Groovy syntax, but the fact that a build file can execute arbitrary logic, so
+understanding *what a build does* requires reading code, not just data.
+
+A kwenza manifest can always be fully understood by reading it — no execution model to trace
+through, no plugin to go look up. Anything that would require the manifest to run code (a task
+graph with conditional logic, a plugin system, computed values) is out of scope by default, not a
+missing feature waiting to be added. If a future feature seems to need this, that's a signal to
+find a data-shaped way to express it, not to add a scripting escape hatch.
+
+This is also where kwenza's stability promise comes from, not from a separate effort to maintain
+it. A DSL breaks because it's an API — it has versions, deprecations, and behavior that can change
+out from under a script that used to work. Pure data has no such surface: there's no API to
+deprecate in a `kwenza.toml` that only ever declares facts. What you learn about the manifest
+format should keep being true, precisely because there's no executable surface for that to stop
+being the case.
+
+== One correct way to do each thing
+
+Where Maven and Gradle offer configurable choices, kwenza tends to pick one default and make it
+the only option until a concrete need proves otherwise. Packaging produces a thin jar with a
+`Class-Path` manifest entry, not a fat jar, by default — simplest correct option, avoids shading
+conflicts entirely, and matches how a lot of real shops actually deploy. `[versions]` accepts only
+plain version strings, not Gradle's `strictly`/`prefer`/`reject` richness, because kwenza doesn't
+support version ranges at all yet — so the extra richness would have nothing to do. Compilation and
+packaging run in-process (`javax.tools.JavaCompiler`, `java.util.zip`) rather than shelling out to
+`javac`/`jar`, which keeps behavior identical across platforms instead of inheriting a whole class
+of PATH/quoting bugs from spawning subprocesses.
+
+None of these are permanent bans on flexibility — `--fat` packaging is an explicit, scoped Phase 2
+addition, not a reversal of this principle. The point isn't "never add options," it's that an
+option should earn its way in by solving a real, currently-unmet need, rather than being offered
+because some other tool offers it.
+
+== Extensibility through JVM discovery, never a plugin API
+
+kwenza will never have a plugin system of its own — but "no plugins" doesn't mean "no
+extensibility." `kwenza test` already proves the shape this should take: there's no kwenza-side
+mechanism for swapping in a different test runner, and there doesn't need to be one, because the
+JUnit Platform itself already discovers whichever test *engine* is on the classpath via
+`ServiceLoader`. Supporting a different JVM test framework is a matter of it shipping a JUnit
+Platform engine and the user declaring it as a dev-dependency — never a reason to build a plugin
+API of kwenza's own.
+
+That's the template for extensibility generally: participation through mechanisms the JVM already
+has — `ServiceLoader`, annotation processors — driven by ordinary dependency declarations, never
+through a kwenza-specific plugin interface or a scripting hook in the manifest (deliberately not
+the Cargo `build.rs` model — arbitrary build-time code is exactly the kind of program-in-the-manifest
+this project rules out). If a feature needs "custom build logic" and the JVM doesn't already have a
+discovery mechanism for that category of thing, that's a sign to look harder for one, not to invent
+a plugin system as a shortcut.
+
+== Secure by default, wherever kwenza touches code it didn't write
+
+Every dependency kwenza resolves, and every future extension point built on "extensibility through
+JVM discovery" above, is a supply-chain attack surface: kwenza is choosing to trust, and in some
+cases execute, code it didn't write and doesn't control. That risk doesn't require a plugin system
+to exist first — it's already present the moment a resolved jar's code runs during a build — so it
+needs to be a first-class design constraint from the start of anything that touches it, not
+something discovered after the fact.
+
+Concretely, today: a freshly-downloaded jar is verified against the repository's published
+`.sha1` checksum before it's written to the local cache (`MavenRepository.fetchJarAsync`), and
+`kwenza.lock` records each resolved artifact's own `sha256`, which every lock-backed build checks
+again before using the jar (`Resolver.ensureFromLock`). Zero dependencies for kwenza's own
+build (below) is a security property too, not just a bootstrapping one — every dependency kwenza
+doesn't have is one less thing that could be compromised upstream and pulled straight into every
+kwenza user's build.
+
+"Secure by default" means the verification has to hold in the failure cases, not just the happy
+path, so both checks fail closed. A `.sha1` that's missing, unfetchable or empty is refused exactly
+like a mismatch, never treated as "no checksum available, skip it" — an earlier version did exactly
+that (`.exceptionally(ex -> null)`), which meant an attacker who could block one URL could switch
+verification off. And `kwenza.lock`'s `sha256` is an integrity pin, the same thing
+`Cargo.lock`/`package-lock.json` provide, not just a record: a cached jar that no longer matches it
+(a compromised mirror, a machine shared with another tool, disk-level tampering) stops the build
+with a message naming the jar, rather than being trusted silently forever. An earlier version wrote
+that hash but never read it back.
+
+A *fresh* resolution (no lock yet, a changed manifest, or `--update`) can't lean on the lock
+it's about to replace for everything, but it never pins a jar nobody has verified. A module
+resolved at the same version the old lock pinned is checked against that pin. Any other jar
+already in `~/.m2/repository` is checked against the repository's published `.sha1`, never the
+copy cached beside it, which anyone able to alter the jar could alter too.
+
+Separately, and specific to extensibility: `javax.tools.JavaCompiler` is invoked today without
+`-proc:none`, so whether an annotation processor bundled in a resolved dependency runs
+automatically during `kwenza build` depends on the running JDK's own default discovery behavior —
+worth verifying deliberately per target JDK version rather than assuming either way. This is the
+concrete, present-day version of the risk "extensibility through JVM discovery" describes in the
+abstract: resolving a dependency and running its code aren't as separate as they might seem.
+
+== Fail fast, with a specific and actionable message
+
+A JDK/`java-version` mismatch, a `version.ref` pointing at a key that doesn't exist in
+`[versions]`, an unknown command in a chained invocation (`kwenza build frobnicate`) — each of
+these is caught deliberately and reported with the specific thing that's wrong, instead of letting
+the underlying failure (a raw `javac` error, a `NullPointerException`, a silent no-op) surface on
+its own. If kwenza can detect a mistake before it causes a confusing downstream failure, it should,
+and the message should tell the user what to fix, not just that something broke.
+
+== Reproducible by default
+
+`kwenza.lock` records a hash of the manifest's declared dependencies, and `build`/`run`/`package`
+reuse the lock and skip network resolution entirely unless that hash changed or `--update` is
+passed explicitly. This is the uv/Cargo model — the lockfile wins until you deliberately tell it
+not to — chosen directly against Maven's default of re-resolving against the network on every
+build and hoping a version range still resolves the same way it did yesterday. The same build
+should produce the same result without needing the network, unless you've asked it to check again.
+
+== Fast is not a trade-off to apologize for
+
+kwenza's own resolve/compile/package logic is already fast and stable in absolute terms (~400ms
+for a trivial project, per `benchmarks/hello-world`) — but a cold JVM has to class-load roughly
+10x more classes than a bare `java -version`, which is *why* Gradle's warm daemon can still edge
+out kwenza on tiny projects despite kwenza's simpler internals. That gap is real, it's measured
+(`KWENZA_TIMING`), and it's tracked as a known trade-off in AGENTS.md rather than ignored.
+
+The point of measuring it isn't to have a good excuse — it's the same evidence-first method that
+should apply to every future performance question, especially the open ones: whether incremental
+compilation is worth building (and what it would cost the current in-process
+`javax.tools.JavaCompiler`-only decision), whether a watch mode's warm-process requirement is worth
+carving out as an explicit, opt-in exception to "no daemon," whether AppCDS closes the cold-start
+gap enough to matter. Instrument first, build second — never the other way around.
+
+== Transparent: no magic, ever
+
+You should never have to wonder what kwenza actually did or why it did what it did. `kwenza run`
+prints the exact command it executes rather than hiding it behind an opaque task graph;
+`--verbose` shows exactly which dependencies got resolved; `KWENZA_TIMING` exposes real
+phase-by-phase timing to stderr; fail-fast errors (above) always name the specific thing that's
+wrong. None of these were built as "a transparency feature" — each was its own small decision — but
+they're all the same value, and it's worth naming so future decisions get checked against it on
+purpose.
+
+This extends to documentation, not just runtime behavior. Maven and Gradle both have plenty of
+documentation; the problem is rarely coverage, it's that it's hard to tell how the pieces fit
+together. `docs/contributing/architecture.adoc` says outright that it's "the how" to AGENTS.md's "the why," and
+the getting-started/manifest-reference/cli-reference split exists so each doc answers one kind of
+question instead of one document trying to answer all of them. Every future doc — this one
+included, the eventual website, IDE-setup guides — should stay small and separated by *kind* of
+question, not grow into one sprawling reference that technically covers everything and helps you
+find nothing.
+
+== kwenza must be able to make itself, from nothing but a JDK
+
+Zero runtime dependencies for kwenza's own build isn't a style preference, it's a bootstrapping
+constraint: kwenza has to be buildable without Maven Central being reachable and without another
+build tool already installed. `bootstrap.sh` exists solely to produce the very first jar (or for
+disaster recovery) using nothing but `javac`/`jar`; from then on kwenza rebuilds itself with
+itself. Anything proposed for kwenza's own `kwenza.toml` — a dependency, a required external tool —
+has to be weighed against breaking this, not just against whether it'd be convenient.
+
+== Multi-JVM-language support is a real direction — but Java comes first
+
+The name "kwenza" (isiXhosa for "to make") was chosen over Java-specific alternatives specifically
+so kwenza could grow support for other JVM languages (Kotlin, say) later without a rename — see
+AGENTS.md's naming rationale. That's a committed direction, not just headroom kept open on spec:
+new work on `[package]`, the compiler abstraction, and anywhere else that currently assumes
+`javac`/`.java` should be weighed against staying language-agnostic going forward, the same way new
+dependencies get weighed against self-hosting.
+
+But it's explicitly a *direction*, not a current priority — making Java itself great is what comes
+first, and nothing about eventually generalizing should be allowed to slow that down or water it
+down now. There's still no second language with an actual design, and inventing abstractions for a
+language that isn't scoped yet would cut against "an option should earn its way in" above.
+Concretely, the leading shape for how this could work without breaking "one download, everything
+works": a language's own compiler (Kotlin's is published to Maven Central as an ordinary jar, for
+instance) resolved as a regular dependency through the same `Resolver`/`~/.m2` machinery kwenza
+already has, version-pinned in `kwenza.lock` like anything else, and invoked in-process via
+whatever embeddable API it exposes — rather than requiring a separately-installed SDK. That's a
+hunch to verify per language, not yet a decision.

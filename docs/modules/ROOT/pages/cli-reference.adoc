@@ -199,8 +199,8 @@ for CI, or keeping multiple unrelated cache states around.
 |Set to any value to print a phase-timing breakdown to stderr: JVM bootstrap time, then the
 elapsed time between each of manifest-load / resolve / compile / package. Distinguishes JVM
 startup overhead (invisible to a shell-level wall-clock timer) from time spent in kwenza's own
-logic — see xref:architecture.adoc[Architecture] for how this was used to diagnose kwenza's
-own cold-start cost.
+logic — see xref:architecture.adoc#startup[Architecture] for what it shows about kwenza's own
+startup cost.
 |===
 
 Example `KWENZA_TIMING` output:

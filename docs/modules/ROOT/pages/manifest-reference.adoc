@@ -38,7 +38,7 @@ jar's `Main-Class` manifest attribute.
 |`output-dir`
 |No — defaults to `"target"`
 |Where build output goes (`<output-dir>/classes`, `<output-dir>/<name>-<version>.jar`). Override
-if you'd rather match Gradle's `build`, or anything else. See xref:architecture.adoc[Architecture]
+if you'd rather match Gradle's `build`, or anything else. See xref:design-principles.adoc#interop[Design Principles]
 for why this one field was left freely overridable while most of kwenza's other conventions
 deliberately aren't.
 |===
@@ -136,7 +136,7 @@ in `[versions]` is a manifest error, reported before any resolution is attempted
 
 Written by dependency resolution, read by every subsequent `build`/`run`/`package`/`test` unless
 it's stale or `--update` is passed. Safe to commit — that's the point (see
-xref:architecture.adoc[Architecture] for the reproducibility model).
+xref:architecture.adoc#reproducible[Architecture] for the reproducibility model).
 
 [source,toml]
 ----
@@ -169,7 +169,7 @@ separate "lockfile out of date" error to chase down.
 
 |`version`
 |The exact version that won mediation for this module (see
-xref:architecture.adoc[Architecture] for how conflicts are resolved).
+xref:architecture.adoc#mediation[Architecture] for how conflicts are resolved).
 
 |`sha256`
 |A checksum of the downloaded jar, computed by kwenza itself — independent of (and in addition

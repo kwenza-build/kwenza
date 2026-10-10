@@ -3,7 +3,7 @@
 :toclevels: 2
 
 This is research output for a maintainer, not a decision record — nothing here has been folded into
-link:../../AGENTS.md[AGENTS.md] or link:../design-principles.adoc[design-principles.adoc] yet, and
+link:../../AGENTS.md[AGENTS.md] or link:../contributing/design-principles.adoc[design-principles.adoc] yet, and
 this file doesn't modify either.
 
 == The question this answers
