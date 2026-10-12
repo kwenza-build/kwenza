@@ -321,12 +321,17 @@ public final class Bench {
         for (ScenarioSpec sc : SCENARIOS) {
             Path cache = HERE.resolve(sc.name()).resolve(".cache");
             for (String op : sc.operations()) {
+                boolean first = true;
                 for (String tool : TOOLS) {
                     String cmd = (envPrefix(tool, cache) + String.join(" ", command(tool, op, cache)))
                             .replace(HERE.getParent().resolve("bin/kwenza").toString(), "kwenza")
                             .replace(cache.toString(), "<cache>");
-                    commands.append('|').append(sc.name()).append(" / ").append(op).append('|').append(DISPLAY.get(tool))
-                            .append("|`").append(cmd).append("`\n");
+                    // The operation's cell spans all of its tool rows, so it's written once.
+                    if (first) {
+                        commands.append('.').append(TOOLS.size()).append("+.^|").append(sc.name()).append(" / ").append(op);
+                        first = false;
+                    }
+                    commands.append('|').append(DISPLAY.get(tool)).append("|`").append(cmd).append("`\n");
                 }
             }
         }

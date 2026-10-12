@@ -5,20 +5,20 @@ Run from each tool's project directory, with the environment variables shown. `<
 [cols="2,1,4"]
 |===
 |Operation |Tool |Command
-|hello-world / package|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza package`
-|hello-world / package|Maven|`./mvnw -q -Dmaven.repo.local=<cache>/maven-m2 -Dmaven.test.skip=true package`
-|hello-world / package|Gradle (daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew assemble`
-|hello-world / package|Gradle (no daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew --no-daemon assemble`
-|junit-word-count / package|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza package`
-|junit-word-count / package|Maven|`./mvnw -q -Dmaven.repo.local=<cache>/maven-m2 -Dmaven.test.skip=true package`
-|junit-word-count / package|Gradle (daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew assemble`
-|junit-word-count / package|Gradle (no daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew --no-daemon assemble`
-|junit-word-count / test|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza test`
-|junit-word-count / test|Maven|`./mvnw -q -Dmaven.repo.local=<cache>/maven-m2 test`
-|junit-word-count / test|Gradle (daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew test`
-|junit-word-count / test|Gradle (no daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew --no-daemon test`
-|commons-lang3 / package|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza package`
-|commons-lang3 / package|Maven|`./mvnw -q -Dmaven.repo.local=<cache>/maven-m2 -Dmaven.test.skip=true package`
-|commons-lang3 / package|Gradle (daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew assemble`
-|commons-lang3 / package|Gradle (no daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew --no-daemon assemble`
+.4+.^|hello-world / package|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza package`
+|Maven|`./mvnw -q -Dmaven.repo.local=<cache>/maven-m2 -Dmaven.test.skip=true package`
+|Gradle (daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew assemble`
+|Gradle (no daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew --no-daemon assemble`
+.4+.^|junit-word-count / package|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza package`
+|Maven|`./mvnw -q -Dmaven.repo.local=<cache>/maven-m2 -Dmaven.test.skip=true package`
+|Gradle (daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew assemble`
+|Gradle (no daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew --no-daemon assemble`
+.4+.^|junit-word-count / test|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza test`
+|Maven|`./mvnw -q -Dmaven.repo.local=<cache>/maven-m2 test`
+|Gradle (daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew test`
+|Gradle (no daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew --no-daemon test`
+.4+.^|commons-lang3 / package|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza package`
+|Maven|`./mvnw -q -Dmaven.repo.local=<cache>/maven-m2 -Dmaven.test.skip=true package`
+|Gradle (daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew assemble`
+|Gradle (no daemon)|`GRADLE_USER_HOME=<cache>/gradle-home ./gradlew --no-daemon assemble`
 |===
