@@ -1,3 +1,5 @@
+# The tag comments mark the part of this file that kwenza.dev's home page shows.
+# tag::home[]
 [package]
 name = "hello-world"
 group = "com.example"
@@ -7,5 +9,6 @@ main-class = "com.example.Main"
 
 [dependencies]
 guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
+# end::home[]
 
 [dev-dependencies]
