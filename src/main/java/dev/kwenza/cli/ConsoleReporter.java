@@ -31,6 +31,11 @@ public final class ConsoleReporter implements Reporter {
     }
 
     @Override
+    public void diagnostic(String line) {
+        err.println(line);
+    }
+
+    @Override
     public void detail(String message) {
         if (verbose) {
             err.println(style.detail(message));

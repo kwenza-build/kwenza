@@ -1,6 +1,7 @@
 package dev.kwenza.cli.commands;
 
 import dev.kwenza.cli.Session;
+import dev.kwenza.context.Result;
 
 /**
  * {@code kwenza help [command]}: with a command, prints its full manual page (the same page
@@ -24,11 +25,16 @@ public final class HelpCli implements CliCommand {
     }
 
     @Override
-    public void exec(Session session, Invocation invocation) {
+    public boolean needsProject() {
+        return false;
+    }
+
+    @Override
+    public Result<Void> exec(Session session, Invocation invocation) {
         if (invocation.argument() == null) {
             session.help().printUsage();
-        } else {
-            session.help().printManual(invocation.argument());
+            return Result.ok();
         }
+        return session.help().printManual(invocation.argument());
     }
 }

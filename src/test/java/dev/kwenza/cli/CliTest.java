@@ -5,25 +5,43 @@ import dev.kwenza.cli.commands.BuildCli;
 import dev.kwenza.cli.commands.HelpCli;
 import dev.kwenza.cli.commands.Invocation;
 import dev.kwenza.cli.commands.RunCli;
-import dev.kwenza.context.KwenzaException;
+import dev.kwenza.cli.commands.CliCommand;
+import dev.kwenza.cli.help.Help;
+import dev.kwenza.context.Failure;
+import dev.kwenza.context.GlobalContext;
+import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 class CliTest {
 
     private static CommandLine parse(String... args) {
-        return Cli.parse(args);
+        return Cli.parse(args).get();
+    }
+
+    /** The single problem a command line that shouldn't parse fails with, checking it's a usage error. */
+    private static String usageProblem(String... args) {
+        Failure failure = Cli.parse(args).failure();
+        assertEquals(Failure.USAGE_ERROR, failure.exitCode());
+        return failure.problems().get(0);
     }
 
     @Test
@@ -66,24 +84,24 @@ class CliTest {
 
     @Test
     void versionAfterACommandIsAnUnknownOptionForThatCommand() {
-        KwenzaException e = assertThrows(KwenzaException.class, () -> parse("build", "--version"));
+        String problem = usageProblem("build", "--version");
 
-        assertTrue(e.getMessage().contains("`kwenza build`"), e.getMessage());
+        assertTrue(problem.contains("`kwenza build`"), problem);
     }
 
     @Test
     void anOptionNoCommandTakesFailsBeforeAnythingRuns() {
-        KwenzaException e = assertThrows(KwenzaException.class, () -> parse("clean", "--update"));
+        String problem = usageProblem("clean", "--update");
 
-        assertTrue(e.getMessage().contains("'--update'"), e.getMessage());
+        assertTrue(problem.contains("'--update'"), problem);
     }
 
     @Test
     void anUnknownCommandAnywhereInTheChainFailsWithAPointerToList() {
-        KwenzaException e = assertThrows(KwenzaException.class, () -> parse("build", "biuld"));
+        String problem = usageProblem("build", "biuld");
 
-        assertTrue(e.getMessage().contains("no such command: `biuld`"), e.getMessage());
-        assertTrue(e.getMessage().contains("kwenza --list"), e.getMessage());
+        assertTrue(problem.contains("no such command: `biuld`"), problem);
+        assertTrue(problem.contains("kwenza --list"), problem);
     }
 
     @Test
@@ -119,13 +137,11 @@ class CliTest {
     }
 
     @Test
-    void runReportsAParseErrorOnStderrAndExitsOne() {
-        ByteArrayOutputStream err = new ByteArrayOutputStream();
-        int exitCode = new Cli(new PrintStream(new ByteArrayOutputStream()), new PrintStream(err), Style.PLAIN)
-                .run(new String[]{"biuld"});
+    void runReportsAParseErrorOnStderrAndExitsTwo() {
+        Run run = run(Cli.COMMANDS, "biuld");
 
-        assertEquals(1, exitCode);
-        assertTrue(err.toString(StandardCharsets.UTF_8).startsWith("error: no such command"));
+        assertEquals(2, run.exitCode);
+        assertTrue(run.err.startsWith("error: no such command"), run.err);
     }
 
     @Test
@@ -138,5 +154,103 @@ class CliTest {
 
         assertEquals(0, exitCode);
         assertTrue(out.toString(StandardCharsets.UTF_8).contains("Usage: kwenza build"));
+    }
+
+    // A command that does nothing but return (or throw) what it's given, for the exit-code tests.
+    private record Fixed(String name, Callable<Result<Void>> outcome) implements CliCommand {
+        @Override
+        public String about() {
+            return "test fixture";
+        }
+
+        @Override
+        public boolean needsProject() {
+            return false;
+        }
+
+        @Override
+        public Result<Void> exec(Session session, Invocation invocation) {
+            try {
+                return outcome.call();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+        }
+    }
+
+    private record Run(int exitCode, String out, String err) {
+    }
+
+    private static Run run(List<CliCommand> commands, String... args) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        int exitCode = new Cli(new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8), Style.PLAIN, commands).run(args);
+        return new Run(exitCode, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void aUserFixableFailurePrintsEveryProblemAndExitsOne() {
+        Run run = run(List.of(new Fixed("fail", () -> Result.err(new Failure(1, List.of("first", "second"))))), "fail");
+
+        assertEquals(1, run.exitCode);
+        assertEquals("error: first\nerror: second\n", run.err);
+    }
+
+    @Test
+    void aChildProcessesExitCodePassesThroughSilently() {
+        Run run = run(List.of(new Fixed("child", () -> Result.err(Failure.child(3)))), "child");
+
+        assertEquals(3, run.exitCode);
+        assertEquals("", run.err);
+    }
+
+    @Test
+    void aFailureStopsTheChainBeforeTheNextCommand() {
+        AtomicBoolean secondRan = new AtomicBoolean();
+        Run run = run(List.of(
+                new Fixed("fail", () -> Result.err("nope")),
+                new Fixed("next", () -> {
+                    secondRan.set(true);
+                    return Result.ok();
+                })), "fail", "next");
+
+        assertEquals(1, run.exitCode);
+        assertFalse(secondRan.get());
+    }
+
+    @Test
+    void anExceptionIsReportedAsAKwenzaBugWithExit101() {
+        Run run = run(List.of(new Fixed("boom", () -> {
+            throw new IllegalStateException("broken invariant");
+        })), "boom");
+
+        assertEquals(101, run.exitCode);
+        assertTrue(run.err.contains("internal error: java.lang.IllegalStateException: broken invariant"), run.err);
+        assertTrue(run.err.contains("this is a bug in kwenza"), run.err);
+        assertFalse(run.err.contains("\tat "), "no stack trace without --verbose:\n" + run.err);
+    }
+
+    @Test
+    void aBugsStackTraceIsShownUnderVerbose() {
+        Run run = run(List.of(new Fixed("boom", () -> {
+            throw new IllegalStateException("broken invariant");
+        })), "boom", "--verbose");
+
+        assertTrue(run.err.contains("\tat "), run.err);
+    }
+
+    @Test
+    void aCommandThatNeedsAProjectFailsCleanlyWithoutOne(@TempDir Path emptyDir) {
+        // Run from the real working directory would find kwenza's own kwenza.toml, so check the
+        // project loading through a Session pointed at an empty directory instead.
+        Session session = new Session(new GlobalContext(emptyDir, emptyDir, mock(Reporter.class)),
+                new Help(new PrintStream(new ByteArrayOutputStream()), Style.PLAIN));
+
+        assertThrows(IllegalStateException.class, session::project);
+        String problem = assertDoesNotThrow(session::loadProject).failure().problems().get(0);
+        assertTrue(problem.startsWith("No kwenza.toml found in "), problem);
     }
 }

@@ -1,5 +1,6 @@
 package dev.kwenza.manifest;
 
+import dev.kwenza.context.Result;
 import dev.kwenza.toml.Toml;
 
 import java.io.IOException;
@@ -7,9 +8,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
@@ -59,8 +60,8 @@ public final class KwenzaLock {
                 digest.update((byte) '\n');
             }
             return HexFormat.of().formatHex(digest.digest());
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("every JDK has SHA-256", e); // truly can't happen: a bug if it does
         }
     }
 
@@ -68,20 +69,31 @@ public final class KwenzaLock {
         return manifestHash != null && manifestHash.equals(hashDependencies(manifest));
     }
 
-    public Map<String, Entry> byModule() {
-        Map<String, Entry> map = new LinkedHashMap<>();
-        for (Entry e : entries) {
-            map.put(e.module, e);
+    /**
+     * The lock at {@code path}, an empty one if there's no file, or a failure if it can't be read
+     * as a lock. Reading the file is the only thing that throws.
+     */
+    public static Result<KwenzaLock> load(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            return Result.ok(empty());
         }
-        return map;
+        Result<Map<String, Object>> toml = Toml.parse(Files.readString(path));
+        if (toml instanceof Result.Err<?> err) {
+            return Result.err(malformed(err.failure().problems().get(0)));
+        }
+        try {
+            return Result.ok(fromToml(toml.get()));
+        } catch (ClassCastException e) {
+            return Result.err(malformed("a field has the wrong type"));
+        }
+    }
+
+    private static String malformed(String detail) {
+        return "kwenza.lock is malformed (" + detail + "). Delete it so the next build regenerates it.";
     }
 
     @SuppressWarnings("unchecked")
-    public static KwenzaLock load(Path path) throws IOException {
-        if (!Files.exists(path)) {
-            return empty();
-        }
-        Map<String, Object> root = Toml.parse(Files.readString(path));
+    private static KwenzaLock fromToml(Map<String, Object> root) {
         Object resolvedRaw = root.get("resolved");
         List<Entry> entries = new ArrayList<>();
         if (resolvedRaw instanceof List) {
@@ -98,11 +110,11 @@ public final class KwenzaLock {
                         (String) m.get("sha256"), requestedBy));
             }
         }
-        String manifestHash = (String) root.get("manifest-hash");
-        return new KwenzaLock(entries, manifestHash);
+        return new KwenzaLock(entries, (String) root.get("manifest-hash"));
     }
 
-    public void save(Path path, String manifestHash) throws IOException {
+    /** Writes this lock, manifest hash included, to {@code path}. */
+    public void save(Path path) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("manifest-hash = ").append(quote(manifestHash)).append("\n\n");
         for (Entry e : entries) {

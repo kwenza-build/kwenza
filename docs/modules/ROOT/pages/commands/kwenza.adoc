@@ -117,8 +117,9 @@ The local dependency cache, in Maven's layout. Defaults to `~/.m2/repository`, s
 Maven or Gradle install. Useful for CI, or for keeping a cache separate from your own.
 
 `KWENZA_TIMING`::
-Set to any value to print a timing breakdown to standard error: JVM startup, then the time
-between loading the manifest, resolving, compiling and packaging. See
+Set to any value to print a timing breakdown to standard error: JVM startup, then how long each
+phase that ran took (loading the manifest, resolving, compiling, packaging), and the total. A
+phase that didn't run, because an earlier command in the chain already did it, isn't listed. See
 xref:architecture.adoc#startup[Architecture] for what it shows.
 
 `NO_COLOR`::
@@ -131,20 +132,27 @@ Example `KWENZA_TIMING` output:
 resolve: using locked dependencies (kwenza.lock)
 compile: target/classes
 package: target/hello-world-0.1.0.jar
-[timing] jvm-bootstrap-to-main: 20ms
-[timing] main-entry -> manifest-loaded: 3ms
-[timing] manifest-loaded -> resolved (from lock): 111ms
-[timing] resolved (from lock) -> compiled: 275ms
-[timing] compiled -> packaged: 4ms
-[timing] main-entry -> packaged (total): 395ms
+[timing] jvm-bootstrap-to-main: 18ms
+[timing] load manifest: 6ms
+[timing] resolve (from lock): 30ms
+[timing] resolve main classpath: 42ms
+[timing] compile: 268ms
+[timing] package: 4ms
+[timing] total (main to report): 379ms
 ----
 
 == EXIT STATUS
 
 * `0`: every command succeeded.
-* `1`: kwenza failed, or was given an unknown command or option; the error message says why.
-* Anything else: the exit code of the program `kwenza run` started, or of the test launcher
-after a test failed.
+* `1`: kwenza failed, for a reason you can fix; the error message says what and how.
+* `2`: the command line was invalid: an unknown command or option.
+* `101`: kwenza hit a bug in itself. Please report it at
+https://github.com/kwenza-build/kwenza/issues[github.com/kwenza-build/kwenza/issues], with the output
+of `--verbose`, which adds the stack trace.
+* Anything else: the exit code of the program `kwenza run` started, or of the test launcher after a
+test failed, passed through unchanged.
+
+A chain stops at the first command that fails, and kwenza exits with that command's code.
 
 == EXAMPLES
 

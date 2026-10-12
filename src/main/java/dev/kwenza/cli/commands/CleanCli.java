@@ -2,6 +2,9 @@ package dev.kwenza.cli.commands;
 
 import dev.kwenza.cli.Session;
 import dev.kwenza.commands.CleanCommand;
+import dev.kwenza.context.Result;
+
+import java.io.IOException;
 
 /** {@code kwenza clean}. See {@link CleanCommand}. */
 public final class CleanCli implements CliCommand {
@@ -22,7 +25,7 @@ public final class CleanCli implements CliCommand {
     }
 
     @Override
-    public void exec(Session session, Invocation invocation) throws Exception {
-        new CleanCommand(session.project(), session.compile(), session.reporter()).run();
+    public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
+        return new CleanCommand(session.project(), session.compileState(), session.reporter()).run();
     }
 }

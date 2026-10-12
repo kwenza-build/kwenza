@@ -30,7 +30,9 @@ Print a short summary of this command's options. `kwenza help <command>` prints 
 == EXIT STATUS
 
 * `0`: kwenza succeeded.
-* `1`: kwenza failed: the error message says why.
+* `1`: kwenza failed, for a reason you can fix; the error message says what and how.
+* `2`: the command line was invalid: an unknown command or option.
+* `101`: kwenza hit a bug in itself. Please report it, with the output of `--verbose`.
 
 == EXAMPLES
 

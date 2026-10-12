@@ -2,6 +2,7 @@ package dev.kwenza.commands;
 
 import dev.kwenza.compiler.CompileContext;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import dev.kwenza.workspace.Project;
 
 import java.io.IOException;
@@ -22,17 +23,18 @@ public final class CleanCommand {
         this.reporter = reporter;
     }
 
-    public void run() throws IOException {
+    public Result<Void> run() throws IOException {
         // Whatever was compiled before this point in the chain is gone now - a later
         // build/package/run in the same chain must recompile, not reuse stale state.
-        compile.invalidate();
+        compile.forget();
         Path outputDir = project.outputDir();
         if (!Files.exists(outputDir)) {
             reporter.info("clean: nothing to remove");
-            return;
+            return Result.ok();
         }
         deleteRecursively(outputDir);
         reporter.info("clean: removed " + outputDir.getFileName() + "/");
+        return Result.ok();
     }
 
     private static void deleteRecursively(Path dir) throws IOException {

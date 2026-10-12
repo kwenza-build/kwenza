@@ -28,10 +28,10 @@ class JavaCompilationTest {
                 }
                 """);
 
-        JavaCompilation.Result result = JavaCompilation.compile(sourceRoot, outputDir, List.of(), "21");
+        JavaCompilation.Output result = JavaCompilation.compile(sourceRoot, outputDir, List.of(), "21").get();
 
-        assertTrue(result.success);
-        assertTrue(result.diagnostics.isEmpty());
+        assertTrue(result.success());
+        assertTrue(result.diagnostics().isEmpty());
         assertTrue(Files.exists(outputDir.resolve("com/example/Greeter.class")));
     }
 
@@ -46,19 +46,19 @@ class JavaCompilationTest {
                 }
                 """);
 
-        JavaCompilation.Result result = JavaCompilation.compile(sourceRoot, outputDir, List.of(), "21");
+        JavaCompilation.Output result = JavaCompilation.compile(sourceRoot, outputDir, List.of(), "21").get();
 
-        assertFalse(result.success);
-        assertFalse(result.diagnostics.isEmpty());
+        assertFalse(result.success());
+        assertFalse(result.diagnostics().isEmpty());
     }
 
     @Test
     void aMissingSourceRootIsTreatedAsNothingToCompileNotAnError() throws IOException {
-        JavaCompilation.Result result = JavaCompilation.compile(
-                tempDir.resolve("does-not-exist"), tempDir.resolve("out"), List.of(), "21");
+        JavaCompilation.Output result = JavaCompilation.compile(
+                tempDir.resolve("does-not-exist"), tempDir.resolve("out"), List.of(), "21").get();
 
-        assertTrue(result.success);
-        assertTrue(result.diagnostics.isEmpty());
+        assertTrue(result.success());
+        assertTrue(result.diagnostics().isEmpty());
     }
 
     @Test
@@ -66,9 +66,9 @@ class JavaCompilationTest {
         Path sourceRoot = tempDir.resolve("src");
         Files.createDirectories(sourceRoot);
 
-        JavaCompilation.Result result = JavaCompilation.compile(sourceRoot, tempDir.resolve("out"), List.of(), "21");
+        JavaCompilation.Output result = JavaCompilation.compile(sourceRoot, tempDir.resolve("out"), List.of(), "21").get();
 
-        assertTrue(result.success);
+        assertTrue(result.success());
     }
 
     @Test
@@ -84,7 +84,7 @@ class JavaCompilationTest {
                     public static int answer() { return 42; }
                 }
                 """);
-        JavaCompilation.compile(libSourceRoot, libOut, List.of(), "21");
+        JavaCompilation.compile(libSourceRoot, libOut, List.of(), "21").get();
         Path libJar = tempDir.resolve("lib.jar");
         try (var jarStream = new java.util.jar.JarOutputStream(Files.newOutputStream(libJar))) {
             String entryName = "com/example/Lib.class";
@@ -102,9 +102,9 @@ class JavaCompilationTest {
                 }
                 """);
 
-        JavaCompilation.Result result = JavaCompilation.compile(appSourceRoot, appOut, List.of(libJar), "21");
+        JavaCompilation.Output result = JavaCompilation.compile(appSourceRoot, appOut, List.of(libJar), "21").get();
 
-        assertTrue(result.success, () -> String.join("\n", result.diagnostics));
+        assertTrue(result.success(), () -> String.join("\n", result.diagnostics()));
     }
 
     @Test
@@ -141,7 +141,7 @@ class JavaCompilationTest {
                     }
                 }
                 """);
-        JavaCompilation.compile(processorSourceRoot, processorOut, List.of(), "21");
+        JavaCompilation.compile(processorSourceRoot, processorOut, List.of(), "21").get();
         Path processorJar = tempDir.resolve("processor.jar");
         try (var jarStream = new java.util.jar.JarOutputStream(Files.newOutputStream(processorJar))) {
             String classEntry = "com/example/proc/GeneratingProcessor.class";
@@ -157,25 +157,23 @@ class JavaCompilationTest {
         Path appOut = tempDir.resolve("app-out");
         writeSource(appSourceRoot, "com/example/App.java", "package com.example; public final class App {}");
 
-        JavaCompilation.Result result = JavaCompilation.compile(appSourceRoot, appOut, List.of(processorJar), "21");
+        JavaCompilation.Output result = JavaCompilation.compile(appSourceRoot, appOut, List.of(processorJar), "21").get();
 
-        assertTrue(result.success, () -> String.join("\n", result.diagnostics));
+        assertTrue(result.success(), () -> String.join("\n", result.diagnostics()));
         assertTrue(Files.exists(appOut.resolve("com/example/App.class")));
         assertFalse(Files.exists(appOut.resolve("com/example/Generated.class")),
                 "the classpath processor ran and generated com.example.Generated");
     }
 
     @Test
-    void aJavaVersionNewerThanTheRunningJdkThrowsAnIncompatibleJdkException() throws IOException {
+    void aJavaVersionNewerThanTheRunningJdkIsAFailureSayingHowToFixIt() throws IOException {
         Path sourceRoot = tempDir.resolve("src");
         writeSource(sourceRoot, "com/example/Anything.java", "package com.example; public final class Anything {}");
 
-        assertFailsWithIncompatibleJdk(() ->
-                JavaCompilation.compile(sourceRoot, tempDir.resolve("out"), List.of(), "9999"));
-    }
+        String problem = JavaCompilation.compile(sourceRoot, tempDir.resolve("out"), List.of(), "9999")
+                .failure().problems().get(0);
 
-    private static void assertFailsWithIncompatibleJdk(org.junit.jupiter.api.function.Executable executable) {
-        org.junit.jupiter.api.Assertions.assertThrows(IncompatibleJdkException.class, executable);
+        assertTrue(problem.contains("java-version"), problem);
     }
 
     private static void writeSource(Path sourceRoot, String relativePath, String content) throws IOException {

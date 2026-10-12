@@ -87,12 +87,12 @@ specific decision and its specific reasoning; that one is for the pattern.
   survives the one command most likely to need it.
 
 - **Multiple commands per invocation** (`kwenza build run`, `kwenza clean build run`) share one
-  `ResolveContext` and one `CompileContext` (created lazily by `cli.Session`), so a chain doesn't
-  redo resolve/compile once per command that happens to need it — `build run` resolves and
-  compiles exactly once, not twice. `clean` calls `CompileContext.invalidate()`, since
-  it deletes the very output that memoization would otherwise assume was still valid.
-  If you add a new command that produces or consumes build output, make sure it goes through
-  `ResolveContext`/`CompileContext` rather than calling `Resolver`/`JavaCompilation.compile`
+  `ResolveContext` and one `CompileContext` (owned by `cli.Session`), so a chain doesn't redo
+  resolve/compile once per command that happens to need it — `build run` resolves and compiles
+  exactly once, not twice. `clean` calls `CompileContext.forget()`, since it deletes the very
+  output that memo would otherwise assume was still valid. If you add a new command that
+  produces or consumes build output, make sure it gets it from `BuildCommand.main()`/`tests()` or
+  `ResolveCommand.resolved()`/`mainResolved()` rather than calling `Resolver`/`JavaCompilation`
   directly, or chaining will silently redo work (or worse, silently reuse stale output after a
   `clean`).
 
@@ -102,25 +102,28 @@ specific decision and its specific reasoning; that one is for the pattern.
   "lockfile wins by default" pattern, not Maven's "always re-resolve, hope the range is stable" one.
 
 - **Fail fast on JDK/`java-version` mismatches.** `javac --release N` silently requires the running
-  JDK to be N or newer; kwenza checks this itself (`IncompatibleJdkException` in
-  `JavaCompilation`) and gives a specific, actionable message instead of surfacing a raw javac error.
+  JDK to be N or newer; kwenza checks this itself (a failed `Result` from
+  `JavaCompilation.compile`) and gives a specific, actionable message instead of surfacing a raw javac error.
 
-- **Checksums fail closed.** `MavenRepository.fetchJarAsync` refuses a downloaded jar whose `.sha1`
-  is missing, unfetchable or empty, the same as a mismatch, and never writes an unverified jar to
-  the local cache. It used to treat a failed `.sha1` fetch as "no checksum, skip it"
-  (`.exceptionally(ex -> null)`), which let anyone able to block that one URL switch verification
-  off. `Resolver.ensureFromLock` checks every jar against the lock's `sha256` before use, cache
-  hits included, and a lock entry with no `sha256` is an error rather than a pass. A *fresh*
-  resolution (no lock yet, or a changed manifest) never pins a jar nobody has
-  verified either: `Resolver.resolve` takes the lock it's replacing, checks any module resolved
-  at the same version that lock pinned against the old `sha256` (no network), and sends every
-  other jar through `MavenRepository.fetchJarVerifiedAsync`, which checks even a cache hit
-  against the *remote* `.sha1`. Never the `.jar.sha1` cached beside the jar: anyone who can
-  alter the jar can alter that too, so it would only catch accidental corruption. That costs
-  one small request per newly-pinned cached jar, which is fine on a path that's going to the
-  network anyway. `ResolveContext.ensureMainResolved` passes the merged lock it has just verified, so its
-  second resolution still makes no network calls. Expected `.sha1`s always come from the
-  repository, never the local cache, for downloads too. There's
+- **Checksums fail closed, through one trust rule.** Every jar comes from
+  `ArtifactStore.jar(gav, expectation)`, and the expectation is closed: `Pinned(sha256)` (the lock
+  vouches for it: a cached jar is checked locally with no network, a missing one is downloaded,
+  checked against the repository's `.sha1` and then the pin) or `Published` (only the
+  repository's `.sha1` vouches for it, fetched even for a cache hit). There is no "unverified"
+  option, so no caller can pick the wrong path; it used to be two fetch methods on
+  `MavenRepository`, one of which returned a cached jar unchecked, with the caller expected to
+  choose. A missing, unfetchable or empty `.sha1` is refused like a mismatch, and nothing
+  unverified is ever written to the local cache. (It once treated a failed `.sha1` fetch as "no
+  checksum, skip it", which let anyone able to block that one URL switch verification off.)
+  From a fresh lock, every entry is `Pinned`, and an entry with no `sha256` is an error. A
+  *fresh* resolution (no lock yet, or a changed manifest) pins a module from the lock it's
+  replacing when the version is unchanged, and `Published` otherwise. Never the `.jar.sha1`
+  cached beside the jar: anyone who can alter the jar can alter that too, so it would only catch
+  accidental corruption. That costs one small request per newly-pinned cached jar, which is fine
+  on a path that's going to the network anyway. `Resolver` collects every refusal rather than
+  stopping at the first, so one run lists every bad jar. `MavenRepository` is network-only now,
+  and creates its `HttpClient` on its first fetch, so a from-lock build with every jar cached
+  never creates one (that also closes the AppCDS note's "HttpClient constructed for nothing"). There's
   deliberately no opt-out flag yet: Central publishes `.sha1` for every artifact, and a
   `--insecure`-style escape hatch should wait until a real repository without checksums (a
   private registry, say) actually needs one. The mismatch message tells the user to delete the
@@ -224,10 +227,15 @@ specific decision and its specific reasoning; that one is for the pattern.
   teaching `Resolver.java`'s `Node`/`ResolvedArtifact` about which root set (`dependencies` vs.
   `devDependencies`) each artifact is reachable from. `ensureMainResolved` sidesteps that by
   re-running `Resolver.resolve` with just the main deps — cheap in practice because
-  `MavenRepository` already caches every POM/jar it fetches to `~/.m2`, so the second pass never
-  touches the network on its own, but it is real duplicated in-memory graph mediation work per
-  invocation. Worth revisiting with proper scope-tagging if that ever shows up in profiling, or if
-  `[workspace]` multi-module support (also deferred) ends up needing the same distinction anyway.
+  every POM/jar it fetches is cached in `~/.m2`, but it is real duplicated in-memory graph
+  mediation work per invocation. **Known gap, found in the codebase-design review:** the second
+  pass reads POMs, which a from-lock build never fetched, so with a cold POM cache (jars cached,
+  POMs not) a supposedly lock-only build reaches the network after all, and it can even settle
+  on a version the merged pass never chose, which no lock entry pins. Replacing it with a pure
+  projection over the merged graph (follow `requested-by` from `[dependencies]`) would fix both,
+  but changes behaviour: a dev-dependency could then raise a shared version on the main
+  classpath, as in Maven and Cargo, where today's per-scope behaviour matches Gradle. Deferred
+  to its own investigation (see ROADMAP.adoc), alongside a per-scope lock as a third option.
 
 - **`benchmarks/*/{kwenza,maven,gradle}/src` are symlinks into the matching `examples/*/src`, never
   copies.** Found the hard way: `examples/hello-world` and its benchmark copy had already silently
@@ -281,17 +289,55 @@ specific decision and its specific reasoning; that one is for the pattern.
   tiny fixed graph, so building a real one would be complexity with nothing to do yet.
   `help` and `version` are CLI-only (`HelpCli`, `VersionCli`, no `commands` counterpart): they
   don't touch a project, so they don't load one either, and work outside any project.
-  `RunCommand`/`TestCommand` throw a `CommandFailedException` (carrying just an exit code) instead
-  of calling `System.exit` when their subprocess fails, since it has already printed whatever it
-  needed to; `Cli.run` returns that code from one place.
+  `RunCommand`/`TestCommand` return `Failure.child(exitCode)` when their subprocess fails, since
+  it has already printed whatever it needed to; `Cli.run` returns that code from one place.
+  Both fork through `commands.Jvm`, which runs a `JvmLaunch` (a record: label, main class, dirs,
+  jars, JVM args, program args) and owns the status line, the `--verbose` detail, the output
+  redirect and the exit code, so any future command that forks a JVM gets them right for free.
+  `JvmLaunch.statusLine`/`command` are pure, so the status line CI diffs is unit-tested. There's
+  deliberately no process-launcher interface (one adapter, `ProcessBuilder`: a hypothetical seam)
+  and no non-blocking `start()`/output capture yet: those arrive with test sharding or a
+  kwenza-owned test report, additively.
+
+- **Errors are values; exceptions are for what nobody designed for.** A failure kwenza expects
+  and handles on purpose (a bad manifest, a malformed lock, a checksum mismatch, a failed
+  compile, a missing `main-class`, a run/test child exiting non-zero, a typo'd command) is a
+  `context.Result<T>`: `Ok(value)` or `Err(Failure)`, where `Failure` holds an exit code and one
+  or more problems to print. An exception means kwenza itself has a bug, and `Cli` says so: `error:
+  internal error: ...`, a pointer to the issue tracker, the stack trace under `--verbose`, exit
+  101 (Rust's panic code). The one other thing `Cli` catches is `IOException`, for the environment
+  failing underneath kwenza (a disk error), reported as a normal error. Exit codes are 0, 1 (fix
+  the problem the message names), 2 (bad command line), 101 (bug), or a run/test child's own code,
+  documented in every manual page's EXIT STATUS and checked there by `CliDocsTest`.
+  This is a principle, not a performance measure: exceptions here fire at most once per
+  invocation, and a stackless exception would cost next to nothing anyway. The point is that a
+  signature says what can go wrong, and a bug can never be mistaken for a user error (the old
+  `catch (Exception)` blocks in `Resolver` used to report an NPE as "Failed to resolve ...").
+  Weighed against three exception-based designs (one `KwenzaException`; a categorised one with
+  distinct exit codes, hints and source locations; a hybrid with values only in loops) and
+  "`Result` everywhere, async-first" with combinators and an `Async` wrapper. Kept minimal on
+  purpose: `map`, `flatMap`, `all` (which collects every problem, for reporting every checksum
+  mismatch in one run), no categories yet; a `kind` can be added to `Failure` later without
+  touching a call site. Java has no `?`, so propagating is `if (r instanceof Result.Err<?> err)
+  return err.castErr();`, two lines; accepted as the price.
+  The one allowed exception to the rule: a module may bail out of deep recursion with a private,
+  stackless exception (`Toml`'s `TomlParseException`, `KwenzaManifest.Invalid`,
+  `PomParser.MissingElement`), caught and turned into a `Result` before its public method returns.
+  It never crosses a module's interface.
 
 - **State is split into one context per concern, each living with its concern** (Cargo keeps its
   build context under `compiler/` the same way). `context.GlobalContext` is the environment (working
   directory, local repository, `Reporter`); `workspace.Project` is one project's manifest, root and
   on-disk layout (every `target/classes`-style path lives there and nowhere else, and owning the
-  root is what `--project` needs); `resolver.ResolveContext` memoizes resolution and owns the lock
-  freshness decision; `compiler.CompileContext` memoizes main/test compilation. `cli.Session` is
-  the only place they're wired together, lazily, so `help` never loads a manifest. Contexts
+  root is what `--project` needs); `resolver.ResolveContext` and `compiler.CompileContext` hold
+  what's been resolved and compiled so far, as `context.Memo`s, and nothing else. The work is
+  the commands': `ResolveCommand` resolves (lock freshness, writing the lock, reporting) through
+  `Resolver`, and `BuildCommand` compiles through `JavaCompilation`; `run`/`test`/`package` take a
+  `BuildCommand` and ask it for `main()`/`tests()`, so commands compose the way Cargo's `ops` do.
+  This replaced contexts that both remembered *and* did the work, which left `BuildCommand` and
+  `ResolveCommand` as one-line pass-throughs. `cli.Session` is the only place it's wired
+  together, lazily, so `help` never loads a manifest; commands are cheap and made fresh per use,
+  the state is what persists across a chain. Contexts
   depend downwards only (`compiler` → `resolver` → `workspace`/`context`), and `context` depends on
   nothing. All in a top-level `context/` package was the alternative; rejected for now because
   `context` would then depend on every concern, but it's an easy move if that ever reads better.
@@ -378,6 +424,16 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
 
 ## Also on the radar (surfaced later, not yet triaged against the above)
 
+- **POMs are not verified.** Jars go through the one trust rule (see "Checksums fail closed"),
+  but POMs, which decide *which* jars get resolved, are taken from the local cache or the
+  repository with no checksum at all (`ArtifactStore.pom`). Someone able to alter a cached POM
+  could add a dependency on a different, real artifact, which would then pass its own `.sha1`
+  check. Found in the codebase-design review. The likely fix mirrors jars: check a fetched POM
+  against its published `.pom.sha1`, and consider pinning POM hashes in `kwenza.lock` so a
+  lock-backed resolution can verify cached POMs locally. That second part ties in with the
+  main-classpath question under the dev-dependencies decision above, since that's the one path
+  that reads POMs from a lock-backed build.
+
 - **CI-compatible test reports via `--reports-dir`.** `kwenza test` forks `ConsoleLauncher` already;
   adding `--reports-dir=<dir>` to that invocation makes `ConsoleTestExecutor` register a
   `LegacyXmlReportGeneratingListener`, which writes one `TEST-<class>.xml` per test class in the
@@ -398,10 +454,10 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   -version` loads 383 classes (all covered by the JDK's default CDS archive); a `kwenza package`
   on `examples/hello-world` loads 4029, of which 2751 aren't covered by that default archive —
   1164 alone are `com.sun.tools` (javac internals). A second, previously-unconfirmed hypothesis
-  also checked out: resolution constructs `MavenRepository.central(...)` (and with it a
-  `java.net.http.HttpClient`) unconditionally, even on the from-lock path where nothing gets
-  fetched — that pulls in ~250 `sun.security.ssl`/`javax.net.ssl`/`javax.crypto` classes every
-  invocation for no reason. Small, separate, still-open fix; not done as part of this.
+  also checked out: resolution constructed a `java.net.http.HttpClient` unconditionally, even on
+  the from-lock path where nothing gets fetched — that pulled in ~250
+  `sun.security.ssl`/`javax.net.ssl`/`javax.crypto` classes every invocation for no reason.
+  Fixed since: `MavenRepository` creates its client on the first fetch.
 
   Mechanism: `-XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=<path>` (available since JDK 19,
   so covered by kwenza's own JDK 21 floor — `bootstrap.sh` compiles kwenza itself with `--release
@@ -595,12 +651,9 @@ Testing & reporting
   shelling out to Open Test Reporting's separate CLI converter (a new runtime dependency).
 
 Performance
-- Prefer return codes over exceptions for any new hot-path logic (a per-test listener callback,
-  resolver loops over many versions). Exceptions cost mostly in `fillInStackTrace()`, which only
-  matters when they fire per iteration; kwenza's current exceptions (`KwenzaException`,
-  `CommandFailedException`, `IncompatibleJdkException`) fire at most once per invocation, so there's
-  nothing to change today. A direction to weigh when scoping hot paths, not a refactor of existing
-  code.
+- Expected failures are values everywhere now (see "Errors are values" above), which covers what
+  this item used to ask of hot paths (a per-test listener callback, resolver loops). What's left
+  for hot paths is not allocating a `Result` per iteration where a plain return code would do.
 - Incremental compilation — a real unknown, and potentially in tension with the current in-process
   `javax.tools.JavaCompiler`-only decision, since that API doesn't give a source-level dependency
   graph for free the way Gradle's own incremental compiler (or Eclipse's ECJ, which IDEs use) does.
@@ -657,8 +710,8 @@ close most of this gap — flagged as a real future optimization, intentionally 
     `CliOption`, `Invocation`.
   - `cli.help`: usage, `--list`, short help, and the manual-page renderer.
   - `commands`: one `XCommand` per command that touches a project, doing the actual work.
-  - `context`: `GlobalContext`, `Reporter`, `Timing`, `KwenzaException` (the user-facing error
-    any layer may throw).
+  - `context`: `GlobalContext`, `Reporter`, `Timing`, `Result` and `Failure` (how any layer
+    reports an expected failure).
   - `workspace`: `Project`.
   - `resolver`, `compiler` (each with its context), `packager`, `manifest`, `toml`.
 
@@ -676,13 +729,17 @@ close most of this gap — flagged as a real future optimization, intentionally 
   Tests inject `Mockito.mock(Reporter.class)` instead - void methods do nothing by default, so
   it's silent without needing to redirect `System.err` (the `QuietConsole` JUnit extension this
   replaced), and any test that cares what got reported can `verify(...)` on it instead of
-  string-matching captured output. `CliException` became `context.KwenzaException` once
-  `CompileContext` (in `compiler`) needed to throw it: it was never CLI-specific.
+  string-matching captured output.
   `Timing` still writes to stderr directly, through static methods, rather than going behind
   `Reporter`. Reconsidered in the code-design pass and kept: it's a no-op unless `KWENZA_TIMING`
   is set, so it never causes test noise, and it has to start before anything else exists
-  (`Timing.init()` is `main`'s first statement, to capture the true entry time). Revisit if it
-  ever needs a second output.
+  (`Timing.start()` opens `main`'s outermost scope, to capture the true entry time, and prints
+  the report when it closes). Revisit if it
+  ever needs a second output. Phases are scopes, `try (var t = Timing.phase("compile")) {...}`,
+  rather than the `Timing.mark(label)` checkpoints they replaced: each phase has an explicit start
+  and end, nests, and a phase a memoized command skips doesn't appear, where a checkpoint gap used
+  to absorb whatever ran in between (the main-classpath resolution, for one, was invisible inside
+  "compile"). Disabled, `phase()` hands out one shared no-op, so it costs nothing.
 - Rebuild via self-hosting: `cd kwenza && bin/kwenza package`. Only reach for `bootstrap.sh` if
   `target/` has no working jar at all.
 - `KWENZA_REPO` (dependency cache override) and `KWENZA_TIMING` (phase-timing diagnostics to
@@ -726,7 +783,7 @@ close most of this gap — flagged as a real future optimization, intentionally 
 
 kwenza tests itself: `bin/kwenza test` runs a real JUnit 5 suite under `src/test/java`, mirroring
 the main package layout one test class per module (`toml/TomlTest`, `resolver/ResolverTest`,
-`compiler/CompileContextTest`, `cli/CliTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
+`resolver/ArtifactStoreTest`, `commands/BuildCommandTest`, `cli/CliTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
 pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test`. CI
 (`.github/workflows/ci.yml`) runs that suite plus the three example checks below
 (`.github/scripts/smoke-examples.sh`) from a clean bootstrap on every push and PR. If you add or

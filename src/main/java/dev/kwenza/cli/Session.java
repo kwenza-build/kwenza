@@ -1,30 +1,38 @@
 package dev.kwenza.cli;
 
 import dev.kwenza.cli.help.Help;
+import dev.kwenza.commands.BuildCommand;
+import dev.kwenza.commands.ResolveCommand;
 import dev.kwenza.compiler.CompileContext;
 import dev.kwenza.context.GlobalContext;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import dev.kwenza.context.Timing;
+import dev.kwenza.resolver.ArtifactStore;
+import dev.kwenza.resolver.LocalRepository;
+import dev.kwenza.resolver.MavenRepository;
 import dev.kwenza.resolver.ResolveContext;
+import dev.kwenza.resolver.Resolver;
 import dev.kwenza.workspace.Project;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 
 /**
- * Everything one invocation's commands share, created on first use: a chain like
- * {@code kwenza build run} gets one {@link ResolveContext} and one {@link CompileContext}, which
- * is what makes it resolve and compile once. Lazy so commands that need no project
- * ({@code help}, {@code version}) work outside one. This is the only place the contexts are wired
- * together; the commands themselves just take the ones they need.
+ * Everything one invocation's commands share, and the one place it's wired together: the
+ * project, the state chained commands share (one {@link ResolveContext} and one
+ * {@link CompileContext}, which is what makes {@code kwenza build run} resolve and compile once),
+ * and the one {@link MavenRepository} (whose HTTP client only exists once something is fetched).
+ * Commands are cheap and made fresh for each use; the state they work on lives here. Lazy, so
+ * commands that need no project ({@code help}, {@code version}) work outside one.
  */
 public final class Session {
     private final GlobalContext global;
     private final Help help;
+    private final ResolveContext resolveState = new ResolveContext();
+    private final CompileContext compileState = new CompileContext();
 
     private Project project;
-    private ResolveContext resolve;
-    private CompileContext compile;
+    private MavenRepository remote;
 
     public Session(GlobalContext global, Help help) {
         this.global = global;
@@ -39,30 +47,46 @@ public final class Session {
         return help;
     }
 
-    /** The project in the working directory; fails with a clear message if there's no kwenza.toml. */
+    /**
+     * Loads the project in the working directory, once; a failure if there's no usable kwenza.toml
+     * there. {@code Cli} calls this before the first command that {@code needsProject()}.
+     */
+    public Result<Void> loadProject() throws IOException {
+        if (project == null) {
+            Result<Project> loaded;
+            try (var timing = Timing.phase("load manifest")) {
+                loaded = Project.load(global.workingDir());
+            }
+            if (loaded instanceof Result.Err<?> err) {
+                return err.castErr();
+            }
+            project = loaded.get();
+        }
+        return Result.ok();
+    }
+
+    /** The loaded project; asking before {@link #loadProject()} succeeded is a bug. */
     public Project project() {
         if (project == null) {
-            try {
-                project = Project.load(global.workingDir());
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-            Timing.mark("manifest-loaded");
+            throw new IllegalStateException("project() before loadProject()");
         }
         return project;
     }
 
-    public ResolveContext resolve() {
-        if (resolve == null) {
-            resolve = new ResolveContext(project(), global);
-        }
-        return resolve;
+    /** What's been compiled so far, for {@code clean} to forget. */
+    public CompileContext compileState() {
+        return compileState;
     }
 
-    public CompileContext compile() {
-        if (compile == null) {
-            compile = new CompileContext(project(), resolve(), reporter());
+    public ResolveCommand resolveCommand() {
+        if (remote == null) {
+            remote = MavenRepository.central();
         }
-        return compile;
+        Resolver resolver = new Resolver(new ArtifactStore(new LocalRepository(global.localRepo()), remote));
+        return new ResolveCommand(project(), resolveState, resolver, reporter());
+    }
+
+    public BuildCommand buildCommand() {
+        return new BuildCommand(project(), compileState, resolveCommand(), reporter());
     }
 }

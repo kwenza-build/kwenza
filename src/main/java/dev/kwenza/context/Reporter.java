@@ -20,4 +20,7 @@ public interface Reporter {
      * {@code --verbose}), so verbosity never has to be threaded through the code that produces it.
      */
     void detail(String message);
+
+    /** A line from a tool kwenza runs in-process (javac's errors and warnings), passed on as it is. */
+    void diagnostic(String line);
 }

@@ -140,9 +140,9 @@ needs to be a first-class design constraint from the start of anything that touc
 something discovered after the fact.
 
 Concretely, today: a freshly-downloaded jar is verified against the repository's published
-`.sha1` checksum before it's written to the local cache (`MavenRepository.fetchJarAsync`), and
-`kwenza.lock` records each resolved artifact's own `sha256`, which every lock-backed build checks
-again before using the jar (`Resolver.ensureFromLock`). Zero dependencies for kwenza's own
+`.sha1` checksum before it's written to the local cache, and `kwenza.lock` records each resolved
+artifact's own `sha256`, which every lock-backed build checks again before using the jar. Both
+rules live in one place, `ArtifactStore.jar`, which has no way to return a jar nothing vouches for. Zero dependencies for kwenza's own
 build (below) is a security property too, not just a bootstrapping one — every dependency kwenza
 doesn't have is one less thing that could be compromised upstream and pulled straight into every
 kwenza user's build.

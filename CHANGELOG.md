@@ -69,9 +69,18 @@ Everything below will ship in kwenza's first release, 0.1.0.
   `test`. It can go anywhere on the command line.
 - kwenza's own status lines go to stderr, so `kwenza run`'s stdout is only the program's output.
   They are coloured in a terminal and plain when piped, or when `NO_COLOR` is set.
-- `KWENZA_TIMING` prints a phase-by-phase timing breakdown to stderr.
+- `KWENZA_TIMING` prints a phase-by-phase timing breakdown to stderr: how long each phase that
+  ran took, nested where one phase runs inside another.
 - kwenza fails fast with a specific message when `java-version` needs a newer JDK than the one
-  running kwenza.
+  running kwenza, or when it's running on a JRE with no compiler.
+- Exit codes are documented and stable: `0` success, `1` a problem you can fix (the `error:`
+  message says what), `2` an invalid command line, `101` a bug in kwenza itself, and otherwise the
+  exit code of the program `run` started or the test launcher `test` started, passed through.
+- A bug in kwenza is reported as one: `error: internal error: ...` with a link to the issue
+  tracker, and the stack trace under `--verbose`. It is never disguised as a problem with your
+  project.
+- Problems in `kwenza.toml` are prefixed with the file name. A malformed `kwenza.lock` is reported
+  as such, with the fix (delete it so the next build regenerates it).
 
 #### Project
 
@@ -92,6 +101,7 @@ Everything below will ship in kwenza's first release, 0.1.0.
     or empty checksum is rejected, the same as a mismatch.
   - A jar that is already in the local cache must match its `sha256` in `kwenza.lock`.
   - A lock entry with no `sha256` is an error.
+  - Every jar that fails verification is reported in the same run, not just the first.
 - Annotation processors are never discovered from the classpath, on any JDK. javac's own default
   differs by version (JDK 21 runs any processor a dependency ships, JDK 23 and newer don't), and
   kwenza compiles in-process, so a processor in any transitive dependency would otherwise run

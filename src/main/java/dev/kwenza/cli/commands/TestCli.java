@@ -2,6 +2,9 @@ package dev.kwenza.cli.commands;
 
 import dev.kwenza.cli.Session;
 import dev.kwenza.commands.TestCommand;
+import dev.kwenza.context.Result;
+
+import java.io.IOException;
 
 /** {@code kwenza test}. See {@link TestCommand}. */
 public final class TestCli implements CliCommand {
@@ -22,7 +25,7 @@ public final class TestCli implements CliCommand {
     }
 
     @Override
-    public void exec(Session session, Invocation invocation) throws Exception {
-        new TestCommand(session.project(), session.compile(), session.reporter()).run();
+    public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
+        return new TestCommand(session.project(), session.buildCommand(), session.reporter()).run();
     }
 }

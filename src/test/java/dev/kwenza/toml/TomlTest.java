@@ -1,12 +1,13 @@
 package dev.kwenza.toml;
 
+import dev.kwenza.context.Result;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TomlTest {
@@ -19,7 +20,7 @@ class TomlTest {
                 pi = 3.5
                 enabled = true
                 disabled = false
-                """);
+                """).get();
 
         assertEquals("kwenza", result.get("name"));
         assertEquals(1L, result.get("version"));
@@ -34,7 +35,7 @@ class TomlTest {
                 [package]
                 name = "kwenza"
                 version = "0.1.0"
-                """);
+                """).get();
 
         @SuppressWarnings("unchecked")
         Map<String, Object> pkg = (Map<String, Object>) result.get("package");
@@ -44,7 +45,7 @@ class TomlTest {
 
     @Test
     void dottedKeysNestWithoutAnExplicitTableHeader() {
-        Map<String, Object> result = Toml.parse("dependencies.guava.version = \"33.2.1-jre\"");
+        Map<String, Object> result = Toml.parse("dependencies.guava.version = \"33.2.1-jre\"").get();
 
         @SuppressWarnings("unchecked")
         Map<String, Object> dependencies = (Map<String, Object>) result.get("dependencies");
@@ -63,7 +64,7 @@ class TomlTest {
                 [[resolved]]
                 module = "com.google.guava:failureaccess"
                 version = "1.0.2"
-                """);
+                """).get();
 
         @SuppressWarnings("unchecked")
         List<Object> resolved = (List<Object>) result.get("resolved");
@@ -81,7 +82,7 @@ class TomlTest {
         Map<String, Object> result = Toml.parse("""
                 guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
                 items = ["kwenza", "builds", "java"]
-                """);
+                """).get();
 
         @SuppressWarnings("unchecked")
         Map<String, Object> guava = (Map<String, Object>) result.get("guava");
@@ -91,14 +92,14 @@ class TomlTest {
 
     @Test
     void basicStringsInterpretEscapeSequences() {
-        Map<String, Object> result = Toml.parse("greeting = \"line one\\nline two\\t(tabbed)\"");
+        Map<String, Object> result = Toml.parse("greeting = \"line one\\nline two\\t(tabbed)\"").get();
 
         assertEquals("line one\nline two\t(tabbed)", result.get("greeting"));
     }
 
     @Test
     void literalStringsDoNotInterpretEscapeSequences() {
-        Map<String, Object> result = Toml.parse("path = 'C:\\Users\\no\\escapes'");
+        Map<String, Object> result = Toml.parse("path = 'C:\\Users\\no\\escapes'").get();
 
         assertEquals("C:\\Users\\no\\escapes", result.get("path"));
     }
@@ -108,33 +109,33 @@ class TomlTest {
         Map<String, Object> result = Toml.parse("""
                 # a full-line comment
                 name = "kwenza" # a trailing comment
-                """);
+                """).get();
 
         assertEquals("kwenza", result.get("name"));
         assertEquals(1, result.size());
     }
 
     @Test
-    void unterminatedStringThrowsATomlParseException() {
-        TomlParseException e = assertThrows(TomlParseException.class,
-                () -> Toml.parse("name = \"kwenza"));
+    void anUnterminatedStringIsAFailureNamingTheMissingQuote() {
+        Result<Map<String, Object>> result = Toml.parse("name = \"kwenza");
 
-        assertTrue(e.getMessage().contains("'\"'"), "expected the message to mention the missing quote: " + e.getMessage());
+        String problem = result.failure().problems().get(0);
+        assertTrue(problem.contains("'\"'"), "expected the message to mention the missing quote: " + problem);
     }
 
     @Test
-    void aMissingEqualsSignThrowsATomlParseException() {
-        assertThrows(TomlParseException.class, () -> Toml.parse("name \"kwenza\""));
+    void aMissingEqualsSignIsAFailure() {
+        assertFalse(Toml.parse("name \"kwenza\"").isOk());
     }
 
     @Test
-    void reusingATableKeyAsAPlainValueThrowsATomlParseException() {
-        assertThrows(TomlParseException.class, () -> Toml.parse("""
+    void reusingATableKeyAsAPlainValueIsAFailure() {
+        assertFalse(Toml.parse("""
                 [package]
                 name = "kwenza"
 
                 [package.name]
                 oops = true
-                """));
+                """).isOk());
     }
 }

@@ -25,10 +25,10 @@ class CleanCommandTest {
                 group = "com.example"
                 version = "0.1.0"
                 """);
-        new BuildCommand(state.compile()).run();
+        state.build().run().get();
         assertTrue(Files.exists(projectRoot.resolve("target")));
 
-        new CleanCommand(state.project(), state.compile(), state.reporter()).run();
+        new CleanCommand(state.project(), state.compileState(), state.reporter()).run().get();
 
         assertFalse(Files.exists(projectRoot.resolve("target")));
     }
@@ -44,7 +44,7 @@ class CleanCommandTest {
                 version = "0.1.0"
                 """);
 
-        new CleanCommand(state.project(), state.compile(), state.reporter()).run(); // must not throw
+        new CleanCommand(state.project(), state.compileState(), state.reporter()).run().get();
     }
 
     @Test
@@ -58,11 +58,11 @@ class CleanCommandTest {
                 group = "com.example"
                 version = "0.1.0"
                 """);
-        new BuildCommand(state.compile()).run();
+        state.build().run().get();
         Path classFile = projectRoot.resolve("target/classes/com/example/Main.class");
 
-        new CleanCommand(state.project(), state.compile(), state.reporter()).run();
-        new BuildCommand(state.compile()).run();
+        new CleanCommand(state.project(), state.compileState(), state.reporter()).run().get();
+        state.build().run().get();
 
         assertTrue(Files.exists(classFile), "clean should have invalidated memoized compile state");
     }

@@ -1,6 +1,7 @@
 package dev.kwenza.cli.commands;
 
 import dev.kwenza.cli.Session;
+import dev.kwenza.context.Result;
 
 /** {@code kwenza version}, also spelled {@code kwenza --version} / {@code -V}. */
 public final class VersionCli implements CliCommand {
@@ -16,7 +17,13 @@ public final class VersionCli implements CliCommand {
     }
 
     @Override
-    public void exec(Session session, Invocation invocation) {
+    public boolean needsProject() {
+        return false;
+    }
+
+    @Override
+    public Result<Void> exec(Session session, Invocation invocation) {
         session.help().printVersion();
+        return Result.ok();
     }
 }

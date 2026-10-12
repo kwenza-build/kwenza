@@ -7,7 +7,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PomParserTest {
@@ -21,7 +20,7 @@ class PomParserTest {
                   <version>33.2.1-jre</version>
                   <packaging>jar</packaging>
                 </project>
-                """);
+                """).get();
 
         assertEquals("com.google.guava", pom.group());
         assertEquals("guava", pom.artifact());
@@ -38,7 +37,7 @@ class PomParserTest {
                   <artifactId>thing</artifactId>
                   <version>1.0</version>
                 </project>
-                """);
+                """).get();
 
         assertEquals("jar", pom.packaging());
     }
@@ -54,7 +53,7 @@ class PomParserTest {
                   </parent>
                   <artifactId>child</artifactId>
                 </project>
-                """);
+                """).get();
 
         assertEquals("com.example.parent", pom.group());
         assertEquals("2.0", pom.version());
@@ -76,15 +75,17 @@ class PomParserTest {
                   <artifactId>child</artifactId>
                   <version>1.0</version>
                 </project>
-                """);
+                """).get();
 
         assertEquals("com.example.child", pom.group());
         assertEquals("1.0", pom.version());
     }
 
     @Test
-    void anArtifactIdWithNoValueAtAllThrowsAResolutionException() {
-        assertThrows(ResolutionException.class, () -> PomParser.parse("<project></project>"));
+    void aPomWithNoArtifactIdIsAFailureNamingTheMissingElement() {
+        String problem = PomParser.parse("<project></project>").failure().problems().get(0);
+
+        assertTrue(problem.contains("<artifactId>"), problem);
     }
 
     @Test
@@ -97,7 +98,7 @@ class PomParserTest {
                     <maven.compiler.release>21</maven.compiler.release>
                   </properties>
                 </project>
-                """);
+                """).get();
 
         assertEquals("33.2.1-jre", pom.properties().get("guava.version"));
         assertEquals("21", pom.properties().get("maven.compiler.release"));
@@ -123,7 +124,7 @@ class PomParserTest {
                     </dependency>
                   </dependencies>
                 </project>
-                """);
+                """).get();
 
         List<PomParser.RawDependency> deps = pom.dependencies();
         assertEquals(2, deps.size());
@@ -155,7 +156,7 @@ class PomParserTest {
                     </dependency>
                   </dependencies>
                 </project>
-                """);
+                """).get();
 
         assertEquals(1, pom.dependencies().size());
         assertEquals("direct", pom.dependencies().get(0).artifact());
@@ -175,7 +176,7 @@ class PomParserTest {
                     </dependency>
                   </dependencies>
                 </project>
-                """);
+                """).get();
 
         assertNull(pom.dependencies().get(0).version());
     }

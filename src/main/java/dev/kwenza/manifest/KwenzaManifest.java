@@ -1,5 +1,6 @@
 package dev.kwenza.manifest;
 
+import dev.kwenza.context.Result;
 import dev.kwenza.toml.Toml;
 
 import java.io.IOException;
@@ -33,16 +34,27 @@ public final class KwenzaManifest {
         this.devDependencies = devDependencies;
     }
 
-    public static KwenzaManifest load(Path path) throws IOException {
+    /** Reading the file is the only thing that throws: a disk that can't be read isn't a manifest problem. */
+    public static Result<KwenzaManifest> load(Path path) throws IOException {
         return parse(Files.readString(path));
     }
 
+    /** The manifest, or a failure naming the first thing wrong with it. */
+    public static Result<KwenzaManifest> parse(String text) {
+        return Toml.parse(text).flatMap(root -> {
+            try {
+                return Result.ok(fromToml(root));
+            } catch (Invalid e) {
+                return Result.err(e.getMessage());
+            }
+        });
+    }
+
     @SuppressWarnings("unchecked")
-    public static KwenzaManifest parse(String text) {
-        Map<String, Object> root = Toml.parse(text);
+    private static KwenzaManifest fromToml(Map<String, Object> root) {
         Object pkgRaw = root.get("package");
         if (!(pkgRaw instanceof Map)) {
-            throw new IllegalArgumentException("kwenza.toml is missing a [package] table");
+            throw new Invalid("kwenza.toml is missing a [package] table");
         }
         Map<String, Object> pkg = (Map<String, Object>) pkgRaw;
 
@@ -68,11 +80,11 @@ public final class KwenzaManifest {
             return result;
         }
         if (!(raw instanceof Map)) {
-            throw new IllegalArgumentException("[versions] must be a table");
+            throw new Invalid("[versions] must be a table");
         }
         for (Map.Entry<String, Object> e : ((Map<String, Object>) raw).entrySet()) {
             if (!(e.getValue() instanceof String)) {
-                throw new IllegalArgumentException("[versions]." + e.getKey() + " must be a plain string version");
+                throw new Invalid("[versions]." + e.getKey() + " must be a plain string version");
             }
             result.put(e.getKey(), (String) e.getValue());
         }
@@ -88,11 +100,11 @@ public final class KwenzaManifest {
             return result;
         }
         if (!(raw instanceof Map)) {
-            throw new IllegalArgumentException("[" + tableName + "] must be a table");
+            throw new Invalid("[" + tableName + "] must be a table");
         }
         for (Map.Entry<String, Object> e : ((Map<String, Object>) raw).entrySet()) {
             if (!(e.getValue() instanceof Map)) {
-                throw new IllegalArgumentException("Dependency '" + e.getKey()
+                throw new Invalid("Dependency '" + e.getKey()
                         + "' must be an inline table like { module = \"group:artifact\", version = \"1.0\" }");
             }
             Map<String, Object> entry = (Map<String, Object>) e.getValue();
@@ -100,7 +112,7 @@ public final class KwenzaManifest {
             String depVersion = resolveVersion(e.getKey(), entry, versions);
             int colon = module.indexOf(':');
             if (colon < 0 || module.indexOf(':', colon + 1) >= 0) {
-                throw new IllegalArgumentException("Dependency module '" + module + "' must be in 'group:artifact' form");
+                throw new Invalid("Dependency module '" + module + "' must be in 'group:artifact' form");
             }
             String depGroup = module.substring(0, colon);
             String depArtifact = module.substring(colon + 1);
@@ -120,28 +132,39 @@ public final class KwenzaManifest {
             Map<String, Object> versionTable = (Map<String, Object>) versionValue;
             Object refValue = versionTable.get("ref");
             if (!(refValue instanceof String ref)) {
-                throw new IllegalArgumentException(
+                throw new Invalid(
                         "Dependency '" + alias + "' has a 'version' table but no string 'ref' key");
             }
             String resolved = versions.get(ref);
             if (resolved == null) {
-                throw new IllegalArgumentException("Dependency '" + alias + "' references version.ref = \"" + ref
+                throw new Invalid("Dependency '" + alias + "' references version.ref = \"" + ref
                         + "\", but [versions] has no such key");
             }
             return resolved;
         }
-        throw new IllegalArgumentException(
+        throw new Invalid(
                 "Dependency '" + alias + "' needs a 'version' (a string, or { ref = \"...\" } into [versions])");
     }
 
     private static String requireString(Map<String, Object> table, String where, String key) {
         Object v = table.get(key);
         if (v == null) {
-            throw new IllegalArgumentException(where + " is missing required field '" + key + "'");
+            throw new Invalid(where + " is missing required field '" + key + "'");
         }
         if (!(v instanceof String)) {
-            throw new IllegalArgumentException("'" + key + "' in " + where + " must be a string");
+            throw new Invalid("'" + key + "' in " + where + " must be a string");
         }
         return (String) v;
+    }
+
+    /**
+     * How the helpers above bail out from any depth; caught in {@link #parse}, never thrown out of
+     * this class (the one exception AGENTS.md's "errors are values" rule allows). Stackless, since
+     * only the message is ever used.
+     */
+    private static final class Invalid extends RuntimeException {
+        Invalid(String message) {
+            super(message, null, false, false);
+        }
     }
 }

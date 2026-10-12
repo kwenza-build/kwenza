@@ -51,8 +51,13 @@ See xref:./kwenza.adoc#environment[kwenza(1)] for the environment variables kwen
 
 * `0`: the program exited with `0`.
 * `1`: kwenza failed before starting the program, for example because `kwenza.toml` sets no
-`main-class`, or because compilation failed.
-* Anything else: the program's own exit code.
+`main-class`, or compilation failed; the error message says what and how.
+* `2`: the command line was invalid: an unknown command or option.
+* `101`: kwenza hit a bug in itself. Please report it, with the output of `--verbose`.
+* Anything else: the program's own exit code, passed through unchanged.
+
+The program can exit with `1`, `2` or `101` itself. When kwenza is the one failing, it always prints
+an `error:` line first.
 
 == EXAMPLES
 

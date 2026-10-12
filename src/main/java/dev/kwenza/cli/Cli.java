@@ -12,12 +12,14 @@ import dev.kwenza.cli.commands.RunCli;
 import dev.kwenza.cli.commands.TestCli;
 import dev.kwenza.cli.commands.VersionCli;
 import dev.kwenza.cli.help.Help;
-import dev.kwenza.commands.CommandFailedException;
 import dev.kwenza.context.GlobalContext;
-import dev.kwenza.context.KwenzaException;
+import dev.kwenza.context.Failure;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 
+import java.io.IOException;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,25 +59,39 @@ public final class Cli {
                               List<Invocation> invocations) {
     }
 
+    /** Where to report kwenza's own bugs. */
+    static final String ISSUES_URL = "https://github.com/kwenza-build/kwenza/issues";
+    /** Rust's exit code for a panic: kwenza itself went wrong, not the user's project. */
+    static final int BUG_EXIT_CODE = 101;
+
     private final PrintStream out;
     private final PrintStream err;
     private final Style style;
+    private final List<CliCommand> commands;
 
     public Cli(PrintStream out, PrintStream err, Style style) {
+        this(out, err, style, COMMANDS);
+    }
+
+    /** With a different set of commands, so tests can exercise every kind of outcome. */
+    Cli(PrintStream out, PrintStream err, Style style, List<CliCommand> commands) {
         this.out = out;
         this.err = err;
         this.style = style;
+        this.commands = commands;
     }
 
-    /** Runs a whole command line and returns the process exit code. Never calls System.exit itself. */
+    /**
+     * Runs a whole command line and returns the process exit code: 0, 1 (a problem the user can
+     * fix), 2 (a bad command line), 101 (a kwenza bug), or a run/test child process's own code.
+     * Never calls System.exit itself.
+     */
     public int run(String[] args) {
-        CommandLine line;
-        try {
-            line = parse(args);
-        } catch (KwenzaException e) {
-            new ConsoleReporter(err, style, false).error("error: " + e.getMessage());
-            return 1;
+        Result<CommandLine> parsed = parse(commands, args);
+        if (parsed instanceof Result.Err<?> failed) {
+            return report(new ConsoleReporter(err, style, false), failed.failure());
         }
+        CommandLine line = parsed.get();
         Reporter reporter = new ConsoleReporter(err, style, line.verbose());
         Help help = new Help(out, style);
         if (line.version()) {
@@ -100,20 +116,53 @@ public final class Cli {
         Session session = new Session(GlobalContext.fromEnvironment(reporter), help);
         try {
             for (Invocation invocation : line.invocations()) {
-                invocation.command().exec(session, invocation);
+                Result<Void> result = invocation.command().needsProject() ? session.loadProject() : Result.ok();
+                if (result.isOk()) {
+                    result = invocation.command().exec(session, invocation);
+                }
+                if (result instanceof Result.Err<?> failed) {
+                    return report(reporter, failed.failure());
+                }
             }
             return 0;
-        } catch (CommandFailedException e) {
-            // The subprocess already printed whatever it needed to - just propagate its exit
-            // code, no second "error: ..." message on top.
-            return e.exitCode;
-        } catch (Exception e) {
-            reporter.error("error: " + (e.getMessage() != null ? e.getMessage() : e));
-            return 1;
+        } catch (IOException | UncheckedIOException e) {
+            // The environment failed underneath kwenza (a disk error, a permission): not a bug,
+            // and not something a Result could have described any better than the exception does.
+            reporter.error("error: " + describe(e instanceof UncheckedIOException u ? u.getCause() : e));
+            return Failure.USER_ERROR;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            reporter.error("error: interrupted");
+            return Failure.USER_ERROR;
+        } catch (RuntimeException | Error e) {
+            // Every failure kwenza expects comes back as a Result, so anything thrown is a bug.
+            reporter.error("error: internal error: " + e);
+            reporter.error("this is a bug in kwenza - please report it at " + ISSUES_URL
+                    + (line.verbose() ? "" : " (rerun with --verbose for a stack trace)"));
+            if (line.verbose()) {
+                e.printStackTrace(err);
+            }
+            return BUG_EXIT_CODE;
         }
     }
 
-    public static CommandLine parse(String[] args) {
+    /** One {@code error:} line per problem (none for a child process that already spoke); returns its exit code. */
+    private static int report(Reporter reporter, Failure failure) {
+        for (String problem : failure.problems()) {
+            reporter.error("error: " + problem);
+        }
+        return failure.exitCode();
+    }
+
+    private static String describe(Throwable e) {
+        return e.getMessage() == null ? e.toString() : e.getClass().getSimpleName() + ": " + e.getMessage();
+    }
+
+    public static Result<CommandLine> parse(String[] args) {
+        return parse(COMMANDS, args);
+    }
+
+    private static Result<CommandLine> parse(List<CliCommand> commands, String[] args) {
         boolean verbose = false;
         boolean topLevelHelp = false;
         boolean version = false;
@@ -132,9 +181,9 @@ public final class Cli {
                 String name = eq > 0 ? arg.substring(0, eq) : arg;
                 String inlineValue = eq > 0 ? arg.substring(eq + 1) : null;
                 List<CliOption> allowed = command == null ? TOP_LEVEL_OPTIONS : commandOptions(command);
-                CliOption option = find(allowed, name);
+                CliOption option = findOption(allowed, name);
                 if (option == null) {
-                    throw new KwenzaException(command == null
+                    return usage(command == null
                             ? "unknown option '" + name + "'\n\nSee `kwenza --help` for the options kwenza takes."
                             : "unknown option '" + name + "' for `kwenza " + command.name() + "`\n\n"
                               + "See `kwenza " + command.name() + " --help` for the options it takes.");
@@ -146,10 +195,10 @@ public final class Cli {
                     } else if (i + 1 < args.length) {
                         value = args[++i];
                     } else {
-                        throw new KwenzaException("option '" + name + "' needs a value: " + option.display());
+                        return usage("option '" + name + "' needs a value: " + option.display());
                     }
                 } else if (inlineValue != null) {
-                    throw new KwenzaException("option '" + name + "' doesn't take a value");
+                    return usage("option '" + name + "' doesn't take a value");
                 }
 
                 if (option == VERBOSE) {
@@ -173,7 +222,11 @@ public final class Cli {
                 if (command != null) {
                     invocations.add(new Invocation(command, Map.copyOf(options), argument, commandHelp));
                 }
-                command = find(arg);
+                Result<CliCommand> found = find(commands, arg);
+                if (found instanceof Result.Err<?> failed) {
+                    return failed.castErr();
+                }
+                command = found.get();
                 options = new LinkedHashMap<>();
                 argument = null;
                 commandHelp = false;
@@ -182,7 +235,7 @@ public final class Cli {
         if (command != null) {
             invocations.add(new Invocation(command, Map.copyOf(options), argument, commandHelp));
         }
-        return new CommandLine(verbose, topLevelHelp, version, list, List.copyOf(invocations));
+        return Result.ok(new CommandLine(verbose, topLevelHelp, version, list, List.copyOf(invocations)));
     }
 
     /** A command's own options plus the global ones, in the order its help lists them. */
@@ -192,17 +245,25 @@ public final class Cli {
         return all;
     }
 
-    /** The command called {@code name}; fails with a pointer to {@code --list} if there's none. */
-    public static CliCommand find(String name) {
-        for (CliCommand command : COMMANDS) {
-            if (command.name().equals(name)) {
-                return command;
-            }
-        }
-        throw new KwenzaException("no such command: `" + name + "`\n\nView all commands with `kwenza --list`");
+    /** The command called {@code name}; a usage failure pointing at {@code --list} if there's none. */
+    public static Result<CliCommand> find(String name) {
+        return find(COMMANDS, name);
     }
 
-    private static CliOption find(List<CliOption> options, String name) {
+    private static Result<CliCommand> find(List<CliCommand> commands, String name) {
+        for (CliCommand command : commands) {
+            if (command.name().equals(name)) {
+                return Result.ok(command);
+            }
+        }
+        return usage("no such command: `" + name + "`\n\nView all commands with `kwenza --list`");
+    }
+
+    private static <T> Result<T> usage(String problem) {
+        return Result.err(Failure.usage(problem));
+    }
+
+    private static CliOption findOption(List<CliOption> options, String name) {
         for (CliOption option : options) {
             if (option.matches(name)) {
                 return option;

@@ -1,6 +1,6 @@
 package dev.kwenza.workspace;
 
-import dev.kwenza.context.KwenzaException;
+import dev.kwenza.context.Result;
 import dev.kwenza.manifest.KwenzaManifest;
 
 import java.io.IOException;
@@ -26,13 +26,20 @@ public final class Project {
         this.manifest = manifest;
     }
 
-    /** Loads the project whose {@code kwenza.toml} sits directly in {@code root}. */
-    public static Project load(Path root) throws IOException {
+    /**
+     * The project whose {@code kwenza.toml} sits directly in {@code root}, or a failure if there's
+     * no manifest there or it's invalid (prefixed with the file name, so the user knows where to look).
+     */
+    public static Result<Project> load(Path root) throws IOException {
         Path manifestPath = root.resolve(MANIFEST_FILE);
         if (!Files.exists(manifestPath)) {
-            throw new KwenzaException("No " + MANIFEST_FILE + " found in " + root);
+            return Result.err("No " + MANIFEST_FILE + " found in " + root);
         }
-        return new Project(root, KwenzaManifest.load(manifestPath));
+        Result<KwenzaManifest> manifest = KwenzaManifest.load(manifestPath);
+        if (manifest instanceof Result.Err<?> err) {
+            return Result.err(MANIFEST_FILE + ": " + err.failure().problems().get(0));
+        }
+        return Result.ok(new Project(root, manifest.get()));
     }
 
     public Path root() {

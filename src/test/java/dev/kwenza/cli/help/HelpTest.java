@@ -3,7 +3,8 @@ package dev.kwenza.cli.help;
 import dev.kwenza.cli.Cli;
 import dev.kwenza.cli.Style;
 import dev.kwenza.cli.commands.CliCommand;
-import dev.kwenza.context.KwenzaException;
+import dev.kwenza.context.Failure;
+import dev.kwenza.context.Result;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -11,8 +12,8 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HelpTest {
@@ -43,7 +44,7 @@ class HelpTest {
 
     @Test
     void commandHelpShowsTheGlobalOptionsAndPointsAtTheManual() {
-        String help = print(h -> h.printCommandHelp(Cli.find("test")));
+        String help = print(h -> h.printCommandHelp(Cli.find("test").get()));
 
         assertTrue(help.contains("-v, --verbose"), help);
         assertTrue(help.contains("kwenza help test"), help);
@@ -59,7 +60,9 @@ class HelpTest {
 
     @Test
     void manualForAnUnknownCommandFailsLikeAnUnknownCommand() {
-        assertThrows(KwenzaException.class, () -> print(h -> h.printManual("biuld")));
+        Result<Void> result = new Help(new PrintStream(new ByteArrayOutputStream()), Style.PLAIN).printManual("biuld");
+
+        assertEquals(Failure.USAGE_ERROR, result.failure().exitCode());
     }
 
     @Test
