@@ -1,6 +1,10 @@
 package dev.kwenza.commands;
 
+import dev.kwenza.compiler.CompileContext;
+import dev.kwenza.context.KwenzaException;
+import dev.kwenza.context.Reporter;
 import dev.kwenza.resolver.Resolver;
+import dev.kwenza.workspace.Project;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,20 +15,27 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-/** `kwenza test` - builds, compiles src/test/java, and runs it via the JUnit Platform Console Launcher. */
+/** {@code kwenza test}: builds, compiles src/test/java, and runs it via the JUnit Platform Console Launcher. */
 public final class TestCommand {
-    private TestCommand() {
+    private final Project project;
+    private final CompileContext compile;
+    private final Reporter reporter;
+
+    public TestCommand(Project project, CompileContext compile, Reporter reporter) {
+        this.project = project;
+        this.compile = compile;
+        this.reporter = reporter;
     }
 
-    public static void run(BuildState state, boolean verbose) throws Exception {
-        run(state, verbose, ProcessBuilder.Redirect.INHERIT);
+    public void run() throws Exception {
+        run(ProcessBuilder.Redirect.INHERIT);
     }
 
     /** @param outputRedirect INHERIT for real CLI use; tests pass DISCARD so a real nested ConsoleLauncher's own console report never bleeds into the outer test run. */
-    public static void run(BuildState state, boolean verbose, ProcessBuilder.Redirect outputRedirect) throws Exception {
-        Resolver.Resolution resolution = state.ensureTestCompiled();
-        Path classes = state.targetDir().resolve("classes");
-        Path testClasses = state.targetDir().resolve("test-classes");
+    public void run(ProcessBuilder.Redirect outputRedirect) throws Exception {
+        Resolver.Resolution resolution = compile.ensureTestCompiled();
+        Path classes = project.classesDir();
+        Path testClasses = project.testClassesDir();
 
         if (!hasAnyCompiledTestClasses(testClasses)) {
             // Nothing to run - same "empty is not an error" behavior as an empty src/main/java
@@ -32,14 +43,14 @@ public final class TestCommand {
             // providing ConsoleLauncher (the common case for a project with no tests at all, e.g.
             // examples/hello-world) would otherwise fail with a raw ClassNotFoundException rather
             // than this clear message.
-            state.reporter().info("test: no tests found");
+            reporter.info("test: no tests found");
             return;
         }
         if (!hasConsoleLauncher(resolution)) {
-            throw new CliException("src/test/java has test sources, but no dev-dependency provides "
+            throw new KwenzaException("src/test/java has test sources, but no dev-dependency provides "
                     + "org.junit.platform.console.ConsoleLauncher - add "
                     + "org.junit.platform:junit-platform-console-standalone to [dev-dependencies] "
-                    + "(see docs/manifest-reference.adoc)");
+                    + "(see https://kwenza.dev/docs/manifest-reference.html)");
         }
 
         List<String> classpathEntries = new ArrayList<>();
@@ -67,11 +78,9 @@ public final class TestCommand {
 
         int depCount = resolution.classpath().size();
         String deps = depCount == 0 ? "" : " (+" + depCount + " dependency jar" + (depCount == 1 ? "" : "s") + ")";
-        state.reporter().info("test: java -cp " + state.projectRoot().relativize(classes) + ":"
-                + state.projectRoot().relativize(testClasses) + deps + " ConsoleLauncher");
-        if (verbose) {
-            state.reporter().detail("  " + String.join(" ", command));
-        }
+        reporter.info("test: java -cp " + project.relativize(classes) + ":"
+                + project.relativize(testClasses) + deps + " ConsoleLauncher");
+        reporter.detail("  " + String.join(" ", command));
         // A forked JVM, not an in-process call into the launcher API: keeps kwenza itself free of
         // any JUnit/Mockito classes (no compile-time dependency, nothing to reflect against), and
         // isolates kwenza's own process from a test calling System.exit() or Mockito's inline mock
@@ -82,9 +91,9 @@ public final class TestCommand {
                 .start();
         int exitCode = process.waitFor();
         if (exitCode == 0) {
-            state.reporter().info("test: passed");
+            reporter.info("test: passed");
         } else {
-            state.reporter().error("test: failed (exit " + exitCode + ")");
+            reporter.error("test: failed (exit " + exitCode + ")");
             throw new CommandFailedException(exitCode);
         }
     }

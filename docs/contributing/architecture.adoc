@@ -50,7 +50,7 @@ Everything lands in `~/.m2/repository`, byte-for-byte Maven's own local reposito
 isn't just convention-following: kwenza and any existing Maven or Gradle installation on the same
 machine share one warm cache, verified for real during development (kwenza builds have picked up
 artifacts an existing Maven install had already cached, and vice versa). `KWENZA_REPO` overrides
-this location when needed — see link:../modules/ROOT/pages/cli-reference.adoc[CLI Reference].
+this location when needed — see link:../modules/ROOT/pages/commands/kwenza.adoc[kwenza(1)].
 
 === The resolution algorithm, roughly
 
@@ -70,7 +70,7 @@ this location when needed — see link:../modules/ROOT/pages/cli-reference.adoc[
 reuses the lock and skips network resolution entirely as long as that hash still matches (each
 jar is still checked against the lock's recorded `sha256` before use, cache hit or not) — no
 "lockfile looks stale, hope the version range is still fine" ambiguity the way Maven's own
-re-resolution can have. A changed `kwenza.toml`, or an explicit `--update`, triggers a full
+re-resolution can have. A changed `kwenza.toml` triggers a full
 re-resolution and rewrites the lock. This is the uv/Cargo "lockfile wins by default" pattern,
 not Maven's "always consult the network, hope the range is stable" one.
 
@@ -115,7 +115,7 @@ only for the very first jar, or disaster recovery; day-to-day rebuilds go throug
 
 Unlike Gradle, kwenza launches a fresh JVM on every single invocation rather than keeping a
 persistent daemon process warm. This was measured directly, using the phase-timing diagnostics
-described in link:../modules/ROOT/pages/cli-reference.adoc[CLI Reference] (`KWENZA_TIMING=1`):
+described in link:../modules/ROOT/pages/commands/kwenza.adoc[kwenza(1)] (`KWENZA_TIMING=1`):
 
 * kwenza's own resolve/compile/package logic is fast and consistent — around 400ms total for a
   trivial single-file project, every single run, with no meaningful variance.
@@ -137,12 +137,16 @@ kwenza/
   bootstrap.sh                  # first-ever build, before kwenza can build itself
   bin/kwenza                    # wrapper script - put this on your PATH
   src/main/java/dev/kwenza/
-    cli/                        # argument parsing, top-level dispatch into commands/
-    commands/                   # BuildState + one class per CLI command (build/test/run/package/clean/resolve)
+    cli/                        # Main, Cli (parser + dispatch), Session (wires the contexts), console output
+      commands/                 # one *Cli class per command: name, summary, options, exec
+      help/                     # usage, --list, short help, manual-page renderer
+    commands/                   # one *Command class per command: the work itself
+    context/                    # GlobalContext, Reporter, Timing, KwenzaException
+    workspace/                  # Project: manifest + root + on-disk layout
     manifest/                   # kwenza.toml + kwenza.lock models
     toml/                       # hand-rolled TOML parser
-    resolver/                   # Maven Central resolution, POM parsing, mediation, local cache
-    compiler/                   # javax.tools.JavaCompiler wrapper + JDK compatibility check
+    resolver/                   # Maven Central resolution, POM parsing, mediation, local cache, ResolveContext
+    compiler/                   # javax.tools.JavaCompiler wrapper, JDK compatibility check, CompileContext
     packager/                   # MANIFEST.MF + thin-jar writer
   examples/
     hello-world/                # a small real project using kwenza (Guava dependency)

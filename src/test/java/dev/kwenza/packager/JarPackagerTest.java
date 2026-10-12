@@ -16,6 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JarPackagerTest {
 
+    private static final JarPackager.JarIdentity ANONYMOUS = new JarPackager.JarIdentity(null, null, null);
+
     @TempDir
     Path tempDir;
 
@@ -26,7 +28,7 @@ class JarPackagerTest {
         writeFile(classesDir.resolve("com/example/Helper.class"), "more-fake-bytecode");
         Path outputJar = tempDir.resolve("out/app-1.0.jar");
 
-        JarPackager.packageThinJar(classesDir, outputJar, null, List.of());
+        JarPackager.packageThinJar(classesDir, outputJar, ANONYMOUS, List.of());
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
             assertTrue(jar.getEntry("com/example/Main.class") != null);
@@ -40,7 +42,7 @@ class JarPackagerTest {
         Files.createDirectories(classesDir);
         Path outputJar = tempDir.resolve("app.jar");
 
-        JarPackager.packageThinJar(classesDir, outputJar, "com.example.Main", List.of());
+        JarPackager.packageThinJar(classesDir, outputJar, new JarPackager.JarIdentity(null, null, "com.example.Main"), List.of());
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
             Manifest manifest = jar.getManifest();
@@ -54,7 +56,7 @@ class JarPackagerTest {
         Files.createDirectories(classesDir);
         Path outputJar = tempDir.resolve("lib.jar");
 
-        JarPackager.packageThinJar(classesDir, outputJar, null, List.of());
+        JarPackager.packageThinJar(classesDir, outputJar, ANONYMOUS, List.of());
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
             assertNull(jar.getManifest().getMainAttributes().getValue("Main-Class"));
@@ -69,7 +71,7 @@ class JarPackagerTest {
         Path dep1 = tempDir.resolve("guava.jar");
         Path dep2 = tempDir.resolve("failureaccess.jar");
 
-        JarPackager.packageThinJar(classesDir, outputJar, null, List.of(dep1, dep2));
+        JarPackager.packageThinJar(classesDir, outputJar, ANONYMOUS, List.of(dep1, dep2));
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
             String classPath = jar.getManifest().getMainAttributes().getValue("Class-Path");
@@ -84,7 +86,7 @@ class JarPackagerTest {
         Files.createDirectories(classesDir);
         Path outputJar = tempDir.resolve("app.jar");
 
-        JarPackager.packageThinJar(classesDir, outputJar, null, List.of());
+        JarPackager.packageThinJar(classesDir, outputJar, ANONYMOUS, List.of());
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
             assertNull(jar.getManifest().getMainAttributes().getValue("Class-Path"));
@@ -95,7 +97,7 @@ class JarPackagerTest {
     void aMissingClassesDirectoryProducesAnEmptyJarRatherThanFailing() throws IOException {
         Path outputJar = tempDir.resolve("empty.jar");
 
-        Path result = JarPackager.packageThinJar(tempDir.resolve("no-such-dir"), outputJar, null, List.of());
+        Path result = JarPackager.packageThinJar(tempDir.resolve("no-such-dir"), outputJar, ANONYMOUS, List.of());
 
         assertEquals(outputJar, result);
         assertTrue(Files.exists(outputJar));

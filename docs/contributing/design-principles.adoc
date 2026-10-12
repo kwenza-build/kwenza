@@ -157,7 +157,7 @@ verification off. And `kwenza.lock`'s `sha256` is an integrity pin, the same thi
 with a message naming the jar, rather than being trusted silently forever. An earlier version wrote
 that hash but never read it back.
 
-A *fresh* resolution (no lock yet, a changed manifest, or `--update`) can't lean on the lock
+A *fresh* resolution (no lock yet, or a changed manifest) can't lean on the lock
 it's about to replace for everything, but it never pins a jar nobody has verified. A module
 resolved at the same version the old lock pinned is checked against that pin. Any other jar
 already in `~/.m2/repository` is checked against the repository's published `.sha1`, never the
@@ -182,9 +182,8 @@ and the message should tell the user what to fix, not just that something broke.
 == Reproducible by default
 
 `kwenza.lock` records a hash of the manifest's declared dependencies, and `build`/`run`/`package`
-reuse the lock and skip network resolution entirely unless that hash changed or `--update` is
-passed explicitly. This is the uv/Cargo model — the lockfile wins until you deliberately tell it
-not to — chosen directly against Maven's default of re-resolving against the network on every
+reuse the lock and skip network resolution entirely unless that hash changed. This is the uv/Cargo model — the lockfile wins until you change
+what it locks — chosen directly against Maven's default of re-resolving against the network on every
 build and hoping a version range still resolves the same way it did yesterday. The same build
 should produce the same result without needing the network, unless you've asked it to check again.
 
@@ -216,7 +215,7 @@ purpose.
 This extends to documentation, not just runtime behavior. Maven and Gradle both have plenty of
 documentation; the problem is rarely coverage, it's that it's hard to tell how the pieces fit
 together. `docs/contributing/architecture.adoc` says outright that it's "the how" to AGENTS.md's "the why," and
-the getting-started/manifest-reference/cli-reference split exists so each doc answers one kind of
+the getting-started/manifest-reference/command-pages split exists so each doc answers one kind of
 question instead of one document trying to answer all of them. Every future doc — this one
 included, the eventual website, IDE-setup guides — should stay small and separated by *kind* of
 question, not grow into one sprawling reference that technically covers everything and helps you

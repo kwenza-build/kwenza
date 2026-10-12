@@ -5,7 +5,7 @@
 
 This walks through installing kwenza and building your first project. For the full field-by-field
 manifest schema, see xref:manifest-reference.adoc[Manifest Reference]; for every command and flag,
-see xref:cli-reference.adoc[CLI Reference].
+see xref:commands/index.adoc[Commands].
 
 == Prerequisites
 
@@ -104,7 +104,7 @@ kwenza run
 The first run resolves `guava` and its transitive dependencies from Maven Central, caches them at
 `~/.m2/repository`, writes `kwenza.lock`, compiles, and executes `com.example.Main`. Every
 subsequent `kwenza run`/`build`/`package` reuses the lock — no network access — until
-`kwenza.toml`'s dependencies actually change, or you pass `--update`.
+`kwenza.toml`'s dependencies actually change.
 
 To produce a runnable jar instead of just executing in place:
 
@@ -120,6 +120,7 @@ java -jar target/hello-0.1.0.jar
   https://github.com/kwenza-build/kwenza/tree/main/examples/hello-world[`examples/hello-world`].
 * xref:manifest-reference.adoc[Manifest Reference] covers every `kwenza.toml` field and the
   `kwenza.lock` format.
-* xref:cli-reference.adoc[CLI Reference] covers every command, flag, and environment variable.
+* xref:commands/index.adoc[Commands] has a page for every command, and xref:commands/kwenza.adoc[kwenza(1)]
+  covers what they share: chaining, global flags and environment variables.
 * xref:architecture.adoc[Architecture] explains how resolution, compilation, and packaging work
   under the hood.

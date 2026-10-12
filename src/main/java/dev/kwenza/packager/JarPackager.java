@@ -20,15 +20,30 @@ public final class JarPackager {
     private JarPackager() {
     }
 
-    public static Path packageThinJar(Path classesDir, Path outputJar, String mainClass, List<Path> classpathJars)
+    /**
+     * What a jar's MANIFEST.MF says about it, besides its Class-Path. {@code title}/{@code version}
+     * become {@code Implementation-Title}/{@code Implementation-Version}, which is how a program
+     * can find its own version at runtime ({@code Package.getImplementationVersion()}). Any field
+     * may be null, and is then left out.
+     */
+    public record JarIdentity(String title, String version, String mainClass) {
+    }
+
+    public static Path packageThinJar(Path classesDir, Path outputJar, JarIdentity identity, List<Path> classpathJars)
             throws IOException {
         Files.createDirectories(outputJar.getParent());
 
         Manifest manifest = new Manifest();
         Attributes attrs = manifest.getMainAttributes();
         attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        if (mainClass != null) {
-            attrs.put(Attributes.Name.MAIN_CLASS, mainClass);
+        if (identity.title() != null) {
+            attrs.put(Attributes.Name.IMPLEMENTATION_TITLE, identity.title());
+        }
+        if (identity.version() != null) {
+            attrs.put(Attributes.Name.IMPLEMENTATION_VERSION, identity.version());
+        }
+        if (identity.mainClass() != null) {
+            attrs.put(Attributes.Name.MAIN_CLASS, identity.mainClass());
         }
         if (!classpathJars.isEmpty()) {
             StringBuilder cp = new StringBuilder();

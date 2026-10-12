@@ -1,0 +1,57 @@
+= kwenza-package(1)
+
+== NAME
+
+kwenza-package - Package the project as a jar
+
+== SYNOPSIS
+
+`kwenza package` [_options_]
+
+== DESCRIPTION
+
+Builds the project (see xref:./kwenza-build.adoc[]), then writes
+`<output-dir>/<name>-<version>.jar`: a thin jar with only the project's own classes and
+resources. Its manifest has a `Class-Path` entry pointing at the dependency jars in the local
+cache, `Main-Class` when `[package] main-class` is set, and `Implementation-Title` and
+`Implementation-Version` from `[package] name` and `version`.
+
+`[dev-dependencies]` never appear on the jar's `Class-Path`.
+
+== OPTIONS
+
+=== Display Options
+
+`-v`::
+`--verbose`::
+Print extra detail: one line per resolved dependency when resolving from Maven Central, and the
+full `java` command (binary path and every classpath entry) when running something.
+
+=== Common Options
+
+`-h`::
+`--help`::
+Print a short summary of this command's options. `kwenza help <command>` prints this page.
+
+== ENVIRONMENT
+
+See xref:./kwenza.adoc#environment[kwenza(1)] for the environment variables kwenza reads.
+
+== EXIT STATUS
+
+* `0`: kwenza succeeded.
+* `1`: kwenza failed: the error message says why.
+
+== EXAMPLES
+
+Package the project and run the jar:
+
+[source,bash]
+----
+kwenza package
+java -jar target/my-app-0.1.0.jar
+----
+
+== SEE ALSO
+
+xref:./kwenza.adoc[], xref:./kwenza-build.adoc[], xref:./kwenza-run.adoc[]

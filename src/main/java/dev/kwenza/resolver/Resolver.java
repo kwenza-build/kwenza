@@ -177,7 +177,7 @@ public final class Resolver {
         String gav = entry.module + ":" + entry.version;
         if (entry.sha256 == null || entry.sha256.isBlank()) {
             throw new ResolutionException("kwenza.lock has no sha256 for " + gav
-                    + ", so its jar can't be verified. Re-run with --update to regenerate the lock.");
+                    + ", so its jar can't be verified. Delete kwenza.lock so the next build regenerates it.");
         }
         String actual = sha256Hex(jarPath);
         if (!actual.equalsIgnoreCase(entry.sha256)) {

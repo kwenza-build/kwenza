@@ -106,7 +106,7 @@ another dependency providing the same `org.junit.platform.console.ConsoleLaunche
 dev-dependency — plain `org.junit.jupiter:junit-jupiter` isn't enough on its own, since that
 artifact has the JUnit 5 API and engine but not the console launcher. Anything else you add as a
 dev-dependency (Mockito above, AssertJ, ...) needs no kwenza-side support at all — it's just
-another jar on the test classpath. See xref:cli-reference.adoc#kwenza-test[`kwenza test`] for how
+another jar on the test classpath. See xref:commands/kwenza-test.adoc[`kwenza test`] for how
 it's actually invoked.
 
 [[versions]]
@@ -133,7 +133,7 @@ in `[versions]` is a manifest error, reported before any resolution is attempted
 == `kwenza.lock`
 
 Written by dependency resolution, read by every subsequent `build`/`run`/`package`/`test` unless
-it's stale or `--update` is passed. Safe to commit — that's the point (see
+it's stale (the declared dependencies changed). Safe to commit — that's the point (see
 xref:architecture.adoc#reproducible[Architecture] for the reproducibility model).
 
 [source,toml]

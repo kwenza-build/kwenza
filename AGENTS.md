@@ -78,18 +78,19 @@ specific decision and its specific reasoning; that one is for the pattern.
   that's missing, so this changes nothing about normal usage - it just means the fallback actually
   survives the one command most likely to need it.
 
-- **Multiple commands per invocation** (`kwenza build run`, `kwenza clean build run`) are memoized
-  within a single `BuildState` (`Main.java`) so a chain doesn't redo resolve/compile once per
-  command that happens to need it — `build run` resolves and compiles exactly once, not twice.
-  `clean` explicitly resets `state.compiled`, since it deletes the very output that memoization
-  would otherwise assume was still valid. If you add a new command that produces or consumes
-  build output, make sure it goes through `ensureResolved`/`ensureCompiled` rather than calling
-  `resolve`/`JavaCompilation.compile` directly, or chaining will silently redo work (or worse,
-  silently reuse stale output after a `clean`).
+- **Multiple commands per invocation** (`kwenza build run`, `kwenza clean build run`) share one
+  `ResolveContext` and one `CompileContext` (created lazily by `cli.Session`), so a chain doesn't
+  redo resolve/compile once per command that happens to need it — `build run` resolves and
+  compiles exactly once, not twice. `clean` calls `CompileContext.invalidate()`, since
+  it deletes the very output that memoization would otherwise assume was still valid.
+  If you add a new command that produces or consumes build output, make sure it goes through
+  `ResolveContext`/`CompileContext` rather than calling `Resolver`/`JavaCompilation.compile`
+  directly, or chaining will silently redo work (or worse, silently reuse stale output after a
+  `clean`).
 
 - **Reproducible-by-default resolution.** `kwenza.lock` records a hash of the manifest's declared
   dependencies (`KwenzaLock.hashDependencies`); `build`/`run`/`package` reuse the lock and skip
-  network resolution entirely unless that hash changed or `--update` is passed. This is the uv/Cargo
+  network resolution entirely unless that hash changed. This is the uv/Cargo
   "lockfile wins by default" pattern, not Maven's "always re-resolve, hope the range is stable" one.
 
 - **Fail fast on JDK/`java-version` mismatches.** `javac --release N` silently requires the running
@@ -102,20 +103,20 @@ specific decision and its specific reasoning; that one is for the pattern.
   (`.exceptionally(ex -> null)`), which let anyone able to block that one URL switch verification
   off. `Resolver.ensureFromLock` checks every jar against the lock's `sha256` before use, cache
   hits included, and a lock entry with no `sha256` is an error rather than a pass. A *fresh*
-  resolution (no lock yet, a changed manifest, or `--update`) never pins a jar nobody has
+  resolution (no lock yet, or a changed manifest) never pins a jar nobody has
   verified either: `Resolver.resolve` takes the lock it's replacing, checks any module resolved
   at the same version that lock pinned against the old `sha256` (no network), and sends every
   other jar through `MavenRepository.fetchJarVerifiedAsync`, which checks even a cache hit
   against the *remote* `.sha1`. Never the `.jar.sha1` cached beside the jar: anyone who can
   alter the jar can alter that too, so it would only catch accidental corruption. That costs
   one small request per newly-pinned cached jar, which is fine on a path that's going to the
-  network anyway. `ensureMainResolved` passes the merged lock it has just verified, so its
+  network anyway. `ResolveContext.ensureMainResolved` passes the merged lock it has just verified, so its
   second resolution still makes no network calls. Expected `.sha1`s always come from the
   repository, never the local cache, for downloads too. There's
   deliberately no opt-out flag yet: Central publishes `.sha1` for every artifact, and a
   `--insecure`-style escape hatch should wait until a real repository without checksums (a
   private registry, say) actually needs one. The mismatch message tells the user to delete the
-  cached jar rather than to run `--update`, because a changed jar means the cache is wrong, not the
+  cached jar rather than to regenerate the lock, because a changed jar means the cache is wrong, not the
   lock (released artifacts on Central are immutable). See "Secure by default" in
   docs/contributing/design-principles.adoc.
 
@@ -209,7 +210,7 @@ specific decision and its specific reasoning; that one is for the pattern.
 
 - **`resolve()` still merges `[dependencies]` and `[dev-dependencies]` into one `Resolution` for
   `kwenza.lock`, but `build`/`package`/`run` now use a second, dependencies-only
-  resolution** (`ensureMainResolved` in `Main.java`) so dev-dependencies (JUnit, Mockito, ...)
+  resolution** (`ResolveContext.ensureMainResolved`) so dev-dependencies (JUnit, Mockito, ...)
   never leak onto a shipped artifact's classpath. This is a pragmatic fix, not the "real" one:
   Maven/Gradle tag a single resolved graph with per-node scope membership, which would mean
   teaching `Resolver.java`'s `Node`/`ResolvedArtifact` about which root set (`dependencies` vs.
@@ -258,20 +259,85 @@ specific decision and its specific reasoning; that one is for the pattern.
   would actually earn it — Checkstyle-style verification is the leading candidate, see "Future
   ideas" below — but that would be a different feature, not a resurrection of this one.
 
-- **`Main.java` split into `BuildState` + one class per CLI command** (`BuildCommand`,
-  `ResolveCommand`, `PackageCommand`, `RunCommand`, `TestCommand`, `CleanCommand`). It used to do
-  everything itself — arg parsing, dispatch, the resolve/compile memoization state, and every
-  command's full logic — as ~300 lines of private static methods, which isn't testable at a sane
-  seam. `BuildState` is the deep module here: a small interface
-  (`ensureResolved`/`ensureMainResolved`/`ensureCompiled`/`ensureTestCompiled`/`invalidate`) hiding
-  all the resolve/compile/memoization/lock-freshness logic, constructed once per invocation and
-  shared across whichever commands are chained. Each `*Command` is a thin, independently testable
-  `run(BuildState, ...)`. `RunCommand`/`TestCommand` throw a
-  `CommandFailedException` (carrying just an exit code) instead of calling `System.exit` directly
-  when their spawned subprocess fails, since the subprocess has already printed whatever it needed
-  to via `inheritIO()` — `Main` propagates that code silently from one place, rather than every
-  command deciding on its own to terminate the process. `Main` itself is now just: parse args,
-  build one `BuildState`, dispatch each command in the chain to its class.
+- **Each command is two classes: what it does, and how it's typed.** Shaped after Cargo's
+  `src/bin/cargo/commands` + `ops` split, without copying its names. `dev.kwenza.commands.XCommand`
+  does the work: a constructor taking only the contexts it needs, and one `run()`. It never sees
+  argv, `Session` or a terminal. `dev.kwenza.cli.commands.XCli` is the command-line side: name,
+  one-line `about()`, its own options (none yet besides the global ones), and `exec`, which
+  builds the `XCommand` from the `Session`'s contexts. `cli.Cli` owns the command list, the
+  global options and the parser; `Main` only wires stdout/stderr to it and calls `System.exit`.
+  History: `Main.java` used to do everything as ~300 lines of private static methods, then split
+  into a `BuildState` god-object plus static `XCommand.run(BuildState)` methods; this pass split
+  `BuildState` by concern (below) and gave argv its own layer. Gradle and Maven were considered
+  too: both are task or phase graphs plus plugins, and kwenza's memoized chain is effectively a
+  tiny fixed graph, so building a real one would be complexity with nothing to do yet.
+  `help` and `version` are CLI-only (`HelpCli`, `VersionCli`, no `commands` counterpart): they
+  don't touch a project, so they don't load one either, and work outside any project.
+  `RunCommand`/`TestCommand` throw a `CommandFailedException` (carrying just an exit code) instead
+  of calling `System.exit` when their subprocess fails, since it has already printed whatever it
+  needed to; `Cli.run` returns that code from one place.
+
+- **State is split into one context per concern, each living with its concern** (Cargo keeps its
+  build context under `compiler/` the same way). `context.GlobalContext` is the environment (working
+  directory, local repository, `Reporter`); `workspace.Project` is one project's manifest, root and
+  on-disk layout (every `target/classes`-style path lives there and nowhere else, and owning the
+  root is what `--project` needs); `resolver.ResolveContext` memoizes resolution and owns the lock
+  freshness decision; `compiler.CompileContext` memoizes main/test compilation. `cli.Session` is
+  the only place they're wired together, lazily, so `help` never loads a manifest. Contexts
+  depend downwards only (`compiler` → `resolver` → `workspace`/`context`), and `context` depends on
+  nothing. All in a top-level `context/` package was the alternative; rejected for now because
+  `context` would then depend on every concern, but it's an easy move if that ever reads better.
+
+- **No `--update` flag and no `update` command, for now.** `--update` ("re-resolve even though
+  the lock is fresh") was briefly turned into a chainable `kwenza update` command, then removed
+  on a closer look: it could never change anything. `cargo update` works because `Cargo.toml`
+  holds ranges and the lock picks one version from each; kwenza's versions are all exact, the
+  resolver never reads `maven-metadata.xml` (the per-artifact list of published versions), and
+  released POMs on Central are immutable, so re-resolving an unchanged manifest always produces
+  the same lock. A changed manifest already re-resolves through the lock-freshness check. A
+  command that sounds useful and does nothing goes against "transparent, no magic", so it's gone
+  until there's something for it to do. Moving to newer versions is planned as `kwenza upgrade`,
+  which edits `kwenza.toml` itself (see the roadmap); "upgrade" rather than "update", because
+  rewriting the manifest is a different act from re-locking within it (the same distinction as
+  cargo-edit's `cargo upgrade` vs `cargo update`). `resolve` stays as "make the lock match the
+  manifest, no more". No command has options of its own today, only the global `-v`/`--verbose`
+  and `-h`/`--help`.
+
+- **Every argument is parsed and checked before any command runs**, and an option the preceding
+  command doesn't declare (the removed `--update`, a typo'd `--verbos`) is an error, not silently
+  ignored as it used to be. Global options (`-v`, `-h`) go anywhere; `--version`/`-V` and `--list`
+  only before the first command, since each is a whole request on its own. `-h` after a command
+  prints that command's help and runs nothing. The same request has more than one spelling where
+  Cargo users expect it: `kwenza version` = `kwenza --version` = `kwenza -V`, `kwenza help` =
+  `kwenza --help` = `kwenza`. Help, `--list` and `--version` go to stdout (they're the output that
+  was asked for); status lines and errors stay on stderr.
+
+- **`--verbose` is a display concern, owned by `ConsoleReporter`.** Code that has detail to give
+  always calls `reporter.detail(...)`; `ConsoleReporter` drops it unless `--verbose` was given. That
+  removed the `verbose` boolean every command and `BuildState` used to thread through. `cli.Style`
+  holds every colour decision (status colours, plus the ochre brand colour for help headings),
+  and checks `Console.isTerminal()` reflectively on JDK 22+, where `System.console() != null` no
+  longer means "a terminal".
+
+- **One manual page per command, one source for kwenza.dev and the terminal.**
+  `docs/modules/ROOT/pages/commands/kwenza-<command>.adoc` is laid out like a man page (NAME,
+  SYNOPSIS, DESCRIPTION, OPTIONS, ENVIRONMENT, EXIT STATUS, EXAMPLES, SEE ALSO) and published by
+  Antora with a nav entry each, like the Cargo book's command pages. The same files are symlinked
+  into `src/main/resources/dev/kwenza/cli/help/` (the `docs/modules/ROOT/examples` trick in
+  reverse), bundled into the jar, and printed by `kwenza help <command>` through
+  `cli.help.ManualRenderer`, a ~200-line renderer for exactly the AsciiDoc subset those pages use.
+  `kwenza <command> --help` is the short form, generated from the `XCli` class. Alternatives
+  weighed: Cargo commits generated `.txt`/man output from its Markdown and checks it in CI (needs
+  a generator toolchain in this repo, against "zero external dependencies"); Maven generates goal
+  docs from mojo annotations (code as the source, but the prose still has to live somewhere).
+  `CliDocsTest` is what keeps the two sides honest: every command has a page and every page a
+  command, each page's NAME line is its `about()`, its OPTIONS are exactly what the parser
+  accepts, the bundled copy is byte-identical to the docs page, and every page renders with no
+  raw markup left over (so a page that strays outside the renderer's subset fails the build).
+  Symlinks need `core.symlinks` on Windows checkouts; that only matters for building kwenza
+  itself from source on Windows, not for using it. The old `cli-reference.adoc` is now
+  `commands/kwenza.adoc` (with a `page-aliases` entry, so old links still resolve). Later, the same
+  pages can become real `man` pages with Asciidoctor's manpage backend, for the Homebrew formula.
 
 ## Roadmap
 
@@ -287,8 +353,8 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
 - `[scripts]` task runner
 - `--offline` mode. Decided already, so it isn't redesigned from scratch: offline means "verified
   from the lock, or refused". A lock-backed build already makes no network calls (jars are
-  checked against the lock's `sha256` locally), and `--update` can still carry the old lock's
-  pins forward for unchanged versions. But a cached jar the lock doesn't pin can only be
+  checked against the lock's `sha256` locally), and a re-resolution after a manifest change
+  still carries the old lock's pins forward for unchanged versions. But a cached jar the lock doesn't pin can only be
   verified against the remote `.sha1` (see "Checksums fail closed" above), so offline it's an
   error naming the jar, not a fallback. Don't fall back to the `.jar.sha1` cached beside it
   (that only catches corruption, not tampering), and don't trust the cache the way Maven's
@@ -318,13 +384,13 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   (Maven's `maven-surefire-report-plugin`; Gradle only because it owns its listener). Sourcing in
   [docs/research/junit-launching-and-reporting.adoc](docs/research/junit-launching-and-reporting.adoc).
 - **`--project <path>`** — every command currently only operates on the current working directory
-  (see `docs/modules/ROOT/pages/cli-reference.adoc`'s opening line). Small and standalone; a plausible easy first PR.
+  (see the DESCRIPTION of `docs/modules/ROOT/pages/commands/kwenza.adoc`). Small and standalone; a plausible easy first PR.
 - **AppCDS for kwenza's own cold-start — tried, works, real but size-dependent win.** A
   `-Xlog:class+load` trace confirmed the "no daemon" hypothesis below directly: a bare `java
   -version` loads 383 classes (all covered by the JDK's default CDS archive); a `kwenza package`
   on `examples/hello-world` loads 4029, of which 2751 aren't covered by that default archive —
   1164 alone are `com.sun.tools` (javac internals). A second, previously-unconfirmed hypothesis
-  also checked out: `BuildState` constructs `MavenRepository.central(...)` (and with it a
+  also checked out: resolution constructs `MavenRepository.central(...)` (and with it a
   `java.net.http.HttpClient`) unconditionally, even on the from-lock path where nothing gets
   fetched — that pulls in ~250 `sun.security.ssl`/`javax.net.ssl`/`javax.crypto` classes every
   invocation for no reason. Small, separate, still-open fix; not done as part of this.
@@ -523,7 +589,7 @@ Testing & reporting
 Performance
 - Prefer return codes over exceptions for any new hot-path logic (a per-test listener callback,
   resolver loops over many versions). Exceptions cost mostly in `fillInStackTrace()`, which only
-  matters when they fire per iteration; kwenza's current exceptions (`CliException`,
+  matters when they fire per iteration; kwenza's current exceptions (`KwenzaException`,
   `CommandFailedException`, `IncompatibleJdkException`) fire at most once per invocation, so there's
   nothing to change today. A direction to weigh when scoping hot paths, not a refactor of existing
   code.
@@ -575,34 +641,40 @@ close most of this gap — flagged as a real future optimization, intentionally 
 
 ## Conventions
 
-- Package structure: `dev.kwenza.{cli,commands,manifest,toml,resolver,compiler,packager}`, one
-  clear responsibility per package. `cli` is deliberately thin - argv/flag parsing, dispatch,
-  top-level exception-to-exit-code translation, and `ConsoleReporter` (`Main.java`, no tests of
-  its own - there's nothing left in it worth testing at its own seam). `commands` is where that
-  dispatches to: `BuildState` (the deep module - resolve/compile/memoization behind a small
-  interface) and one class per CLI command (`BuildCommand`, `TestCommand`, `PackageCommand`,
-  `RunCommand`, `CleanCommand`, `ResolveCommand`), plus the `Reporter` interface, `Timing`, and
-  `CliException`/`CommandFailedException` it and `cli` both need. Dependency direction is one-way,
-  `cli` → `commands` → {`resolver`,`compiler`,`packager`,`manifest`}: `commands` never depends
-  back on `cli`, deliberately, so it stays testable and reusable independent of argv parsing.
+- Package structure, one clear responsibility per package:
+  - `cli`: `Main` (stdout/stderr and `System.exit`, nothing else), `Cli` (command list, global
+    options, parser, dispatch, exception-to-exit-code), `Session` (wires the contexts, lazily),
+    `ConsoleReporter`, `Style`.
+  - `cli.commands`: one `XCli` per command (name, summary, options, `exec`), plus `CliCommand`,
+    `CliOption`, `Invocation`.
+  - `cli.help`: usage, `--list`, short help, and the manual-page renderer.
+  - `commands`: one `XCommand` per command that touches a project, doing the actual work.
+  - `context`: `GlobalContext`, `Reporter`, `Timing`, `KwenzaException` (the user-facing error
+    any layer may throw).
+  - `workspace`: `Project`.
+  - `resolver`, `compiler` (each with its context), `packager`, `manifest`, `toml`.
+
+  Dependency direction is one-way, `cli` → `commands` → {`compiler` → `resolver`} →
+  {`workspace`, `manifest`, `context`}: nothing below `cli` depends on it, so everything stays
+  testable and reusable independent of argv parsing.
 
 - **`Status` (static, printed directly to stderr) became `Reporter` (an interface) +
-  `ConsoleReporter` (the real, console-specific implementation).** `BuildState` and the
+  `ConsoleReporter` (the real, console-specific implementation).** The build state and the
   `*Command` classes had genuinely CLI-specific code baked in - not argv parsing, but ANSI colors
   and `System.console()` terminal detection, real console I/O all the same. `Reporter` (in
-  `commands`, next to what depends on it) is the seam; `ConsoleReporter` (in `cli`, where the
+  `context` since this pass) is the seam; `ConsoleReporter` (in `cli`, where the
   concrete "is this a real terminal" decision actually belongs) is the one production adapter,
-  constructed once in `Main` and threaded through `BuildState`'s constructor to every command.
+  constructed once per invocation by `Cli` and reaching every command through `GlobalContext`.
   Tests inject `Mockito.mock(Reporter.class)` instead - void methods do nothing by default, so
   it's silent without needing to redirect `System.err` (the `QuietConsole` JUnit extension this
   replaced), and any test that cares what got reported can `verify(...)` on it instead of
-  string-matching captured output. `CliException`/`CommandFailedException` didn't need to move
-  anywhere for this - they were already plain data (a message, an exit code) with no console
-  coupling of their own; they stay in `commands` simply because that's where they're thrown from,
-  which `cli.Main` (the catcher) imports from - same one-way dependency as everything else here.
-  `Timing` still writes to stderr directly and hasn't had the same treatment - it's a no-op unless
-  `KWENZA_TIMING` is set, so it never caused the test-noise problem this was solving; worth the
-  same treatment later if that changes, not urgent now.
+  string-matching captured output. `CliException` became `context.KwenzaException` once
+  `CompileContext` (in `compiler`) needed to throw it: it was never CLI-specific.
+  `Timing` still writes to stderr directly, through static methods, rather than going behind
+  `Reporter`. Reconsidered in the code-design pass and kept: it's a no-op unless `KWENZA_TIMING`
+  is set, so it never causes test noise, and it has to start before anything else exists
+  (`Timing.init()` is `main`'s first statement, to capture the true entry time). Revisit if it
+  ever needs a second output.
 - Rebuild via self-hosting: `cd kwenza && bin/kwenza package`. Only reach for `bootstrap.sh` if
   `target/` has no working jar at all.
 - `KWENZA_REPO` (dependency cache override) and `KWENZA_TIMING` (phase-timing diagnostics to
@@ -626,8 +698,9 @@ close most of this gap — flagged as a real future optimization, intentionally 
   boundaries (`MavenRepository` for the network, `Reporter` for console output - never kwenza's
   own domain collaborators). See `src/test/java` for the shape this takes in practice, one test
   class per module mirroring the main package layout.
-- Tests that call `BuildState`/the `*Command` classes directly and in-process pass
-  `Mockito.mock(Reporter.class)` (via `CommandTestSupport.newState`) rather than a real
+- Tests that call the contexts/the `*Command` classes directly and in-process pass
+  `Mockito.mock(Reporter.class)` (via `testsupport.Fixtures.contexts`, which wires the contexts
+  the same way `Session` does) rather than a real
   `ConsoleReporter` - a mock's void methods do nothing by default, so status lines
   (`reporter.info/error/detail(...)`) never print into the outer `kwenza test` run's own console,
   indistinguishable from real build activity happening at the top level otherwise.
@@ -645,7 +718,7 @@ close most of this gap — flagged as a real future optimization, intentionally 
 
 kwenza tests itself: `bin/kwenza test` runs a real JUnit 5 suite under `src/test/java`, mirroring
 the main package layout one test class per module (`toml/TomlTest`, `resolver/ResolverTest`,
-`commands/BuildStateTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
+`compiler/CompileContextTest`, `cli/CliTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
 pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test`. CI
 (`.github/workflows/ci.yml`) runs that suite plus the three example checks below
 (`.github/scripts/smoke-examples.sh`) from a clean bootstrap on every push and PR. If you add or

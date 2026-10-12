@@ -32,7 +32,7 @@ Everything below will ship in kwenza's first release, 0.1.0.
   - It records every resolved artifact with its exact version, a SHA-256 checksum, and which
     dependency pulled it in.
   - Builds reuse the lock without touching the network until the declared dependencies change, or
-    until `--update` is passed.
+    and nothing else.
 - Dev-dependencies stay off the classpath of `build`, `run` and `package`, and out of packaged jars.
 - Source and resources follow Maven's standard layout: `src/main/java`, `src/main/resources`,
   `src/test/java` and `src/test/resources`.
@@ -52,14 +52,21 @@ Everything below will ship in kwenza's first release, 0.1.0.
   - A project with no tests exits cleanly. A project with tests but no Console Launcher
     dependency fails with a message naming the dependency to add.
 - `kwenza package` builds and writes a thin, runnable jar whose `Class-Path` manifest entry points
-  at the cached dependency jars.
-- `kwenza resolve` refreshes `kwenza.lock` on its own, without compiling.
+  at the cached dependency jars. Its manifest also carries `Implementation-Title` and
+  `Implementation-Version`, from `[package] name` and `version`.
+- `kwenza resolve` writes `kwenza.lock` if it is missing or out of date, without compiling.
 - `kwenza clean` deletes the output directory.
+- `kwenza help <command>` prints the command's manual page, the same page kwenza.dev publishes.
+  `kwenza <command> --help` prints a short summary of its options, `kwenza --list` lists every
+  command, and `kwenza` on its own prints a usage summary. Help goes to stdout.
+- `kwenza version` (also `--version` and `-V`) prints kwenza's version.
 - Several commands can run in one invocation, such as `kwenza clean build run`. Resolution and
-  compilation happen at most once per invocation, and `clean` correctly forces a recompile later in
-  the same chain.
-- `--update` forces a fresh resolution against Maven Central.
-- `--verbose` prints each resolved dependency, and the full `java` command for `run` and `test`.
+  compilation happen at most once per invocation, and `clean` correctly forces a
+  recompile later in the same chain.
+- Every argument is checked before any command runs: an unknown command, or an option the command
+  it follows doesn't take, fails with a message saying where to look, and nothing runs.
+- `-v`/`--verbose` prints each resolved dependency, and the full `java` command for `run` and
+  `test`. It can go anywhere on the command line.
 - kwenza's own status lines go to stderr, so `kwenza run`'s stdout is only the program's output.
   They are coloured in a terminal and plain when piped, or when `NO_COLOR` is set.
 - `KWENZA_TIMING` prints a phase-by-phase timing breakdown to stderr.
@@ -74,8 +81,8 @@ Everything below will ship in kwenza's first release, 0.1.0.
 - Examples: `hello-world`, `junit-word-count` (JUnit 5 and Mockito) and `testng-calculator`
   (TestNG through the JUnit Platform).
 - Benchmarks that compare kwenza with Maven and Gradle, cold and warm, using isolated caches.
-- Documentation: Getting Started, Manifest Reference, CLI Reference, Architecture, and Design
-  Principles, published with a home page at https://kwenza.dev.
+- Documentation: Getting Started, Manifest Reference, a manual page per command, Architecture,
+  and Design Principles, published with a home page at https://kwenza.dev.
 - Released under the Apache License 2.0.
 
 ### Security

@@ -47,6 +47,7 @@ kwenza build      # resolve dependencies + compile
 kwenza test       # build + compile src/test/java + run it via the JUnit Platform Console Launcher
 kwenza run        # build + execute [package].main-class
 kwenza package    # build + produce a runnable thin jar
+kwenza help run   # the manual page for any command (`kwenza --list` lists them all)
 ----
 
 See link:docs/modules/ROOT/pages/getting-started.adoc[Getting Started] for the full walkthrough,
@@ -60,7 +61,7 @@ https://kwenza.dev by https://github.com/kwenza-build/kwenza-dev[kwenza-build/kw
 * link:docs/modules/ROOT/pages/getting-started.adoc[Getting Started] — install, `PATH` setup, your first project
 * link:docs/modules/ROOT/pages/manifest-reference.adoc[Manifest Reference] — every `kwenza.toml` field,
   `kwenza.lock` format
-* link:docs/modules/ROOT/pages/cli-reference.adoc[CLI Reference] — every command, flag, and environment
+* link:docs/modules/ROOT/pages/commands/index.adoc[Commands] — every command, flag, and environment
   variable
 * link:docs/modules/ROOT/pages/architecture.adoc[Architecture] — how resolution, compilation, and
   packaging work, in brief

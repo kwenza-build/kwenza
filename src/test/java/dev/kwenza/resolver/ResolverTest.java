@@ -241,7 +241,7 @@ class ResolverTest {
         ResolutionException e = assertThrows(ResolutionException.class, () -> resolver.ensureFromLock(lock));
 
         assertTrue(e.getMessage().contains("com.example:leaf:1.0"), e.getMessage());
-        assertTrue(e.getMessage().contains("--update"), e.getMessage());
+        assertTrue(e.getMessage().contains("Delete kwenza.lock"), e.getMessage());
     }
 
     @Test
