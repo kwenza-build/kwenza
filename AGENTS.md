@@ -119,6 +119,23 @@ specific decision and its specific reasoning; that one is for the pattern.
   lock (released artifacts on Central are immutable). See "Secure by default" in
   docs/contributing/design-principles.adoc.
 
+- **Annotation processors are opt-in, never discovered.** `JavaCompilation` always passes
+  `-proc:none`, for main and test compiles alike. Leaving it to javac's default wasn't a real
+  option, because that default isn't one behaviour: JDK 21 discovers and runs any processor on
+  the classpath (with a warning that this will change), JDK 23+ runs none unless told to. With
+  kwenza supporting 21 and newer, the same manifest and lock would have produced different class
+  files depending on which JDK happened to be installed. It's also a supply-chain decision, not
+  just a consistency one: compilation is in-process, so a processor in any *transitive*
+  dependency would run inside kwenza's own JVM with nobody having declared it. Decided before 0.1
+  on purpose, since turning discovery off after release would silently change people's builds.
+  This matches where the JDK itself went (23+), and Gradle (separate `annotationProcessor`
+  configuration since 5.0) and Maven (`annotationProcessorPaths`). `JavaCompilationTest` covers it
+  with a real `ServiceLoader`-registered processor on the classpath; that test only goes red on
+  JDK 21, which is why CI's JDK matrix keeps 21 in it. Running processors is still wanted (Lombok,
+  MapStruct, Dagger, Immutables), and is the leading extensibility route — see the explicit
+  `[annotation-processors]` item under Future ideas / Extensibility. Adding it is additive, so it
+  can land whenever someone needs it.
+
 - **The name.** "Kwenza" is isiXhosa for "to make" — chosen over several alternatives (including
   "Kiln," dropped after discovering real naming collisions with an existing Java-runtime project and
   a prominent AI-tooling brand of the same name) specifically because it's *not* Java-specific,
@@ -398,10 +415,6 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   kwenza.dev's home page shows and `smoke-examples.sh` checks, so re-capture it in the same
   change. The home page could then show colour too, if the transcript keeps it in a form the
   site can render.
-- **Annotation-processor discovery is uncontrolled.** `JavaCompilation` invokes `javac` without
-  `-proc:none`, so whether a processor bundled in a resolved dependency runs automatically during
-  `kwenza build` depends on the running JDK's own default behavior — not a deliberate kwenza
-  decision either way yet. Worth resolving explicitly once extensibility gets designed for real.
 
 ## Future ideas (unprioritized, not yet scoped)
 
@@ -464,6 +477,17 @@ Extensibility
   *not* Cargo's `build.rs` arbitrary-scripting model. See "Extensibility through JVM discovery" in
   docs/contributing/design-principles.adoc for the leading shape (annotation processors,
   `ServiceLoader`-discovered participants resolved as ordinary dependencies).
+- **Explicitly declared annotation processors** (the opt-in to the "annotation processors are
+  opt-in, never discovered" decision above). Leading shape: an `[annotation-processors]` manifest
+  section using the same `module`/`version`/`version.ref` notation as `[dependencies]`, resolved,
+  locked and checksum-verified exactly like them, then handed to javac as its own processor path
+  (`--processor-path` plus `-proc:full`, replacing `-proc:none` only when the section is
+  non-empty). Never added to the compile classpath or a packaged jar's `Class-Path`, the same
+  scoping rule dev-dependencies already follow. Open questions: whether test compiles get their
+  own processor set (Gradle's `testAnnotationProcessor`) or share one; how javac's `-A` processor
+  options are expressed as data; and that processors still run in-process, inside kwenza's own
+  JVM, so declaring one is an explicit trust decision the docs should say out loud. Reserve the
+  section name in the CLI/manifest review so it fits alongside `[workspace]` and `[scripts]`.
 - Builtin support for standard, commonly-expected Java tooling that's painful to wire up in
   Gradle/Maven — Checkstyle is the concrete example. A plausible future home for the `check`
   command name (see the removed-`check` decision above) once actually built — a different feature

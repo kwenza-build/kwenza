@@ -31,6 +31,9 @@ Changing `kwenza.toml` or passing `--update` resolves again and rewrites the loc
 kwenza compiles in-process with the JDK's own compiler. `java-version` becomes `javac --release`,
 which needs a JDK at least that new, so kwenza checks that first and says which JDK you need.
 
+Annotation processors don't run: kwenza passes `-proc:none`, so a processor shipped inside a
+dependency is never picked up from the classpath, whichever JDK you use.
+
 == Packaging
 
 `kwenza package` writes a thin jar: your classes and resources, plus a `Class-Path` entry listing

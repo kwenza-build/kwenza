@@ -32,9 +32,10 @@ structure everything else builds on.
 * [x] *Close the checksum fail-open gap.* Fail closed when `.sha1` can't be fetched or doesn't
   match (`MavenRepository.fetchJarAsync`), and verify cache hits against the lock's `sha256` in
   `ensureFromLock`. TDD, at the `MavenRepository`/`BuildState` seams. See "Secure by default".
-* [ ] *Decide annotation-processor discovery.* Pick explicitly: `-proc:none` by default with an
+* [x] *Decide annotation-processor discovery.* Pick explicitly: `-proc:none` by default with an
   opt-in, or document "javac default" as a deliberate choice. Changing this default after 0.1
-  would silently change people's builds, so decide it now. Record it in AGENTS.md.
+  would silently change people's builds, so decide it now. Record it in AGENTS.md. Decided:
+  `-proc:none` always, with explicitly declared processors as a later opt-in (Milestone 4).
 * [ ] *Code-design pass* (`codebase-design` skill). Review the module boundaries before more
   features land on them. Known candidates: `Timing` behind `Reporter`; whether `BuildState`
   should own the project root (needed for `--project`, below); and whether the
@@ -150,6 +151,10 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
 * [ ] *`--offline`*: the lockfile plus a warm `~/.m2` already make this mostly possible; make it
   an explicit, enforced mode.
 * [ ] *`kwenza tree`*: dependency tree display.
+* [ ] *`[annotation-processors]`*: explicitly declared annotation processors (Lombok, MapStruct,
+  Dagger, ...), resolved and verified like dependencies and passed to javac on their own processor
+  path. Classpath discovery stays off. Reserve the section name in the CLI and manifest review
+  above. See AGENTS.md, "Annotation processors are opt-in, never discovered".
 * [ ] *Validation ladder, step 1: agrona.* Build a real no-dependency project with kwenza. This
   probably needs a source-directory override first (see "Validation strategy" in AGENTS.md).
 * [ ] *`[workspace]` multi-module support*: design pass first (`codebase-design` skill). This is
