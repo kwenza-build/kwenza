@@ -41,9 +41,20 @@ jobs:
           ./bootstrap.sh
           bin/kwenza package
 
+      # The pinned reference (benchmarks/REFERENCE), so that many small slowdowns, each under the
+      # per-PR limit, still add up against a fixed point.
+      - name: Build reference
+        run: |
+          git worktree add ../reference "$(cat benchmarks/REFERENCE)"
+          cd ../reference
+          ./bootstrap.sh
+          bin/kwenza package
+
       - name: Compare
         working-directory: benchmarks
         run: >
           java Regress.java
           ../../base/target/kwenza-*.jar
           ../target/kwenza-*.jar
+          10
+          --reference ../../reference/target/kwenza-*.jar
