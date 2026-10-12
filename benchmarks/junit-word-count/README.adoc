@@ -1,4 +1,4 @@
-= word-counter benchmark
+= junit-word-count benchmark
 :toc:
 :toclevels: 2
 
@@ -11,7 +11,7 @@ how to actually run it and the general harness conventions.
 
 [source]
 ----
-word-counter/
+junit-word-count/
   kwenza/     kwenza.toml + src (symlink -> ../../../examples/junit-word-count/src)
   maven/      pom.xml + src (same symlink), Maven wrapper committed
   gradle/     build.gradle.kts + src (same symlink), Gradle wrapper committed

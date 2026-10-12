@@ -1,0 +1,116 @@
+manifest-hash = "53b8e7fba8a09cfb634f80ba2425598e52c048356a773c41850be98b4d848e93"
+
+[[resolved]]
+module = "org.junit.platform:junit-platform-console-standalone"
+version = "6.1.3"
+sha256 = "e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec"
+requested-by = ["direct"]
+
+[[resolved]]
+module = "org.junit-pioneer:junit-pioneer"
+version = "2.3.0"
+sha256 = "8b09db32c8cf5b2112a00262411ccd4ef6ca3bae695a0015ecad4def23dea9fd"
+requested-by = ["direct"]
+
+[[resolved]]
+module = "org.easymock:easymock"
+version = "5.6.0"
+sha256 = "63efc00da99774fb0253330ef9b5788b261022ba73f36bf76889ce7edf3d2b31"
+requested-by = ["direct"]
+
+[[resolved]]
+module = "org.apache.commons:commons-text"
+version = "1.14.0"
+sha256 = "121fce2282910c8f0c3ba793a5436b31beb710423cbe2d574a3fb7a73c508e92"
+requested-by = ["direct"]
+
+[[resolved]]
+module = "org.openjdk.jmh:jmh-core"
+version = "1.37"
+sha256 = "dc0eaf2bbf0036a70b60798c785d6e03a9daf06b68b8edb0f1ba9eb3421baeb3"
+requested-by = ["direct"]
+
+[[resolved]]
+module = "com.google.code.findbugs:jsr305"
+version = "3.0.2"
+sha256 = "766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
+requested-by = ["direct"]
+
+[[resolved]]
+module = "org.junit.jupiter:junit-jupiter-api"
+version = "5.11.2"
+sha256 = "0a68106f390138230c1639b87f1ff854c680113ba4876997cb0483f53457fb5c"
+requested-by = ["org.junit-pioneer:junit-pioneer", "org.junit.jupiter:junit-jupiter-params"]
+
+[[resolved]]
+module = "org.junit.jupiter:junit-jupiter-params"
+version = "5.11.2"
+sha256 = "57e03be4509cc2afceeb0dd7529485a3b3d09d0ff5554cab4b1347df01d21478"
+requested-by = ["org.junit-pioneer:junit-pioneer"]
+
+[[resolved]]
+module = "org.junit.platform:junit-platform-launcher"
+version = "1.11.2"
+sha256 = "fd933e1e2029bb6c749dd94f63830c0973c30b89ed71cfd5e7f4684368d2e629"
+requested-by = ["org.junit-pioneer:junit-pioneer"]
+
+[[resolved]]
+module = "net.bytebuddy:byte-buddy"
+version = "1.17.5"
+sha256 = "71568c9f8396677219f650268fbf6493ded484edcdbdf2dae6129ca5be81e8db"
+requested-by = ["org.easymock:easymock"]
+
+[[resolved]]
+module = "org.ow2.asm:asm"
+version = "9.8"
+sha256 = "876eab6a83daecad5ca67eb9fcabb063c97b5aeb8cf1fca7a989ecde17522051"
+requested-by = ["org.easymock:easymock"]
+
+[[resolved]]
+module = "org.objenesis:objenesis"
+version = "3.4"
+sha256 = "95488102feaf2e2858adf6b299353677dac6c15294006f8ed1c5556f8e3cd251"
+requested-by = ["org.easymock:easymock"]
+
+[[resolved]]
+module = "org.apache.commons:commons-lang3"
+version = "3.18.0"
+sha256 = "4eeeae8d20c078abb64b015ec158add383ac581571cddc45c68f0c9ae0230720"
+requested-by = ["org.apache.commons:commons-text"]
+
+[[resolved]]
+module = "net.sf.jopt-simple:jopt-simple"
+version = "5.0.4"
+sha256 = "df26cc58f235f477db07f753ba5a3ab243ebe5789d9f89ecf68dd62ea9a66c28"
+requested-by = ["org.openjdk.jmh:jmh-core"]
+
+[[resolved]]
+module = "org.apache.commons:commons-math3"
+version = "3.6.1"
+sha256 = "1e56d7b058d28b65abd256b8458e3885b674c1d588fa43cd7d1cbb9c7ef2b308"
+requested-by = ["org.openjdk.jmh:jmh-core"]
+
+[[resolved]]
+module = "org.opentest4j:opentest4j"
+version = "1.3.0"
+sha256 = "48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b"
+requested-by = ["org.junit.jupiter:junit-jupiter-api", "org.junit.platform:junit-platform-engine"]
+
+[[resolved]]
+module = "org.junit.platform:junit-platform-commons"
+version = "1.11.2"
+sha256 = "03ce3c6054c011a26953a065da6a48489d1fbc1995e4ca3c6d700293e71b5800"
+requested-by = ["org.junit.jupiter:junit-jupiter-api", "org.junit.platform:junit-platform-engine"]
+
+[[resolved]]
+module = "org.apiguardian:apiguardian-api"
+version = "1.1.2"
+sha256 = "b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38"
+requested-by = ["org.junit.jupiter:junit-jupiter-api", "org.junit.jupiter:junit-jupiter-params", "org.junit.platform:junit-platform-launcher", "org.junit.platform:junit-platform-commons", "org.junit.platform:junit-platform-engine"]
+
+[[resolved]]
+module = "org.junit.platform:junit-platform-engine"
+version = "1.11.2"
+sha256 = "4e625500397631304726da32f7ae599ce3bfc71d4ea11947de69dbbdf0fc4409"
+requested-by = ["org.junit.platform:junit-platform-launcher"]
+

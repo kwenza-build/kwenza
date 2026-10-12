@@ -154,5 +154,5 @@ kwenza/
     testng-calculator/          # proves a third-party JUnit Platform engine (TestNG) works as a dev-dependency
   benchmarks/
     Bench.java                  # shared harness: timed kwenza vs Maven vs Gradle, per scenario
-    hello-world/, word-counter/  # benchmark scenarios (kwenza/maven/gradle variants per scenario)
+    hello-world/, junit-word-count/, commons-lang3/  # benchmark scenarios (kwenza/maven/gradle variants per scenario)
 ----
