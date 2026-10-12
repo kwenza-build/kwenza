@@ -55,17 +55,18 @@ public final class Regress {
      * What gets timed. Each operation is set up to do real work on every run.
      *
      * threshold is how much slower than the base a PR may make it, budget how much slower than the
-     * pinned reference kwenza as a whole may get. Both are provisional: set from a laptop's noise
-     * (identical jars differed by about 1% on the minimum), they should be tightened once there is
-     * data from the CI runners (see benchmarks/README.adoc). Network-bound work gets much more room.
+     * pinned reference kwenza as a whole may get. Both are provisional. On a laptop identical jars
+     * differ by about 1%, but on the first CI run (ubuntu-latest) identical code differed by up to 9%
+     * on the fastest of ten runs, so these sit above that (see benchmarks/README.adoc) and should be
+     * tightened once there is more CI data. Network-bound work gets much more room.
      */
     private enum Operation {
         /** No dependencies to fetch: warm resolve from the lock, javac over ~100k lines, jar. javac dominates. */
-        PACKAGE("package (no deps)", List.of("package"), false, 0.08, 0.12),
+        PACKAGE("package (no deps)", List.of("package"), false, 0.12, 0.15),
         /** Warm-cache resolution of the dev-dependency graph with no lock: POM parsing and mediation. */
-        RESOLVE("resolve (warm cache)", List.of("resolve"), false, 0.10, 0.15),
+        RESOLVE("resolve (warm cache)", List.of("resolve"), false, 0.12, 0.15),
         /** The same resolution from an empty cache: real downloads and checksum checks. Network-bound, so noisier. */
-        DOWNLOAD("resolve (download)", List.of("resolve"), true, 0.25, 0.35);
+        DOWNLOAD("resolve (download)", List.of("resolve"), true, 0.30, 0.40);
 
         final String label;
         final List<String> args;
