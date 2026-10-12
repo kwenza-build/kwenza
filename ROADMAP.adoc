@@ -91,6 +91,24 @@ structure everything else builds on.
    them), the docs match, and any resulting changes are added as items below.
 * [ ] *`--project <path>`.* Load `Project` from an explicit root (a global option in `cli.Cli`)
   instead of the working directory. Small and standalone; it tests both review passes above.
+* [ ] *JVM arguments for `test` and `run`.* There's no way to give the forked JVM options, so a
+  project whose tests reflect into the JDK can't run them. commons-lang3's tests, for example,
+  pass with `--add-opens java.base/java.lang=ALL-UNNAMED` and friends, as its pom sets for Surefire,
+  and fail 62,350 of 63,724 tests without them (the first failures leave state behind that fails
+  every later test). Agrona and aeron need the same, and more: both build files pass
+  `--add-opens java.base/jdk.internal.misc=ALL-UNNAMED`, `-XX:MaxDirectMemorySize`, GC and
+  crash-dump flags, `-XX:+EnableDynamicAgentLoading` and `-D` system properties to their tests. That
+  makes it a prerequisite for the validation ladder below, and for any real project that does
+  more than plain unit tests. `JvmLaunch` already takes a `jvmArgs` list (it uses it for the
+  Mockito agent), so the launcher side exists; what's missing is the manifest field. Decide
+  with the CLI and manifest review: a table such as `[test]` and `[run]` with `jvm-args` and
+  system properties, or one shared list; whether a path like `${project.dir}` needs expanding
+  (aeron writes crash logs under the build directory); how it interacts with the Mockito agent
+  kwenza already adds; and how it's shown in the `test:`/`run:` status line, so the command is
+  still transparent. `JAVA_TOOL_OPTIONS` works today but also applies to kwenza's own JVM, prints
+  a notice on every run and isn't recorded in the project. _Done when:_ a project can declare
+  the JVM options its tests and its `run` need, and commons-lang3's suite passes with them in
+  `kwenza.toml` alone.
 * [ ] *Apply the review's outcomes.* At minimum: the lockfile format version, unknown-key
   handling (`kwenza --version`, `--help` / `kwenza help <command>`, and documented, stable exit
   codes already landed with the code-design passes). Audit error messages
