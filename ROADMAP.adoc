@@ -46,6 +46,34 @@ structure everything else builds on.
   by kwenza.dev and `kwenza help`, and the no-op `--update` flag removed. `Project` owns the
   root; `Timing` stays static and `ensureMainResolved` stays a second resolution, both recorded
   in AGENTS.md. `--help`/`kwenza help <command>` and `kwenza --version` landed here too.
+  A second, full pass with the skill followed (#17): errors as `Result` values with documented
+  exit codes, one JVM launcher, contexts reduced to state with `ResolveCommand`/`BuildCommand`
+  doing the work, and one trust rule for jars. It surfaced the first three items below.
+* [ ] *Bug: stale build output survives a rebuild.* Neither compile clears `<output-dir>/classes`
+  or `test-classes` first, so a deleted or renamed source keeps its `.class` file (and a deleted
+  resource its copy) until `kwenza clean`. It still gets loaded, packaged into the jar, and run by
+  `kwenza test`: during the code-design review, deleted test classes kept running and passing
+  against stale main classes. kwenza has no incremental compilation, so the likely fix is to
+  clear each output directory before a real (non-memoized) compile in `BuildCommand`. TDD at
+  `BuildCommandTest`: compile, delete a source, compile again in a fresh chain, assert the class
+  is gone (and the same for a resource). _Done when:_ a rebuild's output matches its sources.
+* [ ] *Decide the main classpath: second resolution, projection, or per-scope lock.* Today
+  `build`/`run`/`package` re-resolve `[dependencies]` alone. That reads POMs, so a lock-backed
+  build can still reach the network on a cold POM cache, and it can settle on a version
+  kwenza.lock doesn't pin. Options: keep the second resolution but make it local-only and
+  pinned; a projection over the merged graph (no I/O, but a dev-dependency can then raise a shared
+  version on the main classpath, as in Maven and Cargo); or one lock section per scope (as
+  Gradle locks each configuration). Investigate what Maven, Gradle and Cargo each do and the
+  trade-offs first, then decide: it changes behaviour, and maybe the lockfile shape, so it
+  belongs before 0.1 and before the lockfile review below. See AGENTS.md, the dev-dependencies
+  decision.
+* [ ] *Verify POMs.* Jars go through the one trust rule; POMs, which decide *which* jars get
+  resolved, aren't checked at all (`ArtifactStore.pom`). A tampered cached POM can point the
+  graph at a different, real artifact, whose jar then passes its own `.sha1` check. Check a
+  fetched POM against its published `.pom.sha1`, and pin POM hashes in kwenza.lock so cached
+  POMs can be checked locally, the same `Pinned`/`Published` rule as jars. Pinning changes the
+  lockfile shape, so do it with or right after the main-classpath decision above and before the
+  lockfile review. See AGENTS.md, "POMs are not verified".
 * [ ] *Review the CLI and manifest design.* The code-design pass covers the internals; this
   covers the *user-facing contract*, which is much harder to change after 0.1. Check it's
   sensible today and has room for what AGENTS.md already plans, without breaking changes.
@@ -67,13 +95,6 @@ structure everything else builds on.
   handling (`kwenza --version`, `--help` / `kwenza help <command>`, and documented, stable exit
   codes already landed with the code-design passes). Audit error messages
   against "fail fast, with a specific and actionable message".
-* [ ] *Main classpath: second resolution, projection, or per-scope lock.* Today `build`/`run`/
-  `package` re-resolve `[dependencies]` alone, which reads POMs (so a lock-backed build can reach
-  the network on a cold POM cache) and can pick a version the lock doesn't pin. Investigate the
-  three options and what Maven, Gradle and Cargo each do before deciding: it's a behaviour
-  change either way, so it belongs before 0.1. See AGENTS.md, the dev-dependencies decision.
-* [ ] *Verify POMs.* Check fetched POMs against their published `.pom.sha1`, and decide whether
-  kwenza.lock pins POM hashes too. See AGENTS.md, "POMs are not verified".
 * [ ] *Portable thin jars.* `kwenza package` writes absolute `file:` URIs into `~/.m2` in the
   jar's `Class-Path`, so the jar only runs on the machine (and account) that built it. Copy the
   dependency jars into `<output-dir>/lib/` and write relative `lib/...` entries instead, so
