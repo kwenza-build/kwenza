@@ -733,7 +733,8 @@ close most of this gap — flagged as a real future optimization, intentionally 
   `Timing` still writes to stderr directly, through static methods, rather than going behind
   `Reporter`. Reconsidered in the code-design pass and kept: it's a no-op unless `KWENZA_TIMING`
   is set, so it never causes test noise, and it has to start before anything else exists
-  (`Timing.init()` is `main`'s first statement, to capture the true entry time). Revisit if it
+  (`Timing.start()` opens `main`'s outermost scope, to capture the true entry time, and prints
+  the report when it closes). Revisit if it
   ever needs a second output. Phases are scopes, `try (var t = Timing.phase("compile")) {...}`,
   rather than the `Timing.mark(label)` checkpoints they replaced: each phase has an explicit start
   and end, nests, and a phase a memoized command skips doesn't appear, where a checkpoint gap used

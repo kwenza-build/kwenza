@@ -13,7 +13,8 @@ import java.util.function.LongSupplier;
  * }
  * }</pre>
  * so it has an explicit start and end, nests, and simply doesn't appear when a memoized command
- * skips it. Also reports JVM bootstrap (process start to main() entry), which a shell-level
+ * skips it. The whole run is a scope too, {@link #start()}, opened as main()'s first statement and
+ * printing the report when it closes. Also reports JVM bootstrap (process start to main() entry), which a shell-level
  * wall-clock timer can't separate out. Disabled, {@link #phase} returns one shared no-op scope.
  */
 public final class Timing {
@@ -30,16 +31,19 @@ public final class Timing {
         void close();
     }
 
-    /** No-op body - calling this forces the class to load (and its static fields to capture "now") at this call site. */
-    public static void init() {
+    /**
+     * The whole run, as main()'s first statement: loading this class here is what captures the
+     * true main() entry time. Closing it prints every finished phase to stderr, if enabled.
+     */
+    public static Phase start() {
+        return Timing::report;
     }
 
     public static Phase phase(String name) {
         return RECORDER.phase(name);
     }
 
-    /** Prints every finished phase to stderr, if enabled. */
-    public static void report() {
+    private static void report() {
         for (String line : RECORDER.lines(MAIN_ENTRY_EPOCH_MILLIS - JVM_START_EPOCH_MILLIS)) {
             System.err.println(line);
         }
