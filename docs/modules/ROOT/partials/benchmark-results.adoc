@@ -4,7 +4,7 @@
 |===
 |Measured on |Apple M2 Pro, 12 cores, Mac OS X 26.7.1
 |Date |2026-10-12
-|kwenza |commit `76ace67`
+|kwenza |commit `9b94768`
 |JDK |Azul Systems, Inc. 25.0.3+9-LTS, the `java` on `PATH`, used by every tool
 |Maven |3.9.16 (wrapper)
 |Gradle |9.6.0 (wrapper)
@@ -18,22 +18,22 @@ image::benchmark-warm.svg[Median warm build time per tool and operation,role=ben
 [cols="2,1,1,1"]
 |===
 |Operation |Tool |Median (s) |Fastest (s)
-|hello-world / package|kwenza|0.50 |0.49
-|hello-world / package|Maven|1.71 |1.68
-|hello-world / package|Gradle (daemon)|0.61 |0.59
-|hello-world / package|Gradle (no daemon)|3.33 |3.24
-|junit-word-count / package|kwenza|0.83 |0.51
-|junit-word-count / package|Maven|1.50 |1.45
-|junit-word-count / package|Gradle (daemon)|0.49 |0.45
-|junit-word-count / package|Gradle (no daemon)|2.81 |2.77
-|junit-word-count / test|kwenza|1.21 |1.16
-|junit-word-count / test|Maven|2.25 |2.21
-|junit-word-count / test|Gradle (daemon)|1.37 |1.31
-|junit-word-count / test|Gradle (no daemon)|3.91 |3.82
-|commons-lang3 / package|kwenza|2.16 |1.82
-|commons-lang3 / package|Maven|2.98 |2.91
-|commons-lang3 / package|Gradle (daemon)|1.14 |1.07
-|commons-lang3 / package|Gradle (no daemon)|4.38 |4.30
+|hello-world / package|kwenza|0.46 |0.44
+|hello-world / package|Maven|1.72 |1.68
+|hello-world / package|Gradle (daemon)|0.61 |0.61
+|hello-world / package|Gradle (no daemon)|3.32 |3.28
+|junit-word-count / package|kwenza|0.44 |0.43
+|junit-word-count / package|Maven|1.48 |1.46
+|junit-word-count / package|Gradle (daemon)|0.52 |0.48
+|junit-word-count / package|Gradle (no daemon)|2.83 |2.80
+|junit-word-count / test|kwenza|1.13 |1.11
+|junit-word-count / test|Maven|2.22 |2.19
+|junit-word-count / test|Gradle (daemon)|1.34 |1.29
+|junit-word-count / test|Gradle (no daemon)|3.91 |3.84
+|commons-lang3 / package|kwenza|1.82 |1.77
+|commons-lang3 / package|Maven|2.91 |2.86
+|commons-lang3 / package|Gradle (daemon)|1.14 |1.04
+|commons-lang3 / package|Gradle (no daemon)|4.29 |4.21
 |===
 
 === Cold builds
@@ -43,22 +43,22 @@ image::benchmark-cold.svg[Cold build time per tool and operation,role=benchmark-
 [cols="2,1,1"]
 |===
 |Operation |Tool |Time (s)
-|hello-world / package|kwenza|2.40
-|hello-world / package|Maven|17.29
-|hello-world / package|Gradle (daemon)|12.94
-|hello-world / package|Gradle (no daemon)|12.72
-|junit-word-count / package|kwenza|1.78
-|junit-word-count / package|Maven|10.06
-|junit-word-count / package|Gradle (daemon)|12.93
-|junit-word-count / package|Gradle (no daemon)|11.24
-|junit-word-count / test|kwenza|2.50
-|junit-word-count / test|Maven|10.44
-|junit-word-count / test|Gradle (daemon)|15.29
-|junit-word-count / test|Gradle (no daemon)|14.66
-|commons-lang3 / package|kwenza|2.25
-|commons-lang3 / package|Maven|9.10
-|commons-lang3 / package|Gradle (daemon)|12.66
-|commons-lang3 / package|Gradle (no daemon)|11.90
+|hello-world / package|kwenza|1.41
+|hello-world / package|Maven|14.47
+|hello-world / package|Gradle (daemon)|23.24
+|hello-world / package|Gradle (no daemon)|12.24
+|junit-word-count / package|kwenza|3.03
+|junit-word-count / package|Maven|10.45
+|junit-word-count / package|Gradle (daemon)|30.83
+|junit-word-count / package|Gradle (no daemon)|11.37
+|junit-word-count / test|kwenza|4.85
+|junit-word-count / test|Maven|12.89
+|junit-word-count / test|Gradle (daemon)|15.45
+|junit-word-count / test|Gradle (no daemon)|13.91
+|commons-lang3 / package|kwenza|1.86
+|commons-lang3 / package|Maven|15.12
+|commons-lang3 / package|Gradle (daemon)|24.17
+|commons-lang3 / package|Gradle (no daemon)|12.04
 |===
 
 === Exact commands
