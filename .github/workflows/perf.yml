@@ -7,6 +7,15 @@ name: Performance
 
 on:
   pull_request:
+    # Docs-only PRs can't change build time. This is an ignore list, not an allowlist, so a new
+    # directory runs the check by default. Not applied to ci.yml: its jobs are required checks,
+    # and a workflow skipped by path filters leaves a required check pending forever.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.adoc'
+      - '**/*.md'
+      - 'LICENSE*'
+      - '.github/pull_request_template.md'
 
 permissions:
   contents: read
