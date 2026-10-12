@@ -16,6 +16,7 @@ class KwenzaLockTest {
 
     private static final String MANIFEST_TEXT = """
             [package]
+            name = "my-app"
             group = "com.example"
             version = "0.1.0"
 
@@ -25,24 +26,25 @@ class KwenzaLockTest {
 
     @Test
     void hashDependenciesIsStableForTheSameManifest() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT, "fallback");
+        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT);
 
         assertEquals(KwenzaLock.hashDependencies(manifest), KwenzaLock.hashDependencies(manifest));
     }
 
     @Test
     void hashDependenciesChangesWhenADependencyVersionChanges() {
-        KwenzaManifest original = KwenzaManifest.parse(MANIFEST_TEXT, "fallback");
-        KwenzaManifest changed = KwenzaManifest.parse(MANIFEST_TEXT.replace("33.2.1-jre", "33.3.0"), "fallback");
+        KwenzaManifest original = KwenzaManifest.parse(MANIFEST_TEXT);
+        KwenzaManifest changed = KwenzaManifest.parse(MANIFEST_TEXT.replace("33.2.1-jre", "33.3.0"));
 
         assertFalse(KwenzaLock.hashDependencies(original).equals(KwenzaLock.hashDependencies(changed)));
     }
 
     @Test
     void hashDependenciesIsUnaffectedByDeclarationOrder() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT, "fallback");
+        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT);
         KwenzaManifest reordered = KwenzaManifest.parse("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
@@ -51,9 +53,10 @@ class KwenzaLockTest {
 
                 [dependencies]
                 guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
-                """, "fallback");
+                """);
         KwenzaManifest sameDeclaredInOrder = KwenzaManifest.parse("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
@@ -62,7 +65,7 @@ class KwenzaLockTest {
 
                 [dev-dependencies]
                 junit = { module = "org.junit.jupiter:junit-jupiter", version = "6.1.3" }
-                """, "fallback");
+                """);
 
         assertEquals(KwenzaLock.hashDependencies(reordered), KwenzaLock.hashDependencies(sameDeclaredInOrder));
     }
@@ -70,14 +73,14 @@ class KwenzaLockTest {
     @Test
     void aFreshManifestWithNoDependenciesHasAStableHashToo() {
         KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT.replace(
-                "[dependencies]\nguava = { module = \"com.google.guava:guava\", version = \"33.2.1-jre\" }", ""), "fallback");
+                "[dependencies]\nguava = { module = \"com.google.guava:guava\", version = \"33.2.1-jre\" }", ""));
 
         assertEquals(KwenzaLock.hashDependencies(manifest), KwenzaLock.hashDependencies(manifest));
     }
 
     @Test
     void isFreshForIsTrueOnlyWhenTheHashMatchesTheCurrentManifest() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT, "fallback");
+        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT);
         KwenzaLock fresh = new KwenzaLock(List.of(), KwenzaLock.hashDependencies(manifest));
         KwenzaLock stale = new KwenzaLock(List.of(), "not-the-real-hash");
         KwenzaLock withNoHashAtAll = KwenzaLock.empty();
@@ -113,7 +116,7 @@ class KwenzaLockTest {
         KwenzaLock lock = KwenzaLock.load(tempDir.resolve("does-not-exist.lock"));
 
         assertTrue(lock.entries.isEmpty());
-        assertFalse(lock.isFreshFor(KwenzaManifest.parse(MANIFEST_TEXT, "fallback")));
+        assertFalse(lock.isFreshFor(KwenzaManifest.parse(MANIFEST_TEXT)));
     }
 
     @Test

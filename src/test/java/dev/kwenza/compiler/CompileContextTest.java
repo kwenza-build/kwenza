@@ -18,6 +18,7 @@ class CompileContextTest {
 
     private static final String NO_DEPENDENCIES = """
             [package]
+            name = "my-app"
             group = "com.example"
             version = "0.1.0"
             """;
@@ -92,6 +93,7 @@ class CompileContextTest {
                 """);
         Contexts contexts = Fixtures.contexts(projectRoot(), repo.path(), """
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 

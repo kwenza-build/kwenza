@@ -11,6 +11,7 @@ class KwenzaManifestTest {
 
     private static final String MINIMAL = """
             [package]
+            name = "my-app"
             group = "com.example"
             version = "0.1.0"
             """;
@@ -30,23 +31,20 @@ class KwenzaManifestTest {
     }
 
     @Test
-    void nameFallsBackToTheContainingDirectoryNameWhenOmitted() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MINIMAL, "hello-world");
-
-        assertEquals("hello-world", manifest.name);
-    }
-
-    @Test
-    void missingNameWithNoFallbackIsAnError() {
+    void missingNameIsAnError() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> KwenzaManifest.parse(MINIMAL));
+                () -> KwenzaManifest.parse("""
+                        [package]
+                        group = "com.example"
+                        version = "0.1.0"
+                        """));
 
-        assertTrue(e.getMessage().contains("name"), "expected a message mentioning the missing name: " + e.getMessage());
+        assertEquals("[package] is missing required field 'name'", e.getMessage());
     }
 
     @Test
     void optionalFieldsDefaultWhenOmitted() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MINIMAL, "fallback");
+        KwenzaManifest manifest = KwenzaManifest.parse(MINIMAL);
 
         assertEquals("21", manifest.javaVersion);
         assertEquals("target", manifest.outputDir);
@@ -57,12 +55,13 @@ class KwenzaManifestTest {
     void optionalFieldsAreReadWhenPresent() {
         KwenzaManifest manifest = KwenzaManifest.parse("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 java-version = "17"
                 main-class = "com.example.Main"
                 output-dir = "build"
-                """, "fallback");
+                """);
 
         assertEquals("17", manifest.javaVersion);
         assertEquals("com.example.Main", manifest.mainClass);
@@ -78,6 +77,7 @@ class KwenzaManifestTest {
     void dependenciesAndDevDependenciesAreParsedSeparately() {
         KwenzaManifest manifest = KwenzaManifest.parse("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
@@ -86,7 +86,7 @@ class KwenzaManifestTest {
 
                 [dev-dependencies]
                 mockito = { module = "org.mockito:mockito-core", version = "5.23.0" }
-                """, "fallback");
+                """);
 
         assertEquals(1, manifest.dependencies.size());
         assertEquals(1, manifest.devDependencies.size());
@@ -101,12 +101,13 @@ class KwenzaManifestTest {
     void aDependencyModuleMustHaveExactlyOneColon() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> KwenzaManifest.parse("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
                 [dependencies]
                 bad = { module = "com.google.guava", version = "33.2.1-jre" }
-                """, "fallback"));
+                """));
 
         assertTrue(e.getMessage().contains("group:artifact"), "unexpected message: " + e.getMessage());
     }
@@ -115,6 +116,7 @@ class KwenzaManifestTest {
     void versionRefResolvesAgainstTheVersionsTable() {
         KwenzaManifest manifest = KwenzaManifest.parse("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
@@ -123,7 +125,7 @@ class KwenzaManifestTest {
 
                 [dependencies]
                 guava = { module = "com.google.guava:guava", version.ref = "guava" }
-                """, "fallback");
+                """);
 
         assertEquals("33.2.1-jre", manifest.dependencies.get("guava").version);
     }
@@ -132,12 +134,13 @@ class KwenzaManifestTest {
     void versionRefPointingAtAMissingKeyIsAnError() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> KwenzaManifest.parse("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
                 [dependencies]
                 guava = { module = "com.google.guava:guava", version.ref = "nope" }
-                """, "fallback"));
+                """));
 
         assertTrue(e.getMessage().contains("nope"), "unexpected message: " + e.getMessage());
     }

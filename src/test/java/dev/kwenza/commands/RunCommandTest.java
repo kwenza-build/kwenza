@@ -23,6 +23,7 @@ class RunCommandTest {
                 "package com.example; public final class Main { public static void main(String[] a) {} }");
         Contexts state = contexts(projectRoot, tempDir.resolve("repo"), """
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
@@ -37,6 +38,7 @@ class RunCommandTest {
                 "package com.example; public final class Main { public static void main(String[] a) {} }");
         Contexts state = contexts(projectRoot, tempDir.resolve("repo"), """
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 main-class = "com.example.Main"
@@ -54,6 +56,7 @@ class RunCommandTest {
                 "package com.example; public final class Main { public static void main(String[] a) { System.exit(3); } }");
         Contexts state = contexts(projectRoot, tempDir.resolve("repo"), """
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 main-class = "com.example.Main"

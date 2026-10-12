@@ -63,6 +63,14 @@ specific decision and its specific reasoning; that one is for the pattern.
   Maven/Cargo for now, but made it a one-line override precisely because there's no compatibility
   reason to enforce it project-wide.
 
+- **`[package] name` is required, with no fallback to the directory's name.** It used to default
+  to the containing directory's name, which meant the packaged jar's name came from wherever the
+  project happened to be checked out (a renamed clone or a CI workspace path changed the artifact)
+  and nothing in `kwenza.toml` showed it. That's the "Transparent: no magic" principle in
+  docs/contributing/design-principles.adoc. The directory name is still a good *default*; it
+  belongs in `kwenza new`/`kwenza init`, which can write it into the manifest where it's visible,
+  not in the parser.
+
 - **Self-hosting.** Once kwenza could compile+package itself, it switched immediately to building
   itself with itself (`kwenza.toml` at the repo root has no dependencies). `bootstrap.sh` exists
   *only* for the very first jar (or disaster recovery) — day-to-day rebuilds go through

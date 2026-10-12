@@ -12,7 +12,7 @@ walkthrough instead, see xref:getting-started.adoc[Getting Started].
 |Field |Required? |Meaning
 
 |`name`
-|No — defaults to the containing directory's name
+|Yes
 |The artifact's name. Used to name the packaged jar: `<output-dir>/<name>-<version>.jar`.
 
 |`group`
@@ -44,7 +44,7 @@ if you'd rather match Gradle's `build`, or anything else.
 [source,toml]
 ----
 [package]
-name = "my-app"                  # optional
+name = "my-app"
 group = "com.example"
 version = "0.1.0"
 java-version = "21"               # optional

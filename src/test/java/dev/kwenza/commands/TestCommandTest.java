@@ -32,6 +32,7 @@ class TestCommandTest {
 
     private static final String MANIFEST = """
             [package]
+            name = "my-app"
             group = "com.example"
             version = "0.1.0"
 
@@ -83,6 +84,7 @@ class TestCommandTest {
         Files.createDirectories(projectRoot); // no src/test/java at all - examples/hello-world's exact shape
         Contexts state = contexts(projectRoot, Fixtures.defaultLocalRepo(), """
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """); // no [dev-dependencies] at all - nothing provides ConsoleLauncher either
@@ -105,6 +107,7 @@ class TestCommandTest {
                 "package com.example; class SomeTest {}");
         Contexts state = contexts(projectRoot, Fixtures.defaultLocalRepo(), """
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
