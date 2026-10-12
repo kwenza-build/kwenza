@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 468" width="680" font-family="system-ui, sans-serif" font-size="12">
+<title>Cold build time (seconds, lower is better)</title>
+<rect width="100%" height="100%" rx="8" fill="#ffffff"/>
+<rect x="12" y="14" width="12" height="12" rx="2" fill="#c4701a"/><text x="29" y="24" fill="#222">kwenza</text>
+<rect x="89" y="14" width="12" height="12" rx="2" fill="#4a6fa5"/><text x="106" y="24" fill="#222">Maven</text>
+<rect x="159" y="14" width="12" height="12" rx="2" fill="#2f8a6a"/><text x="176" y="24" fill="#222">Gradle (daemon)</text>
+<rect x="299" y="14" width="12" height="12" rx="2" fill="#8fc4ab"/><text x="316" y="24" fill="#222">Gradle (no daemon)</text>
+<text x="190" y="42" fill="#666">seconds, lower is better</text>
+<text x="180" y="96" text-anchor="end" fill="#222">hello-world / package</text>
+<rect x="190" y="52" width="58.4" height="16" rx="2" fill="#c4701a"/><text x="254.4" y="64" fill="#222">2.40</text>
+<rect x="190" y="73" width="420.0" height="16" rx="2" fill="#4a6fa5"/><text x="616.0" y="85" fill="#222">17.29</text>
+<rect x="190" y="94" width="314.2" height="16" rx="2" fill="#2f8a6a"/><text x="510.2" y="106" fill="#222">12.94</text>
+<rect x="190" y="115" width="309.1" height="16" rx="2" fill="#8fc4ab"/><text x="505.1" y="127" fill="#222">12.72</text>
+<text x="180" y="198" text-anchor="end" fill="#222">junit-word-count / package</text>
+<rect x="190" y="154" width="43.1" height="16" rx="2" fill="#c4701a"/><text x="239.1" y="166" fill="#222">1.78</text>
+<rect x="190" y="175" width="244.3" height="16" rx="2" fill="#4a6fa5"/><text x="440.3" y="187" fill="#222">10.06</text>
+<rect x="190" y="196" width="314.2" height="16" rx="2" fill="#2f8a6a"/><text x="510.2" y="208" fill="#222">12.93</text>
+<rect x="190" y="217" width="273.1" height="16" rx="2" fill="#8fc4ab"/><text x="469.1" y="229" fill="#222">11.24</text>
+<text x="180" y="300" text-anchor="end" fill="#222">junit-word-count / test</text>
+<rect x="190" y="256" width="60.8" height="16" rx="2" fill="#c4701a"/><text x="256.8" y="268" fill="#222">2.50</text>
+<rect x="190" y="277" width="253.6" height="16" rx="2" fill="#4a6fa5"/><text x="449.6" y="289" fill="#222">10.44</text>
+<rect x="190" y="298" width="371.5" height="16" rx="2" fill="#2f8a6a"/><text x="567.5" y="310" fill="#222">15.29</text>
+<rect x="190" y="319" width="356.2" height="16" rx="2" fill="#8fc4ab"/><text x="552.2" y="331" fill="#222">14.66</text>
+<text x="180" y="402" text-anchor="end" fill="#222">commons-lang3 / package</text>
+<rect x="190" y="358" width="54.6" height="16" rx="2" fill="#c4701a"/><text x="250.6" y="370" fill="#222">2.25</text>
+<rect x="190" y="379" width="221.1" height="16" rx="2" fill="#4a6fa5"/><text x="417.1" y="391" fill="#222">9.10</text>
+<rect x="190" y="400" width="307.6" height="16" rx="2" fill="#2f8a6a"/><text x="503.6" y="412" fill="#222">12.66</text>
+<rect x="190" y="421" width="289.2" height="16" rx="2" fill="#8fc4ab"/><text x="485.2" y="433" fill="#222">11.90</text>
+</svg>

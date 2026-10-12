@@ -471,7 +471,7 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   jar-content changes (confirmed by rebuilding kwenza's own jar mid-experiment: the next run
   detects the stale archive, silently regenerates it at exit with a JVM-level stderr warning,
   and every run after that is clean and fast again).** One archive works for every project kwenza
-  builds — verified against both `examples/hello-world` and `examples/word-counter` — because
+  builds — verified against both `examples/hello-world` and `examples/junit-word-count` — because
   kwenza's own JVM classpath is always just the single `-jar` entry regardless of which project
   it's building; only the spawned subprocess for `run`/`test` sees the project's own dependency
   jars, on a separate JVM this doesn't touch. Also confirmed safe on a real cold run (deleted

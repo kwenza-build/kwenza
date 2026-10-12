@@ -3,7 +3,7 @@
 :toclevels: 2
 
 Timed comparisons of kwenza against Maven and Gradle, across a growing set of real scenarios.
-Every scenario times the exact same source across all three tools; only the manifest format
+Every scenario times the exact same source across every tool; only the manifest format
 differs (`kwenza.toml` / `pom.xml` / `build.gradle.kts`), because that's the whole point.
 
 == Running it
@@ -14,8 +14,9 @@ One shared harness, `Bench.java`, run from this directory:
 ----
 java Bench.java                          # every scenario, both cold and warm
 java Bench.java hello-world              # one scenario, both cold and warm
-java Bench.java word-counter cold        # one scenario, cold only
-java Bench.java word-counter warm 10     # one scenario, warm only, 10 clean rebuilds
+java Bench.java junit-word-count cold        # one scenario, cold only
+java Bench.java junit-word-count warm 10     # one scenario, warm only, 10 clean rebuilds
+java Bench.java all both 7 --write-docs      # everything, and regenerate the performance page's figures
 ----
 
 `Bench.java` is a single-file Java program (JEP 330 - `java Bench.java ...` compiles and runs it
@@ -23,6 +24,11 @@ directly, no build step) rather than a shell script: this repo already has more 
 than a shell script comfortably holds once there's more than one scenario and more than one
 per-tool operation to time, and it's already a Java codebase. It replaces the older
 per-scenario `run.sh`.
+
+Four tools are timed, not three: kwenza, Maven, Gradle with its daemon (`./gradlew`) and Gradle
+without it (`./gradlew --no-daemon`). kwenza and Maven start a fresh JVM every time, so Gradle's
+warm daemon isn't a like-for-like comparison on its own; the no-daemon line is. Both Gradle lines
+use the same `gradle/` project directory. See the performance page on kwenza.dev for the reasoning.
 
 `cold` mode wipes each scenario's isolated `.cache/` first and times one real-network-fetch run
 per tool; `warm` mode primes the caches (if needed), then times `N` clean rebuilds per tool and
@@ -49,7 +55,7 @@ is its own separate, explicitly-timed operation wherever a scenario has one.
 dependency resolution machinery.
 |`package`
 
-|link:word-counter[`word-counter`]
+|link:junit-word-count[`junit-word-count`]
 |The same, plus `kwenza test` vs. `mvn test` vs. `gradle test` — a small library with real JUnit 5
 and Mockito tests, not a throwaway.
 |`package`, `test`
@@ -65,6 +71,27 @@ mattering and Gradle's warm daemon (which keeps a JIT-hot compiler) is the thing
 to a commit, into `commons-lang3/.cache/src` on first use, and each variant's `src` is a symlink
 into that checkout (dangling until then). The main sources only are built, never the tests
 (`package` skips them for every tool).
+
+== Keeping the page current
+
+`--write-docs` (only valid with `all both`) writes everything the performance page takes from a
+run, so none of it is typed by hand:
+
+* `docs/modules/ROOT/partials/benchmark-results.adoc`: the environment table (CPU, OS, JDK, Maven and
+  Gradle versions, kwenza commit, date), the tables, and the exact command run for every tool and
+  operation, generated from the same `command(...)` the harness executes
+* `docs/modules/ROOT/images/benchmark-warm.svg` and `benchmark-cold.svg`: the charts
+
+The prose on the page (`docs/modules/ROOT/pages/performance.adoc`) is written by hand and
+describes methodology and how to read the results, without quoting numbers. If you change what a
+scenario or operation does, or add a tool, update that prose too: the generated commands table
+will already be right, the explanation of them won't.
+
+Refreshing is a manual workflow, `.github/workflows/benchmarks.yml` (Actions > Refresh benchmark
+figures > Run workflow), which reruns everything and opens a PR with the regenerated files. It's
+not triggered by merges: a full run takes a quarter of an hour, shared runners give different
+numbers from a laptop (the environment table says which you're looking at), and the figures only
+need refreshing when something changes enough to matter, such as a release.
 
 == Regression check: base vs head
 
@@ -117,7 +144,7 @@ captured real-world manifests and locks for this), tests, and trends over time o
 
 Every tool variant's `src/` is a symlink into the corresponding `examples/*` project
 (`benchmarks/hello-world/kwenza/src -> ../../../examples/hello-world/src`, and likewise for
-`maven`/`gradle` and for `word-counter`) — never a copy. This isn't cosmetic: `examples/hello-world`
+`maven`/`gradle` and for `junit-word-count`) — never a copy. This isn't cosmetic: `examples/hello-world`
 and its benchmark copy had already silently diverged (different printed message) before this
 convention existed, discovered by just diffing them. Symlinking makes that class of drift
 structurally impossible instead of something to remember to keep in sync by hand.
