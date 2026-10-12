@@ -348,12 +348,21 @@ public final class Bench {
 
     private static String table(List<Result> results, boolean warm) {
         StringBuilder t = new StringBuilder();
-        t.append("[cols=\"").append(warm ? "2,1,1,1" : "2,1,1").append("\"]\n|===\n|Operation |Tool |")
+        t.append("[cols=\"").append(warm ? "3,2,1,1" : "3,2,1").append("\"]\n|===\n|Operation |Tool |")
                 .append(warm ? "Median (s) |Fastest (s)" : "Time (s)").append('\n');
-        for (Result r : results) {
-            t.append('|').append(r.scenario()).append(" / ").append(r.operation()).append('|')
-                    .append(DISPLAY.get(r.tool())).append('|')
-                    .append(warm ? fmt(r.warmMedian()) + " |" + fmt(r.warmMin()) : fmt(r.cold())).append('\n');
+        // Results come grouped by scenario and operation; that cell spans all of its tool rows, so it's written once.
+        for (int i = 0; i < results.size(); ) {
+            Result first = results.get(i);
+            int j = i;
+            while (j < results.size() && results.get(j).scenario().equals(first.scenario())
+                    && results.get(j).operation().equals(first.operation())) j++;
+            t.append('.').append(j - i).append("+.^|").append(first.scenario()).append(" / ").append(first.operation());
+            for (int k = i; k < j; k++) {
+                Result r = results.get(k);
+                t.append('|').append(DISPLAY.get(r.tool())).append('|')
+                        .append(warm ? fmt(r.warmMedian()) + " |" + fmt(r.warmMin()) : fmt(r.cold())).append('\n');
+            }
+            i = j;
         }
         return t.append("|===\n").toString();
     }

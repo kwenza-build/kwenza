@@ -2,23 +2,23 @@
 
 image::benchmark-cold.svg[Cold build time per tool and operation,role=benchmark-chart]
 
-[cols="2,1,1"]
+[cols="3,2,1"]
 |===
 |Operation |Tool |Time (s)
-|hello-world / package|kwenza|1.41
-|hello-world / package|Maven|14.47
-|hello-world / package|Gradle (daemon)|23.24
-|hello-world / package|Gradle (no daemon)|12.24
-|junit-word-count / package|kwenza|3.03
-|junit-word-count / package|Maven|10.45
-|junit-word-count / package|Gradle (daemon)|30.83
-|junit-word-count / package|Gradle (no daemon)|11.37
-|junit-word-count / test|kwenza|4.85
-|junit-word-count / test|Maven|12.89
-|junit-word-count / test|Gradle (daemon)|15.45
-|junit-word-count / test|Gradle (no daemon)|13.91
-|commons-lang3 / package|kwenza|1.86
-|commons-lang3 / package|Maven|15.12
-|commons-lang3 / package|Gradle (daemon)|24.17
-|commons-lang3 / package|Gradle (no daemon)|12.04
+.4+.^|hello-world / package|kwenza|1.41
+|Maven|14.47
+|Gradle (daemon)|23.24
+|Gradle (no daemon)|12.24
+.4+.^|junit-word-count / package|kwenza|3.03
+|Maven|10.45
+|Gradle (daemon)|30.83
+|Gradle (no daemon)|11.37
+.4+.^|junit-word-count / test|kwenza|4.85
+|Maven|12.89
+|Gradle (daemon)|15.45
+|Gradle (no daemon)|13.91
+.4+.^|commons-lang3 / package|kwenza|1.86
+|Maven|15.12
+|Gradle (daemon)|24.17
+|Gradle (no daemon)|12.04
 |===
