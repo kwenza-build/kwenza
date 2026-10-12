@@ -147,7 +147,8 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
 * [ ] *SDKMAN! candidate.* Deferred from Milestone 2 because it needs SDKMAN's vendor
   onboarding (email the SDKMAN team, then publish through their State API).
 * [ ] *`kwenza new`*: scaffold a project, so the first-run experience doesn't start from a blank
-  `kwenza.toml`.
+  `kwenza.toml`. It should write `name` explicitly, defaulting to the directory's name: `name` is
+  required in the manifest, so the default lives in the scaffold, not in the parser.
 * [ ] *`--offline`*: the lockfile plus a warm `~/.m2` already make this mostly possible; make it
   an explicit, enforced mode.
 * [ ] *`kwenza tree`*: dependency tree display.
