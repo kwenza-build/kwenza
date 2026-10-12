@@ -82,6 +82,11 @@ kwenza checks the requested `[package] java-version` against the JDK actually ru
 specific message rather than letting a cryptic javac error surface. See
 link:../modules/ROOT/pages/manifest-reference.adoc[Manifest Reference] for details.
 
+Annotation processing is off: every compile (main and test) passes `-proc:none`. javac's own
+default for processors found on the classpath differs by JDK (21 runs them with a warning, 23+
+doesn't), and in-process compilation means a discovered processor would run inside kwenza's own
+JVM. See "Annotation processors are opt-in, never discovered" in AGENTS.md.
+
 == Packaging
 
 A thin jar by default: your project's own compiled classes and resources, plus a `Class-Path`

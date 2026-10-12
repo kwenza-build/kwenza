@@ -108,6 +108,64 @@ class JavaCompilationTest {
     }
 
     @Test
+    void anAnnotationProcessorOnTheClasspathIsNotRun() throws IOException {
+        // A real processor, registered the standard ServiceLoader way, that generates a class
+        // for every compilation round it sees. JDK 21's javac would discover and run it from the
+        // classpath on its own (JDK 23+ wouldn't); kwenza must not, on any JDK.
+        Path processorSourceRoot = tempDir.resolve("processor-src");
+        Path processorOut = tempDir.resolve("processor-out");
+        writeSource(processorSourceRoot, "com/example/proc/GeneratingProcessor.java", """
+                package com.example.proc;
+                import java.io.IOException;
+                import java.io.UncheckedIOException;
+                import java.io.Writer;
+                import java.util.Set;
+                import javax.annotation.processing.AbstractProcessor;
+                import javax.annotation.processing.RoundEnvironment;
+                import javax.annotation.processing.SupportedAnnotationTypes;
+                import javax.lang.model.SourceVersion;
+                import javax.lang.model.element.TypeElement;
+                @SupportedAnnotationTypes("*")
+                public final class GeneratingProcessor extends AbstractProcessor {
+                    private boolean generated;
+                    @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                    @Override public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment round) {
+                        if (generated) return false;
+                        generated = true;
+                        try (Writer w = processingEnv.getFiler().createSourceFile("com.example.Generated").openWriter()) {
+                            w.write("package com.example; public final class Generated {}");
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                        return false;
+                    }
+                }
+                """);
+        JavaCompilation.compile(processorSourceRoot, processorOut, List.of(), "21");
+        Path processorJar = tempDir.resolve("processor.jar");
+        try (var jarStream = new java.util.jar.JarOutputStream(Files.newOutputStream(processorJar))) {
+            String classEntry = "com/example/proc/GeneratingProcessor.class";
+            jarStream.putNextEntry(new java.util.jar.JarEntry(classEntry));
+            jarStream.write(Files.readAllBytes(processorOut.resolve(classEntry)));
+            jarStream.closeEntry();
+            jarStream.putNextEntry(new java.util.jar.JarEntry("META-INF/services/javax.annotation.processing.Processor"));
+            jarStream.write("com.example.proc.GeneratingProcessor\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            jarStream.closeEntry();
+        }
+
+        Path appSourceRoot = tempDir.resolve("app-src");
+        Path appOut = tempDir.resolve("app-out");
+        writeSource(appSourceRoot, "com/example/App.java", "package com.example; public final class App {}");
+
+        JavaCompilation.Result result = JavaCompilation.compile(appSourceRoot, appOut, List.of(processorJar), "21");
+
+        assertTrue(result.success, () -> String.join("\n", result.diagnostics));
+        assertTrue(Files.exists(appOut.resolve("com/example/App.class")));
+        assertFalse(Files.exists(appOut.resolve("com/example/Generated.class")),
+                "the classpath processor ran and generated com.example.Generated");
+    }
+
+    @Test
     void aJavaVersionNewerThanTheRunningJdkThrowsAnIncompatibleJdkException() throws IOException {
         Path sourceRoot = tempDir.resolve("src");
         writeSource(sourceRoot, "com/example/Anything.java", "package com.example; public final class Anything {}");

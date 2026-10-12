@@ -68,6 +68,9 @@ public final class JavaCompilation {
             List<String> options = new ArrayList<>();
             options.add("--release");
             options.add(releaseVersion);
+            // Never discover annotation processors from the classpath: javac's own default differs
+            // by JDK (21 runs them, 23+ doesn't), and they'd run inside kwenza's own JVM.
+            options.add("-proc:none");
 
             StringWriter extraOut = new StringWriter();
             JavaCompiler.CompilationTask task = compiler.getTask(
