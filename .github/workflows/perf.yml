@@ -7,15 +7,26 @@ name: Performance
 
 on:
   pull_request:
-    # Docs-only PRs can't change build time. This is an ignore list, not an allowlist, so a new
-    # directory runs the check by default. Not applied to ci.yml: its jobs are required checks,
-    # and a workflow skipped by path filters leaves a required check pending forever.
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.adoc'
-      - '**/*.md'
-      - 'LICENSE*'
-      - '.github/pull_request_template.md'
+    # Only what can change the numbers: the jar's contents (src/main, the manifest and lock,
+    # bootstrap.sh), how it launches (bin/), and the measurement itself (Regress.java, the pinned
+    # reference, the one project it times, this workflow). Tests, examples, docs and the other CI
+    # files can't move them. If you add something that goes into the jar or the measured project,
+    # add it here, or the check will silently stop covering it. Not applied to ci.yml: its jobs
+    # are required checks, and a workflow skipped by path filters leaves a required check pending
+    # forever.
+    paths:
+      - 'src/main/**'
+      - 'kwenza.toml'
+      - 'kwenza.lock'
+      - 'bootstrap.sh'
+      - 'bin/**'
+      - 'benchmarks/Regress.java'
+      - 'benchmarks/REFERENCE'
+      - 'benchmarks/commons-lang3/kwenza-deps/**'
+      - '.github/workflows/perf.yml'
+  # For a run the filter skipped, or to re-run without a new commit. There's no PR to take a base
+  # from, so the base is the default branch.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -45,7 +56,7 @@ jobs:
 
       - name: Build base
         run: |
-          git worktree add ../base "origin/${{ github.base_ref }}"
+          git worktree add ../base "origin/${{ github.base_ref || github.event.repository.default_branch }}"
           cd ../base
           ./bootstrap.sh
           bin/kwenza package
