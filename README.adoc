@@ -1,96 +1,98 @@
-= kwenza
-:toc:
-:toclevels: 2
+[.text-center]
+image:docs/research/brand/lockup-b-table.svg[kwenza,width=240,link=https://kwenza.dev]
 
-_"kwenza" — isiXhosa for "to make."_
+[.text-center]
+*A simple, declarative build tool for the JVM.* +
+Your build is a TOML file, not a program.
 
-A simple, declarative build tool for the JVM. Where Maven and Gradle carry decades of
-flexibility (XML lifecycles, a Groovy/Kotlin scripting DSL, plugin ecosystems), kwenza aims to
-stay small and inert: your `kwenza.toml` is data, not a program, and the tool has exactly one way
-to do each thing.
+[.text-center]
+https://kwenza.dev[Website] ·
+link:docs/modules/ROOT/pages/getting-started.adoc[Getting started] ·
+link:docs/modules/ROOT/pages/manifest-reference.adoc[Manifest reference] ·
+link:CHANGELOG.md[Changelog]
 
-It's still fully interoperable with the existing Java ecosystem: real transitive dependency
-resolution against Maven Central, a local cache that's byte-for-byte your existing
-`~/.m2/repository`, and the standard `src/main/java` directory layout. Existing Java tooling,
-IDEs, and caches keep working.
+'''
 
-The name is deliberately not Java-specific — the door's left open for kwenza to grow support for
-other JVM languages (Kotlin, say) later without an awkward rename.
+== At a glance
 
-== Status
+[source,toml]
+----
+# kwenza.toml
+[package]
+name = "hello-world"
+group = "com.example"
+version = "0.1.0"
+java-version = "21"
+main-class = "com.example.Main"
 
-*Working now:* dependency resolution, compilation, packaging, running, and a lockfile — the full
-inner loop for a single-module Java project.
+[dependencies]
+guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
+----
 
-*Not built yet* (tracked as a deliberate Phase 2, not oversights): running tests (JUnit), a
-`--fat` uber-jar option, multi-module workspaces, a `[scripts]` task runner, and an `--offline`
-mode. See link:AGENTS.md[AGENTS.md] for the reasoning behind what's in and out of scope so far.
+[source,console]
+----
+$ kwenza run
+resolve: using locked dependencies (kwenza.lock)
+compile: target/classes
+run: java -cp target/classes (+7 dependency jars) com.example.Main
+Hello from Kwenza: kwenza builds java
+----
 
-== Quick start
+* *Declarative.* The manifest is data. It never runs, so reading it tells you everything.
+* *Interoperable.* Real Maven Central dependencies, your existing `~/.m2` cache, standard
+  `src/main/java`. Your IDE and tools keep working.
+* *Reproducible.* `kwenza.lock` wins by default: no network unless your dependencies changed.
+* *Transparent.* Every command prints what it actually ran.
 
-kwenza builds itself, so the very first jar has to come from a plain `javac`/`jar` bootstrap
-script:
+NOTE: "kwenza" is isiXhosa for "to make."
+
+== Install
+
+kwenza needs JDK 21 or newer. Until the first release is packaged, build it from source:
 
 [source,bash]
 ----
 git clone https://github.com/kwenza-build/kwenza.git && cd kwenza
-./bootstrap.sh              # produces .bootstrap/kwenza-bootstrap.jar (outside target/, survives `kwenza clean`)
-bin/kwenza package          # from here on, kwenza rebuilds itself using itself
+./bootstrap.sh && bin/kwenza package
+export PATH="$PWD/bin:$PATH"
 ----
 
-Put `bin/` on your `PATH` so `kwenza` is just a command, then, in any project directory
-containing a `kwenza.toml`:
+Then, in any directory with a `kwenza.toml`:
 
 [source,bash]
 ----
 kwenza build      # resolve dependencies + compile
-kwenza test       # build + compile src/test/java + run it via the JUnit Platform Console Launcher
+kwenza test       # run src/test/java via the JUnit Platform
 kwenza run        # build + execute [package].main-class
 kwenza package    # build + produce a runnable thin jar
-kwenza help run   # the manual page for any command (`kwenza --list` lists them all)
+kwenza help run   # the manual page for any command
 ----
 
-See link:docs/modules/ROOT/pages/getting-started.adoc[Getting Started] for the full walkthrough,
-including a from-scratch new project.
+See link:docs/modules/ROOT/pages/getting-started.adoc[Getting started] for the full walkthrough,
+including a new project from scratch.
 
 == Documentation
 
-The manual is an https://antora.org[Antora] component under `docs/`, published at
-https://kwenza.dev by https://github.com/kwenza-build/kwenza-dev[kwenza-build/kwenza-dev].
+The manual lives in link:docs[`docs/`] and is published at https://kwenza.dev.
 
-* link:docs/modules/ROOT/pages/getting-started.adoc[Getting Started] — install, `PATH` setup, your first project
-* link:docs/modules/ROOT/pages/manifest-reference.adoc[Manifest Reference] — every `kwenza.toml` field,
-  `kwenza.lock` format
-* link:docs/modules/ROOT/pages/commands/index.adoc[Commands] — every command, flag, and environment
-  variable
-* link:docs/modules/ROOT/pages/architecture.adoc[Architecture] — how resolution, compilation, and
-  packaging work, in brief
-* link:docs/modules/ROOT/pages/design-principles.adoc[Design Principles] — the principles behind
-  kwenza, in brief
-* link:docs/contributing/[docs/contributing/] — the detailed architecture and design principles,
-  with the reasoning and open questions, for contributors
-* link:AGENTS.md[AGENTS.md] — design decisions and trade-offs, for contributors (human or AI)
+* link:docs/modules/ROOT/pages/getting-started.adoc[Getting started]
+* link:docs/modules/ROOT/pages/manifest-reference.adoc[Manifest reference]
+* link:docs/modules/ROOT/pages/commands/index.adoc[Commands]
+* link:docs/modules/ROOT/pages/architecture.adoc[Architecture] and
+  link:docs/modules/ROOT/pages/design-principles.adoc[design principles]
+* link:benchmarks/README.adoc[Benchmarks] against Maven and Gradle
 
-== Benchmarks
+== Status
 
-link:benchmarks[`benchmarks/`] times kwenza against Maven and Gradle across a growing set of real
-scenarios (a trivial app, a small library with real JUnit 5/Mockito tests, more over time), using
-fully isolated dependency caches so it's safe to re-run anytime (`java benchmarks/Bench.java`, no
-build step). Latest hello-world results: kwenza resolves cold roughly 12x faster than Maven/Gradle,
-and beats Maven warm too — though Gradle's persistent daemon edges out kwenza once it's warm, a
-known trade-off of kwenza launching a fresh JVM per invocation rather than keeping one running.
-See link:benchmarks/README.adoc[`benchmarks/README.adoc`] for how to run it, and
-link:benchmarks/hello-world/README.adoc[that scenario's own README] for the full numbers,
-methodology, and how to read them honestly.
+kwenza covers the full inner loop for a single-module Java project: resolve, compile, test, run,
+package, with a lockfile. Multi-module workspaces, `--fat` jars, a `[scripts]` runner and an
+`--offline` mode are deliberately deferred; see link:ROADMAP.adoc[the roadmap].
 
 == Contributing
 
-Commit messages follow https://www.conventionalcommits.org/[Conventional Commits]
-(`feat: ...`, `fix(resolver): ...`, `feat(cli)!: ...` for breaking changes). This isn't enforced by
-tooling — a hook would only run for contributors who'd manually activated it (git never tracks
-`.git/config`, so there's no way to ship that automatically without either relying on Node/Python
-tooling or having `bootstrap.sh` reach beyond its actual job of bootstrapping the build), which
-makes unenforced-but-inconsistent worse than just stating the convention. Follow it by hand.
+kwenza builds itself, so `bin/kwenza package && bin/kwenza test` is the whole dev loop.
+link:AGENTS.md[AGENTS.md] explains the design decisions and conventions (Conventional Commits,
+TDD, changelog entries) for contributors, human or AI.
 
 == License
 
