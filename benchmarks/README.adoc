@@ -53,7 +53,18 @@ dependency resolution machinery.
 |The same, plus `kwenza test` vs. `mvn test` vs. `gradle test` — a small library with real JUnit 5
 and Mockito tests, not a throwaway.
 |`package`, `test`
+
+|link:commons-lang3[`commons-lang3`]
+|Real compile work: https://github.com/apache/commons-lang[commons-lang3], 259 main source files
+and about 100k lines, no dependencies. javac dominates, so this is where kwenza's cold JVM stops
+mattering and Gradle's warm daemon (which keeps a JIT-hot compiler) is the thing to beat.
+|`package`
 |===
+
+`commons-lang3` is the one scenario whose source isn't in this repo: `Bench.java` clones it, pinned
+to a commit, into `commons-lang3/.cache/src` on first use, and each variant's `src` is a symlink
+into that checkout (dangling until then). The main sources only are built, never the tests
+(`package` skips them for every tool).
 
 == Regression check: base vs head
 
@@ -66,10 +77,10 @@ a real project, interleaved, then fails if head is meaningfully slower.
 java Regress.java <base-jar> <head-jar> [runs] [threshold-percent]
 ----
 
-The project is https://github.com/apache/commons-lang[commons-lang3] at a pinned tag and commit
-(259 main source files, about 100k lines), fetched into `regression/commons-lang3/.cache/` on
-first use. Its `kwenza.toml` and `kwenza.lock` live here, in `regression/commons-lang3/`. It's
-there because the hello-world scenarios are almost all fixed JVM startup, so a change to the
+The project is the `commons-lang3` scenario above, sharing its checkout. It uses
+`commons-lang3/kwenza-deps/` rather than the scenario's own `kwenza/` manifest: that one has no
+dev-dependencies, to match the Maven and Gradle variants, whereas the resolve operations below need
+a dependency graph to resolve. It's here because the hello-world scenarios are almost all fixed JVM startup, so a change to the
 compile path barely moves them; here javac is about 85% of a build.
 
 [cols="1,3"]

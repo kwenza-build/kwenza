@@ -29,9 +29,14 @@ public final class Bench {
 
     private static final List<ScenarioSpec> SCENARIOS = List.of(
             new ScenarioSpec("hello-world", List.of("package")),
-            new ScenarioSpec("word-counter", List.of("package", "test"))
+            new ScenarioSpec("word-counter", List.of("package", "test")),
+            new ScenarioSpec("commons-lang3", List.of("package"))
     );
     private static final List<String> TOOLS = List.of("kwenza", "maven", "gradle");
+
+    private static final String LANG3_URL = "https://github.com/apache/commons-lang.git";
+    private static final String LANG3_TAG = "rel/commons-lang-3.19.0";
+    private static final String LANG3_COMMIT = "3d1eb7718a79d18cc2ab57e7ab3b894426ec7c2f";
 
     private static final Path HERE = Path.of("").toAbsolutePath();
     private static final Path LOG = Path.of(System.getProperty("java.io.tmpdir"), "kwenza-bench-out.log");
@@ -58,6 +63,7 @@ public final class Bench {
 
         List<Result> results = new ArrayList<>();
         for (ScenarioSpec scenario : scenarios) {
+            if (scenario.name().equals("commons-lang3")) fetchCommonsLang3();
             Path cacheDir = HERE.resolve(scenario.name()).resolve(".cache");
             for (String operation : scenario.operations()) {
                 System.out.println("=== " + scenario.name() + " / " + operation + " ===");
@@ -104,6 +110,31 @@ public final class Bench {
         }
 
         printSummary(results);
+    }
+
+    /**
+     * commons-lang3's sources aren't in this repo: each tool variant's src symlink points into this
+     * checkout. Pinned to a commit, same as Regress.java (keep the two in step).
+     */
+    private static void fetchCommonsLang3() throws IOException, InterruptedException {
+        Path cache = HERE.resolve("commons-lang3").resolve(".cache");
+        Path src = cache.resolve("src");
+        if (!Files.isDirectory(src.resolve(".git"))) {
+            Files.createDirectories(cache);
+            System.out.println("-- fetching commons-lang3 " + LANG3_TAG + " --");
+            exec(cache, "git", "clone", "--quiet", "--depth", "1", "--branch", LANG3_TAG, LANG3_URL, "src");
+        }
+        String head = exec(src, "git", "rev-parse", "HEAD").strip();
+        if (!head.equals(LANG3_COMMIT)) {
+            fail(LANG3_TAG + " is " + head + ", expected " + LANG3_COMMIT + " - delete " + src + " and re-run");
+        }
+    }
+
+    private static String exec(Path dir, String... command) throws IOException, InterruptedException {
+        Process p = new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true).start();
+        String out = new String(p.getInputStream().readAllBytes());
+        if (p.waitFor() != 0) fail(String.join(" ", command) + " failed: " + out);
+        return out;
     }
 
     private static List<String> command(String tool, String operation, Path cacheDir) {

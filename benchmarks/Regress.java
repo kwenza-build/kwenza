@@ -24,7 +24,8 @@ import java.util.stream.Stream;
  */
 public final class Regress {
 
-    /** The real project, pinned. src/ is fetched at this commit; the manifest and lock live in this repo. */
+    /** The real project, pinned (Bench.java's commons-lang3 scenario fetches the same checkout). Its sources are
+     * fetched at this commit; the manifest and lock live in this repo. */
     private static final String PROJECT = "commons-lang3";
     private static final String PROJECT_URL = "https://github.com/apache/commons-lang.git";
     private static final String PROJECT_TAG = "rel/commons-lang-3.19.0";
@@ -63,7 +64,7 @@ public final class Regress {
         if (args.length < 2) {
             fail("usage: java Regress.java <base-jar> <head-jar> [runs] [threshold-percent]");
         }
-        if (!Files.isDirectory(HERE.resolve("regression"))) {
+        if (!Files.isDirectory(HERE.resolve("commons-lang3"))) {
             fail("run this from the benchmarks/ directory (java Regress.java ...)");
         }
         Path baseJar = Path.of(args[0]).toAbsolutePath();
@@ -74,7 +75,7 @@ public final class Regress {
             if (!Files.isRegularFile(jar)) fail("no such jar: " + jar);
         }
 
-        Path cache = HERE.resolve("regression").resolve(PROJECT).resolve(".cache");
+        Path cache = HERE.resolve(PROJECT).resolve(".cache");
         Path repo = cache.resolve("m2");
         Path workDir = prepareProject(cache);
         Map<String, String> env = Map.of("KWENZA_REPO", repo.toString());
@@ -130,7 +131,8 @@ public final class Regress {
             fail(PROJECT_TAG + " is " + head + ", expected " + PROJECT_COMMIT
                     + " - the tag moved, or " + src + " is stale; delete it and re-run");
         }
-        Path manifests = HERE.resolve("regression").resolve(PROJECT);
+        // kwenza-deps, not kwenza: Bench.java's variant has no dev-dependencies, to match Maven and Gradle.
+        Path manifests = HERE.resolve(PROJECT).resolve("kwenza-deps");
         Files.copy(manifests.resolve("kwenza.toml"), src.resolve("kwenza.toml"), StandardCopyOption.REPLACE_EXISTING);
         Files.copy(manifests.resolve("kwenza.lock"), src.resolve("kwenza.lock"), StandardCopyOption.REPLACE_EXISTING);
         return src;
