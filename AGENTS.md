@@ -434,6 +434,39 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   main-classpath question under the dev-dependencies decision above, since that's the one path
   that reads POMs from a lock-backed build.
 
+- **Resolver gaps against Maven's POM semantics.** Found reading `Resolver`/`PomParser` against
+  Maven's documentation (sourcing in
+  [docs/research/maven-versions-poms-and-modules.adoc](docs/research/maven-versions-poms-and-modules.adoc)).
+  Versions are opaque strings, so a range or an unresolved `${property}` makes `URI.create`
+  throw and is reported as an "internal error" (exit 101) for a legitimate POM, which breaks
+  "errors are values"; `LATEST`/`RELEASE`/`-SNAPSHOT` become a bare Central 404; a dependency
+  with no version anywhere is skipped silently (Maven errors). `<exclusions>` aren't parsed, so a
+  jar its author excluded still lands on the classpath (the likeliest source of a wrong
+  classpath), and a managed entry's scope is ignored. Built-in properties stop at
+  `project.version`/`groupId`/`artifactId` and `pom.version`. Order of fixing: honest errors
+  first (cheap, no behaviour a build relies on), then exclusions, then managed scope and
+  properties. Still to confirm against real BOM-heavy artifacts: kwenza applies each
+  dependency's own management to its children, where Maven's guide says the project's
+  management takes precedence over mediation. Both fixes are on the roadmap, Milestone 1.
+
+- **Versions, ranges and snapshots.** Maven versions aren't semver (`ComparableVersion`:
+  `alpha < beta < milestone < rc < snapshot < release < sp`, case-insensitive, unknown
+  qualifiers last), and nearest-wins mediation never compares them, so kwenza needs the
+  ordering only once it reads `maven-metadata.xml`: ranges, `kwenza upgrade` and snapshots.
+  Build one dependency-free port and one metadata parser, shared by all three. A plain POM
+  version is a soft requirement (already what nearest-wins does); hard versions and ranges are
+  rare on Central. `LATEST`/`RELEASE` stay unsupported on purpose: deprecated, and a
+  non-reproducible build against "lockfile wins". Snapshots are a different size of problem:
+  Central refuses `-SNAPSHOT`, so they only matter with custom repositories (a private
+  Nexus/Artifactory, where they're common), and they break the immutability that the checksum
+  rule and the lock rely on. The lock would pin the *timestamped* file and its `sha256`, so
+  `Pinned` still works; a re-lock/refresh command is needed because a snapshot moves; a private
+  repository's `.sha1` vouches for less than Central's; credentials must never reach the
+  manifest or lock. Gradle caches changing modules for 24 hours and offers
+  `--refresh-dependencies`; Maven has `updatePolicy`. The local `mvn install` case may be better
+  served by a path dependency. Deliberately late (ROADMAP, Milestone 4); until then the
+  resolver's job is only to refuse these cleanly (the Milestone 1 bug item).
+
 - **CI-compatible test reports via `--reports-dir`.** `kwenza test` forks `ConsoleLauncher` already;
   adding `--reports-dir=<dir>` to that invocation makes `ConsoleTestExecutor` register a
   `LegacyXmlReportGeneratingListener`, which writes one `TEST-<class>.xml` per test class in the
@@ -628,7 +661,15 @@ Compiler & language
   bolted on — Maven and Gradle both predate JPMS and never fully absorbed it into their own
   multi-module systems, a real opportunity for kwenza to differentiate. Distinct axis from
   `[workspace]` (module boundaries vs. multiple manifests in one repo) — they compose, they don't
-  substitute for each other.
+  substitute for each other. Design notes, sourcing in
+  [docs/research/maven-versions-poms-and-modules.adoc](docs/research/maven-versions-poms-and-modules.adoc):
+  Maven coordinates and module names are unrelated, so read the name from the jar
+  (`ModuleFinder`), never a mapping table; a `module-info.java` project puts dependencies on the
+  module path (named modules can't read the classpath), probably with an explicit manifest
+  override; tests are simplest on the classpath, with `--patch-module` as a later mode; a
+  manifest `Class-Path` is ignored on the module path, so design the portable `lib/` layout with
+  a `java -p lib -m` launcher in mind; split packages should be detected and named; and
+  `--processor-module-path` belongs in the `[annotation-processors]` design.
 - Multi-JVM-language support (Kotlin, Scala, ...) — see "Multi-JVM-language support is a real
   direction" in docs/contributing/design-principles.adoc. Java-first: a real direction, not near-term work.
 
