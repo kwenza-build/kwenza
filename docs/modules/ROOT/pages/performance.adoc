@@ -17,8 +17,8 @@ include::partial$benchmark-results.adoc[]
 kwenza starts a fresh JVM for every command and keeps nothing running between them. Maven does
 the same. Gradle's default is the opposite: the first build starts a background daemon, and every
 later build reuses it, with its classes already loaded and its compiler already optimised by the
-JIT. That is a large advantage on a repeated build, and it is why Gradle's warm figures are so
-low.
+JIT. That is a real advantage on a repeated build, and it is why Gradle's warm figures are
+much lower than its no-daemon ones.
 
 So the charts show Gradle twice:
 
@@ -107,9 +107,10 @@ start-up for every tool that isn't running as a daemon.
 
 * The charts and tables are one machine, one day. Differences of a few percent are noise;
   the harness reports the fastest run next to the median to help you see how noisy a row was.
-* A small project is mostly start-up cost, which is where a daemon helps most and where
-  Maven's and kwenza's fresh JVM costs most. A large one is mostly `javac`, so the gap narrows
-  as the compiler's own time dominates.
+* Where the time goes changes with project size. A small project is mostly start-up cost, which
+  a fresh JVM per build pays in full and a warm daemon doesn't. A large one is mostly `javac`,
+  where a daemon's already-optimised compiler is the advantage. So the order of the tools can
+  differ between scenarios; look at each row rather than expecting one tool to win everywhere.
 * Not measured: Maven's own daemon, https://github.com/apache/maven-mvnd[mvnd]; builds that reuse
   earlier output (incremental builds); and test suites other than `junit-word-count`'s.
 * kwenza's own start-up isn't tuned yet. Class Data Sharing and a daemon are both ideas
