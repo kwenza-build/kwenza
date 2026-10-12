@@ -1,0 +1,80 @@
+= kwenza-test(1)
+
+== NAME
+
+kwenza-test - Compile and run the tests
+
+== SYNOPSIS
+
+`kwenza test` [_options_]
+
+== DESCRIPTION
+
+Builds the project (see xref:./kwenza-build.adoc[]), compiles `src/test/java` to
+`<output-dir>/test-classes`, copies `src/test/resources` alongside it if that directory exists,
+and runs the tests with the JUnit Platform Console Launcher in a new `java` process. Its
+classpath has the main and test classes and every resolved jar, from both `[dependencies]` and
+`[dev-dependencies]`.
+
+The launcher comes from a dev-dependency: add
+`org.junit.platform:junit-platform-console-standalone`, which bundles it with every JUnit engine
+(see xref:manifest-reference.adoc[Manifest Reference]). kwenza doesn't care which JUnit Platform
+engine runs the tests: Jupiter, Vintage, or a third-party one such as TestNG's, found on the
+classpath by the launcher itself.
+
+If `org.mockito:mockito-core` resolves, kwenza loads it as a `-javaagent` on the test process,
+so Mockito doesn't have to attach itself at runtime, which JDK 21 and later warn about.
+
+Tests run in their own process, never inside kwenza's, so a test calling `System.exit()` can't
+take kwenza down with it.
+
+With no compiled test classes (no `src/test/java`, or nothing in it), `kwenza test` prints
+`test: no tests found` and succeeds. Test classes with no dev-dependency providing the launcher
+is a misconfiguration, and fails with a message naming the dependency to add.
+
+The launcher's own report goes straight to standard output; kwenza doesn't reformat it.
+
+== OPTIONS
+
+=== Display Options
+
+`-v`::
+`--verbose`::
+Print extra detail: one line per resolved dependency when resolving from Maven Central, and the
+full `java` command (binary path and every classpath entry) when running something.
+
+=== Common Options
+
+`-h`::
+`--help`::
+Print a short summary of this command's options. `kwenza help <command>` prints this page.
+
+== ENVIRONMENT
+
+See xref:./kwenza.adoc#environment[kwenza(1)] for the environment variables kwenza reads.
+
+== EXIT STATUS
+
+* `0`: every test passed, or there were no tests.
+* `1`: kwenza failed before running the tests, for example because compilation failed.
+* Anything else: the launcher's own exit code, after a test failed.
+
+== EXAMPLES
+
+Run every test:
+
+[source,bash]
+----
+kwenza test
+----
+
+Recompile from scratch and run the tests, showing which engines ran:
+
+[source,bash]
+----
+kwenza clean test --verbose
+----
+
+== SEE ALSO
+
+xref:./kwenza.adoc[], xref:./kwenza-build.adoc[], xref:manifest-reference.adoc[Manifest Reference]

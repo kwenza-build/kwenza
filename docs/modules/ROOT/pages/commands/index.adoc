@@ -1,0 +1,25 @@
+= Commands
+
+Every kwenza command has its own page, laid out like a man page. The same pages are built into
+kwenza itself: `kwenza help <command>` prints them in the terminal, and `kwenza <command> --help`
+prints a short summary of a command's options.
+
+* xref:./kwenza.adoc[kwenza]: what all commands share: chaining, global options, output and
+  environment variables.
+
+== Build commands
+
+* xref:./kwenza-build.adoc[kwenza build]: compile the current project.
+* xref:./kwenza-test.adoc[kwenza test]: compile and run the tests.
+* xref:./kwenza-run.adoc[kwenza run]: run the project's main class.
+* xref:./kwenza-package.adoc[kwenza package]: package the project as a jar.
+* xref:./kwenza-clean.adoc[kwenza clean]: remove the output directory.
+
+== Dependency commands
+
+* xref:./kwenza-resolve.adoc[kwenza resolve]: write `kwenza.lock` if it is missing or out of date.
+
+== General commands
+
+* xref:./kwenza-help.adoc[kwenza help]: display help for a kwenza command.
+* xref:./kwenza-version.adoc[kwenza version]: show version information.

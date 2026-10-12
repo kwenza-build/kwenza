@@ -1,0 +1,54 @@
+= kwenza-clean(1)
+
+== NAME
+
+kwenza-clean - Remove the output directory
+
+== SYNOPSIS
+
+`kwenza clean` [_options_]
+
+== DESCRIPTION
+
+Deletes the entire output directory: `target`, or whatever `[package] output-dir` names. If
+it doesn't exist, prints `clean: nothing to remove` and succeeds.
+
+In a chain, commands after `clean` start over: `kwenza build clean package` compiles twice,
+rather than packaging classes `clean` just deleted.
+
+== OPTIONS
+
+=== Display Options
+
+`-v`::
+`--verbose`::
+Print extra detail: one line per resolved dependency when resolving from Maven Central, and the
+full `java` command (binary path and every classpath entry) when running something.
+
+=== Common Options
+
+`-h`::
+`--help`::
+Print a short summary of this command's options. `kwenza help <command>` prints this page.
+
+== ENVIRONMENT
+
+See xref:./kwenza.adoc#environment[kwenza(1)] for the environment variables kwenza reads.
+
+== EXIT STATUS
+
+* `0`: kwenza succeeded.
+* `1`: kwenza failed: the error message says why.
+
+== EXAMPLES
+
+Rebuild everything from scratch and run it:
+
+[source,bash]
+----
+kwenza clean run
+----
+
+== SEE ALSO
+
+xref:./kwenza.adoc[], xref:./kwenza-build.adoc[]

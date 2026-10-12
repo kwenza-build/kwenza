@@ -1,0 +1,58 @@
+= kwenza-build(1)
+
+== NAME
+
+kwenza-build - Compile the current project
+
+== SYNOPSIS
+
+`kwenza build` [_options_]
+
+== DESCRIPTION
+
+Resolves dependencies and compiles `src/main/java` to `<output-dir>/classes`, copying
+`src/main/resources` alongside the compiled classes if that directory exists. Produces no
+packaged artifact: see xref:./kwenza-package.adoc[] for that.
+
+Dependencies come from `kwenza.lock` when it matches `kwenza.toml`, and from Maven Central
+otherwise, in which case the lock is rewritten. Only `[dependencies]` go on the compile
+classpath: `[dev-dependencies]` are for tests only.
+
+An empty or missing `src/main/java` isn't an error: there's nothing to compile, so nothing is.
+
+== OPTIONS
+
+=== Display Options
+
+`-v`::
+`--verbose`::
+Print extra detail: one line per resolved dependency when resolving from Maven Central, and the
+full `java` command (binary path and every classpath entry) when running something.
+
+=== Common Options
+
+`-h`::
+`--help`::
+Print a short summary of this command's options. `kwenza help <command>` prints this page.
+
+== ENVIRONMENT
+
+See xref:./kwenza.adoc#environment[kwenza(1)] for the environment variables kwenza reads.
+
+== EXIT STATUS
+
+* `0`: kwenza succeeded.
+* `1`: kwenza failed: the error message says why.
+
+== EXAMPLES
+
+Build the project in the current directory:
+
+[source,bash]
+----
+kwenza build
+----
+
+== SEE ALSO
+
+xref:./kwenza.adoc[], xref:./kwenza-run.adoc[], xref:./kwenza-package.adoc[], xref:./kwenza-test.adoc[]

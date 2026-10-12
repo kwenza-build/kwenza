@@ -1,4 +1,4 @@
-package dev.kwenza.commands;
+package dev.kwenza.context;
 
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
@@ -10,7 +10,7 @@ import java.util.List;
  * wall-clock timer can't see) from time spent in each build phase.
  */
 public final class Timing {
-    static final boolean ENABLED = System.getenv("KWENZA_TIMING") != null;
+    private static final boolean ENABLED = System.getenv("KWENZA_TIMING") != null;
 
     private static final long JVM_START_EPOCH_MILLIS = ManagementFactory.getRuntimeMXBean().getStartTime();
     private static final long MAIN_ENTRY_EPOCH_MILLIS = System.currentTimeMillis();

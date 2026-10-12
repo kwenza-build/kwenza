@@ -1,11 +1,16 @@
 package dev.kwenza.commands;
 
-/** `kwenza build` - resolves dependencies and compiles src/main/java. Produces no artifact. */
+import dev.kwenza.compiler.CompileContext;
+
+/** {@code kwenza build}: resolves dependencies and compiles src/main/java. Produces no artifact. */
 public final class BuildCommand {
-    private BuildCommand() {
+    private final CompileContext compile;
+
+    public BuildCommand(CompileContext compile) {
+        this.compile = compile;
     }
 
-    public static void run(BuildState state) throws Exception {
-        state.ensureCompiled();
+    public void run() throws Exception {
+        compile.ensureCompiled();
     }
 }

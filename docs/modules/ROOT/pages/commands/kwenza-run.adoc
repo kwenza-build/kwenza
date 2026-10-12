@@ -1,0 +1,75 @@
+= kwenza-run(1)
+
+== NAME
+
+kwenza-run - Run the project's main class
+
+== SYNOPSIS
+
+`kwenza run` [_options_]
+
+== DESCRIPTION
+
+Builds the project (see xref:./kwenza-build.adoc[]), then runs `[package] main-class` in a new
+`java` process, with the compiled classes and every `[dependencies]` jar on its classpath. No
+jar is packaged: the classes directory and the dependency jars go on the classpath directly.
+
+The program inherits kwenza's standard input, output and error, and kwenza exits with the same
+exit code it did. kwenza's own status lines go to standard error, so `kwenza run > out.txt`
+captures only what the program printed.
+
+Before starting the program, kwenza prints the command it's about to run, compactly:
+
+[source]
+----
+run: java -cp target/classes (+7 dependency jars) com.example.Main
+----
+
+With `--verbose`, the literal command follows underneath: the full `java` path and every
+classpath entry.
+
+== OPTIONS
+
+=== Display Options
+
+`-v`::
+`--verbose`::
+Print extra detail: one line per resolved dependency when resolving from Maven Central, and the
+full `java` command (binary path and every classpath entry) when running something.
+
+=== Common Options
+
+`-h`::
+`--help`::
+Print a short summary of this command's options. `kwenza help <command>` prints this page.
+
+== ENVIRONMENT
+
+See xref:./kwenza.adoc#environment[kwenza(1)] for the environment variables kwenza reads.
+
+== EXIT STATUS
+
+* `0`: the program exited with `0`.
+* `1`: kwenza failed before starting the program, for example because `kwenza.toml` sets no
+`main-class`, or because compilation failed.
+* Anything else: the program's own exit code.
+
+== EXAMPLES
+
+Compile and run the project:
+
+[source,bash]
+----
+kwenza run
+----
+
+Start from a clean output directory:
+
+[source,bash]
+----
+kwenza clean run
+----
+
+== SEE ALSO
+
+xref:./kwenza.adoc[], xref:./kwenza-build.adoc[], xref:./kwenza-package.adoc[]

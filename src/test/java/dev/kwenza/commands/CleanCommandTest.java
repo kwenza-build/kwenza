@@ -1,13 +1,14 @@
 package dev.kwenza.commands;
 
+import dev.kwenza.testsupport.Fixtures.Contexts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static dev.kwenza.commands.CommandTestSupport.newState;
-import static dev.kwenza.commands.CommandTestSupport.writeSource;
+import static dev.kwenza.testsupport.Fixtures.contexts;
+import static dev.kwenza.testsupport.Fixtures.writeSource;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,16 +19,16 @@ class CleanCommandTest {
         Path projectRoot = tempDir.resolve("project");
         writeSource(projectRoot, "src/main/java/com/example/Main.java",
                 "package com.example; public final class Main {}");
-        BuildState state = newState(projectRoot, tempDir.resolve("repo"), """
+        Contexts state = contexts(projectRoot, tempDir.resolve("repo"), """
                 [package]
                 name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
-        BuildCommand.run(state);
+        new BuildCommand(state.compile()).run();
         assertTrue(Files.exists(projectRoot.resolve("target")));
 
-        CleanCommand.run(state);
+        new CleanCommand(state.project(), state.compile(), state.reporter()).run();
 
         assertFalse(Files.exists(projectRoot.resolve("target")));
     }
@@ -36,32 +37,32 @@ class CleanCommandTest {
     void isANoOpRatherThanAnErrorWhenThereIsNothingToRemove(@TempDir Path tempDir) throws Exception {
         Path projectRoot = tempDir.resolve("project");
         Files.createDirectories(projectRoot);
-        BuildState state = newState(projectRoot, tempDir.resolve("repo"), """
+        Contexts state = contexts(projectRoot, tempDir.resolve("repo"), """
                 [package]
                 name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
 
-        CleanCommand.run(state); // must not throw
+        new CleanCommand(state.project(), state.compile(), state.reporter()).run(); // must not throw
     }
 
     @Test
-    void invalidatesTheBuildStateSoANextCompileRedoesTheWork(@TempDir Path tempDir) throws Exception {
+    void invalidatesTheCompileContextSoANextCompileRedoesTheWork(@TempDir Path tempDir) throws Exception {
         Path projectRoot = tempDir.resolve("project");
         writeSource(projectRoot, "src/main/java/com/example/Main.java",
                 "package com.example; public final class Main {}");
-        BuildState state = newState(projectRoot, tempDir.resolve("repo"), """
+        Contexts state = contexts(projectRoot, tempDir.resolve("repo"), """
                 [package]
                 name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
-        BuildCommand.run(state);
+        new BuildCommand(state.compile()).run();
         Path classFile = projectRoot.resolve("target/classes/com/example/Main.class");
 
-        CleanCommand.run(state);
-        BuildCommand.run(state);
+        new CleanCommand(state.project(), state.compile(), state.reporter()).run();
+        new BuildCommand(state.compile()).run();
 
         assertTrue(Files.exists(classFile), "clean should have invalidated memoized compile state");
     }

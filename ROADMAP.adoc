@@ -36,11 +36,16 @@ structure everything else builds on.
   opt-in, or document "javac default" as a deliberate choice. Changing this default after 0.1
   would silently change people's builds, so decide it now. Record it in AGENTS.md. Decided:
   `-proc:none` always, with explicitly declared processors as a later opt-in (Milestone 4).
-* [ ] *Code-design pass* (`codebase-design` skill). Review the module boundaries before more
+* [x] *Code-design pass* (`codebase-design` skill). Review the module boundaries before more
   features land on them. Known candidates: `Timing` behind `Reporter`; whether `BuildState`
   should own the project root (needed for `--project`, below); and whether the
   `ensureMainResolved` second resolution should become scope-tagging now or stay deferred.
   _Done when:_ the findings are either fixed or written up as decisions in AGENTS.md.
+  Done: one `XCommand` (work) + `XCli` (argv) class per command, `BuildState` split into
+  `GlobalContext`/`Project`/`ResolveContext`/`CompileContext`, one manual page per command shared
+  by kwenza.dev and `kwenza help`, and the no-op `--update` flag removed. `Project` owns the
+  root; `Timing` stays static and `ensureMainResolved` stays a second resolution, both recorded
+  in AGENTS.md. `--help`/`kwenza help <command>` and `kwenza --version` landed here too.
 * [ ] *Review the CLI and manifest design.* The code-design pass covers the internals; this
   covers the *user-facing contract*, which is much harder to change after 0.1. Check it's
   sensible today and has room for what AGENTS.md already plans, without breaking changes.
@@ -56,11 +61,11 @@ structure everything else builds on.
    will hold up for workspaces and checksum verification.
 ** _Done when:_ the decisions are recorded in AGENTS.md (or ADRs, if this produces enough of
    them), the docs match, and any resulting changes are added as items below.
-* [ ] *`--project <path>`.* Thread an explicit project root through `BuildState` instead of
-  relying on the working directory. Small and standalone; it tests both review passes above.
+* [ ] *`--project <path>`.* Load `Project` from an explicit root (a global option in `cli.Cli`)
+  instead of the working directory. Small and standalone; it tests both review passes above.
 * [ ] *Apply the review's outcomes.* At minimum: the lockfile format version, unknown-key
-  handling, `kwenza --version` (stamped from the jar manifest, not hard-coded),
-  `--help` / `kwenza help <command>`, and documented, stable exit codes. Audit error messages
+  handling, and documented, stable exit codes (`kwenza --version` and `--help` /
+  `kwenza help <command>` already landed with the code-design pass). Audit error messages
   against "fail fast, with a specific and actionable message".
 * [ ] *Portable thin jars.* `kwenza package` writes absolute `file:` URIs into `~/.m2` in the
   jar's `Class-Path`, so the jar only runs on the machine (and account) that built it. Copy the
@@ -152,6 +157,14 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
 * [ ] *`--offline`*: the lockfile plus a warm `~/.m2` already make this mostly possible; make it
   an explicit, enforced mode.
 * [ ] *`kwenza tree`*: dependency tree display.
+* [ ] *`kwenza upgrade`*: move dependencies to newer versions by editing `kwenza.toml` itself
+  (versions are exact pins, so there's no range for a lock-only `update` to move within). Read
+  each direct dependency's `maven-metadata.xml` for its published versions, bump `version` or the
+  `[versions]` entry it refers to, then re-resolve. Design first: which bumps are allowed by
+  default (patch/minor/major), how pre-releases are skipped, rewriting TOML without losing
+  comments or layout, and a read-only `kwenza outdated` (or `upgrade --dry-run`) report. The same
+  job as cargo-edit's `cargo upgrade`, Gradle's versions plugin and Maven's
+  `versions:use-latest-releases`. See AGENTS.md, "No `--update` flag and no `update` command".
 * [ ] *`[annotation-processors]`*: explicitly declared annotation processors (Lombok, MapStruct,
   Dagger, ...), resolved and verified like dependencies and passed to javac on their own processor
   path. Classpath discovery stays off. Reserve the section name in the CLI and manifest review

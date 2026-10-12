@@ -1,7 +1,19 @@
 * xref:getting-started.adoc[]
 * Reference
 ** xref:manifest-reference.adoc[]
-** xref:cli-reference.adoc[]
+** xref:commands/index.adoc[Commands]
+*** xref:commands/kwenza.adoc[kwenza]
+*** Build commands
+**** xref:commands/kwenza-build.adoc[kwenza build]
+**** xref:commands/kwenza-test.adoc[kwenza test]
+**** xref:commands/kwenza-run.adoc[kwenza run]
+**** xref:commands/kwenza-package.adoc[kwenza package]
+**** xref:commands/kwenza-clean.adoc[kwenza clean]
+*** Dependency commands
+**** xref:commands/kwenza-resolve.adoc[kwenza resolve]
+*** General commands
+**** xref:commands/kwenza-help.adoc[kwenza help]
+**** xref:commands/kwenza-version.adoc[kwenza version]
 * Background
 ** xref:architecture.adoc[]
 ** xref:design-principles.adoc[]

@@ -1,5 +1,8 @@
 package dev.kwenza.commands;
 
+import dev.kwenza.context.KwenzaException;
+import dev.kwenza.testsupport.Fixtures;
+import dev.kwenza.testsupport.Fixtures.Contexts;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -7,13 +10,13 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static dev.kwenza.commands.CommandTestSupport.newState;
-import static dev.kwenza.commands.CommandTestSupport.writeSource;
+import static dev.kwenza.testsupport.Fixtures.contexts;
+import static dev.kwenza.testsupport.Fixtures.writeSource;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Uses the real, shared ~/.m2 cache (like Main.java's own default) rather than an isolated repo:
+ * Uses the real, shared ~/.m2 cache (like the CLI's own default) rather than an isolated repo:
  * junit-platform-console-standalone is already warm there by the time this runs, since resolving
  * kwenza's own dev-dependencies is a prerequisite of `kwenza test` running this test at all. No
  * network call results from that - it's a guaranteed-warm local cache hit, not a live fetch.
@@ -26,13 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Tag("integration") // spawns a real OS subprocess, unlike everything else in this package
 class TestCommandTest {
-
-    private static Path defaultLocalRepo() {
-        String override = System.getenv("KWENZA_REPO");
-        return override != null
-                ? Path.of(override)
-                : Path.of(System.getProperty("user.home"), ".m2", "repository");
-    }
 
     private static final String MANIFEST = """
             [package]
@@ -55,11 +51,11 @@ class TestCommandTest {
                     @Test void arithmeticStillWorks() { assertEquals(2, 1 + 1); }
                 }
                 """);
-        BuildState state = newState(projectRoot, defaultLocalRepo(), MANIFEST);
+        Contexts state = contexts(projectRoot, Fixtures.defaultLocalRepo(), MANIFEST);
 
         // DISCARD: this really does spawn a ConsoleLauncher subprocess, and its own console
         // report must not bleed into the outer test run's console (see the class Javadoc above).
-        TestCommand.run(state, false, ProcessBuilder.Redirect.DISCARD); // must not throw
+        new TestCommand(state.project(), state.compile(), state.reporter()).run(ProcessBuilder.Redirect.DISCARD); // must not throw
     }
 
     @Test
@@ -75,10 +71,10 @@ class TestCommandTest {
                     @Test void thisFailureIsExpectedNotARealBug() { assertEquals(99, 1 + 1); }
                 }
                 """);
-        BuildState state = newState(projectRoot, defaultLocalRepo(), MANIFEST);
+        Contexts state = contexts(projectRoot, Fixtures.defaultLocalRepo(), MANIFEST);
 
         assertThrows(CommandFailedException.class,
-                () -> TestCommand.run(state, false, ProcessBuilder.Redirect.DISCARD));
+                () -> new TestCommand(state.project(), state.compile(), state.reporter()).run(ProcessBuilder.Redirect.DISCARD));
     }
 
     @Test
@@ -86,7 +82,7 @@ class TestCommandTest {
             @TempDir Path tempDir) throws Exception {
         Path projectRoot = tempDir.resolve("project");
         Files.createDirectories(projectRoot); // no src/test/java at all - examples/hello-world's exact shape
-        BuildState state = newState(projectRoot, defaultLocalRepo(), """
+        Contexts state = contexts(projectRoot, Fixtures.defaultLocalRepo(), """
                 [package]
                 name = "my-app"
                 group = "com.example"
@@ -96,11 +92,11 @@ class TestCommandTest {
         // Must not throw: with nothing to run, whether a launcher is even resolvable is
         // irrelevant - this is the exact bug examples/hello-world hit (a raw
         // ClassNotFoundException instead of a clean no-op) before the check below existed.
-        TestCommand.run(state, false, ProcessBuilder.Redirect.DISCARD);
+        new TestCommand(state.project(), state.compile(), state.reporter()).run(ProcessBuilder.Redirect.DISCARD);
     }
 
     @Test
-    void testSourcesWithNoConsoleLauncherDependencyFailsWithAClearCliException(@TempDir Path tempDir)
+    void testSourcesWithNoConsoleLauncherDependencyFailsWithAClearKwenzaException(@TempDir Path tempDir)
             throws Exception {
         Path projectRoot = tempDir.resolve("project");
         // Deliberately doesn't reference any JUnit API: this manifest declares no
@@ -109,15 +105,15 @@ class TestCommandTest {
         // specifically, once real test classes exist - not compilation, covered elsewhere.
         writeSource(projectRoot, "src/test/java/com/example/SomeTest.java",
                 "package com.example; class SomeTest {}");
-        BuildState state = newState(projectRoot, defaultLocalRepo(), """
+        Contexts state = contexts(projectRoot, Fixtures.defaultLocalRepo(), """
                 [package]
                 name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
 
-        CliException e = assertThrows(CliException.class,
-                () -> TestCommand.run(state, false, ProcessBuilder.Redirect.DISCARD));
+        KwenzaException e = assertThrows(KwenzaException.class,
+                () -> new TestCommand(state.project(), state.compile(), state.reporter()).run(ProcessBuilder.Redirect.DISCARD));
 
         assertTrue(e.getMessage().contains("junit-platform-console-standalone"), e.getMessage());
     }

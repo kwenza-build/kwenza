@@ -23,7 +23,7 @@ cached in `~/.m2/repository`, in Maven's layout, so kwenza shares one cache with
 
 `kwenza.lock` records every resolved version and its `sha256`. While your declared dependencies
 are unchanged, builds use the lock and skip the network, and still check each jar against it.
-Changing `kwenza.toml` or passing `--update` resolves again and rewrites the lock.
+Changing `kwenza.toml` resolves again and rewrites the lock.
 
 [[compilation]]
 == Compiling

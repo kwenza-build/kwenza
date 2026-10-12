@@ -1,0 +1,49 @@
+= kwenza-help(1)
+
+== NAME
+
+kwenza-help - Display help for a kwenza command
+
+== SYNOPSIS
+
+`kwenza help` [_command_]
+
+== DESCRIPTION
+
+With a command, prints that command's manual page: the same page kwenza.dev publishes. Without
+one, prints the same usage summary as running `kwenza` on its own.
+
+`kwenza <command> --help` prints a shorter summary of just the command's options.
+
+== OPTIONS
+
+=== Display Options
+
+`-v`::
+`--verbose`::
+Print extra detail: one line per resolved dependency when resolving from Maven Central, and the
+full `java` command (binary path and every classpath entry) when running something.
+
+=== Common Options
+
+`-h`::
+`--help`::
+Print a short summary of this command's options. `kwenza help <command>` prints this page.
+
+== EXIT STATUS
+
+* `0`: kwenza succeeded.
+* `1`: kwenza failed: the error message says why.
+
+== EXAMPLES
+
+Read the manual page for `kwenza test`:
+
+[source,bash]
+----
+kwenza help test
+----
+
+== SEE ALSO
+
+xref:./kwenza.adoc[]

@@ -1,13 +1,21 @@
 package dev.kwenza.commands;
 
+import dev.kwenza.resolver.ResolveContext;
+
 import java.io.IOException;
 
-/** `kwenza resolve` - refreshes kwenza.lock explicitly, without compiling or packaging anything. */
+/**
+ * {@code kwenza resolve}: makes sure kwenza.lock matches the manifest, resolving only if it
+ * doesn't, without compiling or packaging anything.
+ */
 public final class ResolveCommand {
-    private ResolveCommand() {
+    private final ResolveContext resolve;
+
+    public ResolveCommand(ResolveContext resolve) {
+        this.resolve = resolve;
     }
 
-    public static void run(BuildState state) throws IOException {
-        state.ensureResolved();
+    public void run() throws IOException {
+        resolve.ensureResolved();
     }
 }

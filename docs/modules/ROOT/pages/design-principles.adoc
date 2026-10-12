@@ -25,8 +25,7 @@ cache and other tools keep working too.
 
 `kwenza.toml` is data. It has no scripts, no plugins and no computed values, so reading it is
 enough to know what a build does, and it has no API to break between releases. `kwenza.lock`
-records exactly what that data resolved to, and wins until you change your dependencies or pass
-`--update`, so the same build gives the same result.
+records exactly what that data resolved to, and wins until you change your dependencies, so the same build gives the same result.
 
 kwenza has no plugin API. It uses the discovery the JVM already has: add any JUnit Platform test
 engine (TestNG's, say) as a dev-dependency and `kwenza test` runs it, with nothing else to

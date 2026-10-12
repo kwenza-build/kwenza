@@ -1,0 +1,57 @@
+= kwenza-resolve(1)
+
+== NAME
+
+kwenza-resolve - Write kwenza.lock if it is missing or out of date
+
+== SYNOPSIS
+
+`kwenza resolve` [_options_]
+
+== DESCRIPTION
+
+Makes sure `kwenza.lock` matches `kwenza.toml`, without compiling or packaging anything. With a
+lock that already matches, it only checks the locked jars are in the local cache and unaltered,
+and makes no network calls. Otherwise it resolves from Maven Central and writes the lock.
+
+Every command that needs dependencies does this first anyway; `resolve` is for doing only that,
+for example to commit a new lock after editing the manifest. Versions only change when you change
+them in `kwenza.toml`: every version there is exact, so resolving the same manifest again always
+produces the same lock.
+
+== OPTIONS
+
+=== Display Options
+
+`-v`::
+`--verbose`::
+Print extra detail: one line per resolved dependency when resolving from Maven Central, and the
+full `java` command (binary path and every classpath entry) when running something.
+
+=== Common Options
+
+`-h`::
+`--help`::
+Print a short summary of this command's options. `kwenza help <command>` prints this page.
+
+== ENVIRONMENT
+
+See xref:./kwenza.adoc#environment[kwenza(1)] for the environment variables kwenza reads.
+
+== EXIT STATUS
+
+* `0`: kwenza succeeded.
+* `1`: kwenza failed: the error message says why.
+
+== EXAMPLES
+
+Refresh the lock after adding a dependency to `kwenza.toml`:
+
+[source,bash]
+----
+kwenza resolve
+----
+
+== SEE ALSO
+
+xref:./kwenza.adoc[], xref:./kwenza-build.adoc[]

@@ -1,0 +1,168 @@
+= kwenza(1)
+:page-aliases: cli-reference.adoc
+
+== NAME
+
+kwenza - A simple, declarative build tool for the JVM
+
+== SYNOPSIS
+
+`kwenza` [_options_] _command_ [_options_] [_command_ [_options_]]...
+
+`kwenza` [`--version` | `--list` | `--help`]
+
+== DESCRIPTION
+
+kwenza builds the Java project in the current directory, described by its `kwenza.toml` (see
+xref:manifest-reference.adoc[Manifest Reference]). There's no `--project <path>` option yet:
+`cd` into the project first, as with Maven, Gradle or Cargo.
+
+Commands can be chained, and run in the order given: `kwenza clean build run`. Resolving and
+compiling happen at most once per invocation, however many commands in the chain need them, so
+`kwenza build run` compiles once and `run` reuses the result. `clean` starts that
+over: `kwenza build clean package` compiles again after `clean`, rather than packaging the
+classes it deleted. Every argument is checked before any command runs, so a mistyped command at
+the end of a chain fails before the first one does anything.
+
+Running `kwenza` with no command prints a short usage summary.
+
+== COMMANDS
+
+=== Build Commands
+
+xref:./kwenza-build.adoc[]::
+Compile the current project.
+
+xref:./kwenza-test.adoc[]::
+Compile and run the tests.
+
+xref:./kwenza-run.adoc[]::
+Run the project's main class.
+
+xref:./kwenza-package.adoc[]::
+Package the project as a jar.
+
+xref:./kwenza-clean.adoc[]::
+Remove the output directory.
+
+=== Dependency Commands
+
+xref:./kwenza-resolve.adoc[]::
+Write `kwenza.lock` if it is missing or out of date.
+
+=== General Commands
+
+xref:./kwenza-help.adoc[]::
+Display help for a kwenza command.
+
+xref:./kwenza-version.adoc[]::
+Show version information.
+
+== OPTIONS
+
+These go before the first command:
+
+`-V`::
+`--version`::
+Print version information and exit.
+
+`--list`::
+List all commands.
+
+These go anywhere on the command line:
+
+`-v`::
+`--verbose`::
+Print extra detail: one line per resolved dependency when resolving from Maven Central, and the
+full `java` command (binary path and every classpath entry) when running something.
+
+`-h`::
+`--help`::
+Print help: the usage summary before the first command, or a command's options after it.
+
+Each command's own options go after it, and apply to that command only.
+
+[[output]]
+== OUTPUT
+
+kwenza's own status lines go to standard error, one per step, labelled with the step:
+`resolve: ...`, `compile: ...`, `test: ...`, `package: ...`, `clean: ...`. That includes the
+steps a command runs implicitly, such as `kwenza run` resolving and compiling first. Standard
+output is left to the program `kwenza run` starts and the test report `kwenza test` prints, so
+`kwenza run > out.txt` captures only the program's own output. Help, `--list` and `--version`
+print to standard output.
+
+In a terminal, status lines are cyan, errors red, and `--verbose` detail grey, so they stand apart
+from a program's own output. Colour is off when output isn't a terminal, or when `NO_COLOR` is
+set.
+
+With `--verbose`, a resolution from Maven Central (a missing or outdated lock)
+prints one grey line per resolved artifact:
+
+[source]
+----
+resolve: fetching dependencies from Maven Central...
+  com.google.guava:guava:33.2.1-jre  (direct)
+  com.google.guava:failureaccess:1.0.2  (via com.google.guava:guava)
+resolve: 7 artifact(s) resolved -> kwenza.lock
+----
+
+Resolving from a lock that already matches has no per-artifact lines to print.
+
+[[environment]]
+== ENVIRONMENT
+
+`KWENZA_REPO`::
+The local dependency cache, in Maven's layout. Defaults to `~/.m2/repository`, shared with any
+Maven or Gradle install. Useful for CI, or for keeping a cache separate from your own.
+
+`KWENZA_TIMING`::
+Set to any value to print a timing breakdown to standard error: JVM startup, then the time
+between loading the manifest, resolving, compiling and packaging. See
+xref:architecture.adoc#startup[Architecture] for what it shows.
+
+`NO_COLOR`::
+Set to any value to turn colour off. See https://no-color.org/[no-color.org].
+
+Example `KWENZA_TIMING` output:
+
+[source]
+----
+resolve: using locked dependencies (kwenza.lock)
+compile: target/classes
+package: target/hello-world-0.1.0.jar
+[timing] jvm-bootstrap-to-main: 20ms
+[timing] main-entry -> manifest-loaded: 3ms
+[timing] manifest-loaded -> resolved (from lock): 111ms
+[timing] resolved (from lock) -> compiled: 275ms
+[timing] compiled -> packaged: 4ms
+[timing] main-entry -> packaged (total): 395ms
+----
+
+== EXIT STATUS
+
+* `0`: every command succeeded.
+* `1`: kwenza failed, or was given an unknown command or option; the error message says why.
+* Anything else: the exit code of the program `kwenza run` started, or of the test launcher
+after a test failed.
+
+== EXAMPLES
+
+Build and run the project:
+
+[source,bash]
+----
+kwenza run
+----
+
+Rebuild from scratch, run the tests, and package the jar:
+
+[source,bash]
+----
+kwenza clean test package
+----
+
+== SEE ALSO
+
+xref:./index.adoc[Commands], xref:manifest-reference.adoc[Manifest Reference],
+xref:getting-started.adoc[Getting Started]
