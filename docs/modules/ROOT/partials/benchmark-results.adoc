@@ -11,7 +11,7 @@
 |Warm runs |7 timed runs per tool and operation, after one untimed run
 |===
 
-=== Warm builds
+== Warm builds
 
 image::benchmark-warm.svg[Median warm build time per tool and operation,role=benchmark-chart]
 
@@ -36,7 +36,7 @@ image::benchmark-warm.svg[Median warm build time per tool and operation,role=ben
 |commons-lang3 / package|Gradle (no daemon)|4.29 |4.21
 |===
 
-=== Cold builds
+== Cold builds
 
 image::benchmark-cold.svg[Cold build time per tool and operation,role=benchmark-chart]
 
@@ -61,7 +61,7 @@ image::benchmark-cold.svg[Cold build time per tool and operation,role=benchmark-
 |commons-lang3 / package|Gradle (no daemon)|12.04
 |===
 
-=== Exact commands
+== Exact commands
 
 Run from each tool's project directory. `<cache>` is that scenario's isolated cache directory.
 

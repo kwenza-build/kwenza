@@ -301,12 +301,12 @@ public final class Bench {
         a.append("|Warm runs |").append(warmRuns).append(" timed runs per tool and operation, after one untimed run\n");
         a.append("|===\n\n");
 
-        a.append("=== Warm builds\n\nimage::benchmark-warm.svg[Median warm build time per tool and operation,role=benchmark-chart]\n\n");
+        a.append("== Warm builds\n\nimage::benchmark-warm.svg[Median warm build time per tool and operation,role=benchmark-chart]\n\n");
         a.append(table(results, true));
-        a.append("\n=== Cold builds\n\nimage::benchmark-cold.svg[Cold build time per tool and operation,role=benchmark-chart]\n\n");
+        a.append("\n== Cold builds\n\nimage::benchmark-cold.svg[Cold build time per tool and operation,role=benchmark-chart]\n\n");
         a.append(table(results, false));
 
-        a.append("\n=== Exact commands\n\nRun from each tool's project directory. `<cache>` is that scenario's isolated cache "
+        a.append("\n== Exact commands\n\nRun from each tool's project directory. `<cache>` is that scenario's isolated cache "
                 + "directory.\n\n[cols=\"2,1,4\"]\n|===\n|Operation |Tool |Command\n");
         for (ScenarioSpec sc : SCENARIOS) {
             Path cache = HERE.resolve(sc.name()).resolve(".cache");
