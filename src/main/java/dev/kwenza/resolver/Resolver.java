@@ -1,5 +1,6 @@
 package dev.kwenza.resolver;
 
+import dev.kwenza.context.Result;
 import dev.kwenza.manifest.Dependency;
 import dev.kwenza.manifest.KwenzaLock;
 
@@ -236,7 +237,12 @@ public final class Resolver {
             return CompletableFuture.completedFuture(cached);
         }
         return repo.fetchTextAsync(group, artifact, version, "pom").thenCompose(xml -> {
-            PomParser.ParsedPom raw = PomParser.parse(xml);
+            Result<PomParser.ParsedPom> parsed = PomParser.parse(xml);
+            if (parsed instanceof Result.Err<?> err) {
+                // Still an exception inside the resolver until its redesign; ResolveContext turns it back into a value.
+                throw new ResolutionException(err.failure().problems().get(0));
+            }
+            PomParser.ParsedPom raw = parsed.get();
             if (raw.parent() == null) {
                 PomParser.ParsedPom resolved = applyProperties(raw, raw.properties());
                 cache.put(key, resolved);

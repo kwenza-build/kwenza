@@ -43,7 +43,7 @@ public final class Fixtures {
     }
 
     public static Contexts contexts(Path projectRoot, Path localRepo, String manifestText, Reporter reporter) {
-        Project project = new Project(projectRoot, KwenzaManifest.parse(manifestText));
+        Project project = new Project(projectRoot, KwenzaManifest.parse(manifestText).get());
         GlobalContext global = new GlobalContext(projectRoot, localRepo, reporter);
         ResolveContext resolve = new ResolveContext(project, global);
         return new Contexts(project, global, resolve, new CompileContext(project, resolve, reporter));

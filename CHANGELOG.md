@@ -71,7 +71,15 @@ Everything below will ship in kwenza's first release, 0.1.0.
   They are coloured in a terminal and plain when piped, or when `NO_COLOR` is set.
 - `KWENZA_TIMING` prints a phase-by-phase timing breakdown to stderr.
 - kwenza fails fast with a specific message when `java-version` needs a newer JDK than the one
-  running kwenza.
+  running kwenza, or when it's running on a JRE with no compiler.
+- Exit codes are documented and stable: `0` success, `1` a problem you can fix (the `error:`
+  message says what), `2` an invalid command line, `101` a bug in kwenza itself, and otherwise the
+  exit code of the program `run` started or the test launcher `test` started, passed through.
+- A bug in kwenza is reported as one: `error: internal error: ...` with a link to the issue
+  tracker, and the stack trace under `--verbose`. It is never disguised as a problem with your
+  project.
+- Problems in `kwenza.toml` are prefixed with the file name. A malformed `kwenza.lock` is reported
+  as such, with the fix (delete it so the next build regenerates it).
 
 #### Project
 

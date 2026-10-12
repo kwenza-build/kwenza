@@ -28,7 +28,7 @@ class PackageCommandTest {
                 main-class = "com.example.Main"
                 """);
 
-        Path outputJar = new PackageCommand(state.project(), state.compile(), state.reporter()).run();
+        Path outputJar = new PackageCommand(state.project(), state.compile(), state.reporter()).run().get();
 
         assertEquals(projectRoot.resolve("target/my-app-0.1.0.jar"), outputJar);
         try (JarFile jar = new JarFile(outputJar.toFile())) {

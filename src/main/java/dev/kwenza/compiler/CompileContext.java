@@ -1,7 +1,7 @@
 package dev.kwenza.compiler;
 
-import dev.kwenza.context.KwenzaException;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import dev.kwenza.context.Timing;
 import dev.kwenza.resolver.ResolveContext;
 import dev.kwenza.resolver.Resolver;
@@ -50,18 +50,17 @@ public final class CompileContext {
      * invocation. Returns that dependencies-only resolution, which is what anything shipped
      * (package, run) puts on its classpath.
      */
-    public Resolver.Resolution ensureCompiled() throws Exception {
-        Resolver.Resolution mainOnly = resolve.ensureMainResolved();
-        if (compiled) {
+    public Result<Resolver.Resolution> ensureCompiled() throws IOException {
+        Result<Resolver.Resolution> mainOnly = resolve.ensureMainResolved();
+        if (compiled || !mainOnly.isOk()) {
             return mainOnly;
         }
         Path mainClasses = project.classesDir();
-        JavaCompilation.Result result = JavaCompilation.compile(
-                project.mainSources(), mainClasses, mainOnly.classpath(), project.manifest().javaVersion);
+        Result<Void> compiledOk = compile(project.mainSources(), mainClasses, mainOnly.get().classpath(),
+                "Compilation failed");
         Timing.mark("compiled");
-        printDiagnostics(result.diagnostics);
-        if (!result.success) {
-            throw new KwenzaException("Compilation failed");
+        if (compiledOk instanceof Result.Err<?> err) {
+            return err.castErr();
         }
         copyResources(project.mainResources(), mainClasses);
         reporter.info("compile: " + project.relativize(mainClasses));
@@ -74,28 +73,41 @@ public final class CompileContext {
      * scopes on the classpath (main code and test code alike may reference either), so it returns
      * the merged resolution, not the dependencies-only one.
      */
-    public Resolver.Resolution ensureTestCompiled() throws Exception {
-        ensureCompiled();
-        Resolver.Resolution merged = resolve.ensureResolved();
-        if (testCompiled) {
+    public Result<Resolver.Resolution> ensureTestCompiled() throws IOException {
+        Result<Resolver.Resolution> main = ensureCompiled();
+        if (main instanceof Result.Err<?> err) {
+            return err.castErr();
+        }
+        Result<Resolver.Resolution> merged = resolve.ensureResolved();
+        if (testCompiled || !merged.isOk()) {
             return merged;
         }
         Path testClasses = project.testClassesDir();
         List<Path> testClasspath = new ArrayList<>();
         testClasspath.add(project.classesDir());
-        testClasspath.addAll(merged.classpath());
-        JavaCompilation.Result result = JavaCompilation.compile(
-                project.testSources(), testClasses, testClasspath, project.manifest().javaVersion);
+        testClasspath.addAll(merged.get().classpath());
+        Result<Void> compiledOk = compile(project.testSources(), testClasses, testClasspath, "Test compilation failed");
         Timing.mark("test-compiled");
-        printDiagnostics(result.diagnostics);
-        if (!result.success) {
-            throw new KwenzaException("Test compilation failed");
+        if (compiledOk instanceof Result.Err<?> err) {
+            return err.castErr();
         }
         Files.createDirectories(testClasses);
         copyResources(project.testResources(), testClasses);
         reporter.info("compile: " + project.relativize(testClasses));
         testCompiled = true;
         return merged;
+    }
+
+    /** javac's diagnostics go out either way (warnings too); a failed compile becomes {@code failureMessage}. */
+    private Result<Void> compile(Path sources, Path output, List<Path> classpath, String failureMessage)
+            throws IOException {
+        Result<JavaCompilation.Output> result =
+                JavaCompilation.compile(sources, output, classpath, project.manifest().javaVersion);
+        if (result instanceof Result.Err<?> err) {
+            return err.castErr();
+        }
+        printDiagnostics(result.get().diagnostics());
+        return result.get().success() ? Result.ok() : Result.err(failureMessage);
     }
 
     private static void copyResources(Path resourcesDir, Path outputDir) throws IOException {

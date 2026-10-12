@@ -2,12 +2,14 @@ package dev.kwenza.commands;
 
 import dev.kwenza.compiler.CompileContext;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import dev.kwenza.context.Timing;
 import dev.kwenza.manifest.KwenzaManifest;
 import dev.kwenza.packager.JarPackager;
 import dev.kwenza.resolver.Resolver;
 import dev.kwenza.workspace.Project;
 
+import java.io.IOException;
 import java.nio.file.Path;
 
 /** {@code kwenza package}: builds, then writes a thin jar with a Class-Path manifest entry. */
@@ -23,8 +25,12 @@ public final class PackageCommand {
     }
 
     /** @return the jar it wrote */
-    public Path run() throws Exception {
-        Resolver.Resolution resolution = compile.ensureCompiled();
+    public Result<Path> run() throws IOException {
+        Result<Resolver.Resolution> compiled = compile.ensureCompiled();
+        if (compiled instanceof Result.Err<?> err) {
+            return err.castErr();
+        }
+        Resolver.Resolution resolution = compiled.get();
         Path outputJar = project.jarFile();
         KwenzaManifest manifest = project.manifest();
         JarPackager.packageThinJar(project.classesDir(), outputJar,
@@ -32,6 +38,6 @@ public final class PackageCommand {
                 resolution.classpath());
         Timing.mark("packaged");
         reporter.info("package: " + project.relativize(outputJar));
-        return outputJar;
+        return Result.ok(outputJar);
     }
 }

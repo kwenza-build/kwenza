@@ -1,5 +1,7 @@
 package dev.kwenza.toml;
 
+import dev.kwenza.context.Result;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,10 +23,13 @@ public final class Toml {
         this.pos = 0;
     }
 
-    @SuppressWarnings("unchecked")
-    public static Map<String, Object> parse(String text) {
-        Toml parser = new Toml(text);
-        return parser.parseDocument();
+    /** The document as nested maps and lists, or a failure describing the first syntax error. */
+    public static Result<Map<String, Object>> parse(String text) {
+        try {
+            return Result.ok(new Toml(text).parseDocument());
+        } catch (TomlParseException e) {
+            return Result.err(e.getMessage());
+        }
     }
 
     private Map<String, Object> parseDocument() {

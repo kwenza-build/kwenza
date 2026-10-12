@@ -64,8 +64,8 @@ structure everything else builds on.
 * [ ] *`--project <path>`.* Load `Project` from an explicit root (a global option in `cli.Cli`)
   instead of the working directory. Small and standalone; it tests both review passes above.
 * [ ] *Apply the review's outcomes.* At minimum: the lockfile format version, unknown-key
-  handling, and documented, stable exit codes (`kwenza --version` and `--help` /
-  `kwenza help <command>` already landed with the code-design pass). Audit error messages
+  handling (`kwenza --version`, `--help` / `kwenza help <command>`, and documented, stable exit
+  codes already landed with the code-design passes). Audit error messages
   against "fail fast, with a specific and actionable message".
 * [ ] *Portable thin jars.* `kwenza package` writes absolute `file:` URIs into `~/.m2` in the
   jar's `Class-Path`, so the jar only runs on the machine (and account) that built it. Copy the

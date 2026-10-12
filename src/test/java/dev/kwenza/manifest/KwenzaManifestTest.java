@@ -1,10 +1,11 @@
 package dev.kwenza.manifest;
 
+import dev.kwenza.context.Result;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class KwenzaManifestTest {
@@ -23,7 +24,7 @@ class KwenzaManifestTest {
                 name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
-                """);
+                """).get();
 
         assertEquals("my-app", manifest.name);
         assertEquals("com.example", manifest.group);
@@ -32,19 +33,18 @@ class KwenzaManifestTest {
 
     @Test
     void missingNameIsAnError() {
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> KwenzaManifest.parse("""
+        String problem = problem(KwenzaManifest.parse("""
                         [package]
                         group = "com.example"
                         version = "0.1.0"
                         """));
 
-        assertEquals("[package] is missing required field 'name'", e.getMessage());
+        assertEquals("[package] is missing required field 'name'", problem);
     }
 
     @Test
     void optionalFieldsDefaultWhenOmitted() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MINIMAL);
+        KwenzaManifest manifest = KwenzaManifest.parse(MINIMAL).get();
 
         assertEquals("21", manifest.javaVersion);
         assertEquals("target", manifest.outputDir);
@@ -61,7 +61,7 @@ class KwenzaManifestTest {
                 java-version = "17"
                 main-class = "com.example.Main"
                 output-dir = "build"
-                """);
+                """).get();
 
         assertEquals("17", manifest.javaVersion);
         assertEquals("com.example.Main", manifest.mainClass);
@@ -70,7 +70,7 @@ class KwenzaManifestTest {
 
     @Test
     void missingPackageTableIsAnError() {
-        assertThrows(IllegalArgumentException.class, () -> KwenzaManifest.parse("name = \"kwenza\""));
+        assertFalse(KwenzaManifest.parse("name = \"kwenza\"").isOk());
     }
 
     @Test
@@ -86,7 +86,7 @@ class KwenzaManifestTest {
 
                 [dev-dependencies]
                 mockito = { module = "org.mockito:mockito-core", version = "5.23.0" }
-                """);
+                """).get();
 
         assertEquals(1, manifest.dependencies.size());
         assertEquals(1, manifest.devDependencies.size());
@@ -99,7 +99,7 @@ class KwenzaManifestTest {
 
     @Test
     void aDependencyModuleMustHaveExactlyOneColon() {
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> KwenzaManifest.parse("""
+        String problem = problem(KwenzaManifest.parse("""
                 [package]
                 name = "my-app"
                 group = "com.example"
@@ -109,7 +109,7 @@ class KwenzaManifestTest {
                 bad = { module = "com.google.guava", version = "33.2.1-jre" }
                 """));
 
-        assertTrue(e.getMessage().contains("group:artifact"), "unexpected message: " + e.getMessage());
+        assertTrue(problem.contains("group:artifact"), "unexpected message: " + problem);
     }
 
     @Test
@@ -125,14 +125,14 @@ class KwenzaManifestTest {
 
                 [dependencies]
                 guava = { module = "com.google.guava:guava", version.ref = "guava" }
-                """);
+                """).get();
 
         assertEquals("33.2.1-jre", manifest.dependencies.get("guava").version);
     }
 
     @Test
     void versionRefPointingAtAMissingKeyIsAnError() {
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> KwenzaManifest.parse("""
+        String problem = problem(KwenzaManifest.parse("""
                 [package]
                 name = "my-app"
                 group = "com.example"
@@ -142,6 +142,12 @@ class KwenzaManifestTest {
                 guava = { module = "com.google.guava:guava", version.ref = "nope" }
                 """));
 
-        assertTrue(e.getMessage().contains("nope"), "unexpected message: " + e.getMessage());
+        assertTrue(problem.contains("nope"), "unexpected message: " + problem);
+    }
+
+    /** The single problem a manifest that shouldn't parse fails with. */
+    private static String problem(Result<KwenzaManifest> result) {
+        assertEquals(1, result.failure().problems().size(), result.failure().problems().toString());
+        return result.failure().problems().get(0);
     }
 }

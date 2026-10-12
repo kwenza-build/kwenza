@@ -2,6 +2,9 @@ package dev.kwenza.cli.commands;
 
 import dev.kwenza.cli.Session;
 import dev.kwenza.commands.BuildCommand;
+import dev.kwenza.context.Result;
+
+import java.io.IOException;
 
 /** {@code kwenza build}. See {@link BuildCommand}. */
 public final class BuildCli implements CliCommand {
@@ -22,7 +25,7 @@ public final class BuildCli implements CliCommand {
     }
 
     @Override
-    public void exec(Session session, Invocation invocation) throws Exception {
-        new BuildCommand(session.compile()).run();
+    public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
+        return new BuildCommand(session.compile()).run();
     }
 }

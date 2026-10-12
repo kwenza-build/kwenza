@@ -1,5 +1,7 @@
 package dev.kwenza.compiler;
 
+import dev.kwenza.context.Result;
+
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -21,38 +23,39 @@ import java.util.stream.Stream;
 /** Wraps the JDK's in-process javax.tools.JavaCompiler over a source root -> output dir. */
 public final class JavaCompilation {
 
-    public static final class Result {
-        public final boolean success;
-        public final List<String> diagnostics;
-
-        Result(boolean success, List<String> diagnostics) {
-            this.success = success;
-            this.diagnostics = diagnostics;
-        }
+    /** What javac did: whether it produced classes, and everything it printed. A failed compile is still an Output. */
+    public record Output(boolean success, List<String> diagnostics) {
     }
 
     private JavaCompilation() {
     }
 
-    public static Result compile(Path sourceRoot, Path outputDir, List<Path> classpath, String releaseVersion)
+    /**
+     * javac's output, or a failure when javac can't run at all: no compiler (a JRE, not a JDK), or
+     * a java-version newer than the running JDK. Only file-system errors throw.
+     */
+    public static Result<Output> compile(Path sourceRoot, Path outputDir, List<Path> classpath, String releaseVersion)
             throws IOException {
-        checkJdkCompatibility(releaseVersion);
+        Result<Void> jdk = checkJdkCompatibility(releaseVersion);
+        if (jdk instanceof Result.Err<?> err) {
+            return err.castErr();
+        }
         if (!Files.isDirectory(sourceRoot)) {
-            return new Result(true, List.of());
+            return Result.ok(new Output(true, List.of()));
         }
         List<Path> sourceFiles;
         try (Stream<Path> walk = Files.walk(sourceRoot)) {
             sourceFiles = walk.filter(p -> p.toString().endsWith(".java")).toList();
         }
         if (sourceFiles.isEmpty()) {
-            return new Result(true, List.of());
+            return Result.ok(new Output(true, List.of()));
         }
 
         Files.createDirectories(outputDir);
 
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
-            throw new IllegalStateException("No system Java compiler available - run Kwenza with a JDK, not a JRE");
+            return Result.err("No Java compiler available: kwenza is running on a JRE. Run it with a JDK instead.");
         }
 
         DiagnosticCollector<JavaFileObject> diagnosticsCollector = new DiagnosticCollector<>();
@@ -85,26 +88,27 @@ public final class JavaCompilation {
             if (!extra.isBlank()) {
                 diagnostics.add(extra.trim());
             }
-            return new Result(success, diagnostics);
+            return Result.ok(new Output(success, diagnostics));
         }
     }
 
     /** javac --release can never target a version newer than the JDK actually running it. */
-    private static void checkJdkCompatibility(String releaseVersion) {
+    private static Result<Void> checkJdkCompatibility(String releaseVersion) {
         int requested;
         try {
             requested = Integer.parseInt(releaseVersion.trim());
         } catch (NumberFormatException e) {
-            return; // not a plain integer - let javac itself report on the malformed value
+            return Result.ok(); // not a plain integer - let javac itself report on the malformed value
         }
         int running = Runtime.version().feature();
         if (requested > running) {
-            throw new IncompatibleJdkException(
+            return Result.err(
                     "kwenza is running on JDK " + running + ", but [package] java-version = \"" + releaseVersion
                             + "\" requires JDK " + requested + " or newer. Either run kwenza with a JDK "
                             + requested + "+ install, or lower java-version in kwenza.toml to " + running
                             + " or below.");
         }
+        return Result.ok();
     }
 
     private static String formatDiagnostic(Diagnostic<? extends JavaFileObject> d) {

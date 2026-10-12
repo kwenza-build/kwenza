@@ -4,12 +4,12 @@ import dev.kwenza.cli.help.Help;
 import dev.kwenza.compiler.CompileContext;
 import dev.kwenza.context.GlobalContext;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import dev.kwenza.context.Timing;
 import dev.kwenza.resolver.ResolveContext;
 import dev.kwenza.workspace.Project;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 
 /**
  * Everything one invocation's commands share, created on first use: a chain like
@@ -39,15 +39,26 @@ public final class Session {
         return help;
     }
 
-    /** The project in the working directory; fails with a clear message if there's no kwenza.toml. */
+    /**
+     * Loads the project in the working directory, once; a failure if there's no usable kwenza.toml
+     * there. {@code Cli} calls this before the first command that {@code needsProject()}.
+     */
+    public Result<Void> loadProject() throws IOException {
+        if (project == null) {
+            Result<Project> loaded = Project.load(global.workingDir());
+            Timing.mark("manifest-loaded");
+            if (loaded instanceof Result.Err<?> err) {
+                return err.castErr();
+            }
+            project = loaded.get();
+        }
+        return Result.ok();
+    }
+
+    /** The loaded project; asking before {@link #loadProject()} succeeded is a bug. */
     public Project project() {
         if (project == null) {
-            try {
-                project = Project.load(global.workingDir());
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-            Timing.mark("manifest-loaded");
+            throw new IllegalStateException("project() before loadProject()");
         }
         return project;
     }

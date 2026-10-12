@@ -4,11 +4,12 @@ import dev.kwenza.cli.Cli;
 import dev.kwenza.cli.Style;
 import dev.kwenza.cli.commands.CliCommand;
 import dev.kwenza.cli.commands.CliOption;
-import dev.kwenza.context.KwenzaException;
+import dev.kwenza.context.Result;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,10 +80,12 @@ public final class Help {
         out.println("Run " + style.literal("`kwenza help " + command.name() + "`") + " for more detailed information.");
     }
 
-    /** Prints {@code command}'s full manual page. */
-    public void printManual(String commandName) {
-        CliCommand command = Cli.find(commandName);
-        out.print(new ManualRenderer(style).render(manualSource(command)));
+    /** Prints {@code command}'s full manual page, or fails like an unknown command would. */
+    public Result<Void> printManual(String commandName) {
+        return Cli.find(commandName).flatMap(Help::manualSource).map(source -> {
+            out.print(new ManualRenderer(style).render(source));
+            return null;
+        });
     }
 
     public void printVersion() {
@@ -90,17 +93,20 @@ public final class Help {
         out.println("kwenza " + (version != null ? version : "(development build)"));
     }
 
-    /** The AsciiDoc source of {@code command}'s manual page, as bundled in the jar. */
-    public static String manualSource(CliCommand command) {
+    /**
+     * The AsciiDoc source of {@code command}'s manual page, as bundled in the jar; a failure
+     * pointing at kwenza.dev if this build has none (a bootstrap jar built without resources).
+     */
+    public static Result<String> manualSource(CliCommand command) {
         String resource = MANUAL_DIR + "kwenza-" + command.name() + ".adoc";
         try (InputStream in = Help.class.getResourceAsStream(resource)) {
             if (in == null) {
-                throw new KwenzaException("this kwenza build has no manual page for `" + command.name()
+                return Result.err("this kwenza build has no manual page for `" + command.name()
                         + "` bundled - read it at https://kwenza.dev/docs/commands/kwenza-" + command.name() + ".html");
             }
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return Result.ok(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException e) {
-            throw new KwenzaException("couldn't read " + resource + ": " + e.getMessage());
+            throw new UncheckedIOException("couldn't read " + resource + " from kwenza's own jar", e);
         }
     }
 

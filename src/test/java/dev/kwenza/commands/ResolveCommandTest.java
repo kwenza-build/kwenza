@@ -23,7 +23,7 @@ class ResolveCommandTest {
                 version = "0.1.0"
                 """);
 
-        new ResolveCommand(state.resolve()).run();
+        new ResolveCommand(state.resolve()).run().get();
 
         assertTrue(Files.exists(projectRoot.resolve("kwenza.lock")));
         assertTrue(Files.notExists(projectRoot.resolve("target")));

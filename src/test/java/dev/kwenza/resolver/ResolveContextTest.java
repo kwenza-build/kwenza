@@ -50,7 +50,7 @@ class ResolveContextTest {
     void ensureMainResolvedExcludesDevDependenciesFromItsClasspath() throws Exception {
         ResolveContext resolve = seededProject(mock(Reporter.class)).resolve();
 
-        Resolver.Resolution mainOnly = resolve.ensureMainResolved();
+        Resolver.Resolution mainOnly = resolve.ensureMainResolved().get();
 
         assertEquals(1, mainOnly.artifacts().size());
         assertEquals("com.example:main-dep", mainOnly.artifacts().get(0).moduleId());
@@ -60,7 +60,7 @@ class ResolveContextTest {
     void ensureResolvedIncludesBothDependenciesAndDevDependencies() throws Exception {
         ResolveContext resolve = seededProject(mock(Reporter.class)).resolve();
 
-        Resolver.Resolution merged = resolve.ensureResolved();
+        Resolver.Resolution merged = resolve.ensureResolved().get();
 
         assertEquals(2, merged.artifacts().size());
     }
@@ -70,7 +70,7 @@ class ResolveContextTest {
         Reporter reporter = mock(Reporter.class);
         ResolveContext resolve = seededProject(reporter).resolve();
 
-        resolve.ensureResolved();
+        resolve.ensureResolved().get();
 
         verify(reporter, never()).info("resolve: fetching dependencies from Maven Central...");
     }

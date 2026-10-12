@@ -142,9 +142,15 @@ package: target/hello-world-0.1.0.jar
 == EXIT STATUS
 
 * `0`: every command succeeded.
-* `1`: kwenza failed, or was given an unknown command or option; the error message says why.
-* Anything else: the exit code of the program `kwenza run` started, or of the test launcher
-after a test failed.
+* `1`: kwenza failed, for a reason you can fix; the error message says what and how.
+* `2`: the command line was invalid: an unknown command or option.
+* `101`: kwenza hit a bug in itself. Please report it at
+https://github.com/kwenza-build/kwenza/issues[github.com/kwenza-build/kwenza/issues], with the output
+of `--verbose`, which adds the stack trace.
+* Anything else: the exit code of the program `kwenza run` started, or of the test launcher after a
+test failed, passed through unchanged.
+
+A chain stops at the first command that fails, and kwenza exits with that command's code.
 
 == EXAMPLES
 

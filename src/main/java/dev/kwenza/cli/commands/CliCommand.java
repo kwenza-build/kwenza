@@ -1,6 +1,9 @@
 package dev.kwenza.cli.commands;
 
 import dev.kwenza.cli.Session;
+import dev.kwenza.context.Result;
+
+import java.io.IOException;
 
 import java.util.List;
 
@@ -35,5 +38,15 @@ public interface CliCommand {
         return null;
     }
 
-    void exec(Session session, Invocation invocation) throws Exception;
+    /**
+     * Whether it works on the project in the working directory. If so, {@code Cli} loads that
+     * project before running it (failing with a clear message if there isn't one), so
+     * {@link Session#project()} is always there by the time {@link #exec} runs.
+     */
+    default boolean needsProject() {
+        return true;
+    }
+
+    /** Runs it. Expected failures come back as a failed Result; anything thrown is a kwenza bug. */
+    Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException;
 }

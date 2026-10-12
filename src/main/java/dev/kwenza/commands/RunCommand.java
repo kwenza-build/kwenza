@@ -1,12 +1,14 @@
 package dev.kwenza.commands;
 
 import dev.kwenza.compiler.CompileContext;
-import dev.kwenza.context.KwenzaException;
+import dev.kwenza.context.Failure;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import dev.kwenza.resolver.Resolver;
 import dev.kwenza.workspace.Project;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,17 +25,21 @@ public final class RunCommand {
         this.reporter = reporter;
     }
 
-    public void run() throws Exception {
-        run(ProcessBuilder.Redirect.INHERIT);
+    public Result<Void> run() throws IOException, InterruptedException {
+        return run(ProcessBuilder.Redirect.INHERIT);
     }
 
     /** @param outputRedirect INHERIT for real CLI use; tests pass DISCARD so a real nested subprocess's own console output never bleeds into the outer test run. */
-    public void run(ProcessBuilder.Redirect outputRedirect) throws Exception {
+    public Result<Void> run(ProcessBuilder.Redirect outputRedirect) throws IOException, InterruptedException {
         String mainClass = project.manifest().mainClass;
         if (mainClass == null) {
-            throw new KwenzaException("kwenza.toml has no [package] main-class set - required for `kwenza run`");
+            return Result.err("kwenza.toml has no [package] main-class set - required for `kwenza run`");
         }
-        Resolver.Resolution resolution = compile.ensureCompiled();
+        Result<Resolver.Resolution> compiled = compile.ensureCompiled();
+        if (compiled instanceof Result.Err<?> err) {
+            return err.castErr();
+        }
+        Resolver.Resolution resolution = compiled.get();
         Path classes = project.classesDir();
 
         List<String> classpathEntries = new ArrayList<>();
@@ -58,8 +64,7 @@ public final class RunCommand {
                 .redirectError(outputRedirect)
                 .start();
         int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new CommandFailedException(exitCode);
-        }
+        // A non-zero exit is the program's own outcome, already reported by the program itself.
+        return exitCode == 0 ? Result.ok() : Result.err(Failure.child(exitCode));
     }
 }

@@ -25,7 +25,7 @@ class BuildCommandTest {
                 version = "0.1.0"
                 """);
 
-        new BuildCommand(state.compile()).run();
+        new BuildCommand(state.compile()).run().get();
 
         assertTrue(Files.exists(projectRoot.resolve("target/classes/com/example/Main.class")));
         assertTrue(Files.notExists(projectRoot.resolve("target/com.example-0.1.0.jar")));

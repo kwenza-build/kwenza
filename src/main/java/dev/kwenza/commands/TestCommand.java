@@ -1,8 +1,9 @@
 package dev.kwenza.commands;
 
 import dev.kwenza.compiler.CompileContext;
-import dev.kwenza.context.KwenzaException;
+import dev.kwenza.context.Failure;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import dev.kwenza.resolver.Resolver;
 import dev.kwenza.workspace.Project;
 
@@ -27,13 +28,17 @@ public final class TestCommand {
         this.reporter = reporter;
     }
 
-    public void run() throws Exception {
-        run(ProcessBuilder.Redirect.INHERIT);
+    public Result<Void> run() throws IOException, InterruptedException {
+        return run(ProcessBuilder.Redirect.INHERIT);
     }
 
     /** @param outputRedirect INHERIT for real CLI use; tests pass DISCARD so a real nested ConsoleLauncher's own console report never bleeds into the outer test run. */
-    public void run(ProcessBuilder.Redirect outputRedirect) throws Exception {
-        Resolver.Resolution resolution = compile.ensureTestCompiled();
+    public Result<Void> run(ProcessBuilder.Redirect outputRedirect) throws IOException, InterruptedException {
+        Result<Resolver.Resolution> compiled = compile.ensureTestCompiled();
+        if (compiled instanceof Result.Err<?> err) {
+            return err.castErr();
+        }
+        Resolver.Resolution resolution = compiled.get();
         Path classes = project.classesDir();
         Path testClasses = project.testClassesDir();
 
@@ -44,10 +49,10 @@ public final class TestCommand {
             // examples/hello-world) would otherwise fail with a raw ClassNotFoundException rather
             // than this clear message.
             reporter.info("test: no tests found");
-            return;
+            return Result.ok();
         }
         if (!hasConsoleLauncher(resolution)) {
-            throw new KwenzaException("src/test/java has test sources, but no dev-dependency provides "
+            return Result.err("src/test/java has test sources, but no dev-dependency provides "
                     + "org.junit.platform.console.ConsoleLauncher - add "
                     + "org.junit.platform:junit-platform-console-standalone to [dev-dependencies] "
                     + "(see https://kwenza.dev/docs/manifest-reference.html)");
@@ -90,12 +95,13 @@ public final class TestCommand {
                 .redirectError(outputRedirect)
                 .start();
         int exitCode = process.waitFor();
-        if (exitCode == 0) {
-            reporter.info("test: passed");
-        } else {
+        if (exitCode != 0) {
+            // Failing tests are the launcher's own outcome: it has reported them, kwenza passes its code on.
             reporter.error("test: failed (exit " + exitCode + ")");
-            throw new CommandFailedException(exitCode);
+            return Result.err(Failure.child(exitCode));
         }
+        reporter.info("test: passed");
+        return Result.ok();
     }
 
     private static Optional<Path> mockitoAgentJar(Resolver.Resolution resolution) {

@@ -2,6 +2,7 @@ package dev.kwenza.resolver;
 
 import dev.kwenza.context.GlobalContext;
 import dev.kwenza.context.Reporter;
+import dev.kwenza.context.Result;
 import dev.kwenza.context.Timing;
 import dev.kwenza.manifest.Dependency;
 import dev.kwenza.manifest.KwenzaLock;
@@ -34,14 +35,21 @@ public final class ResolveContext {
      * Both scopes merged, from the lock when it's fresh and from Maven Central otherwise.
      * Resolves at most once per invocation - later calls reuse the result.
      */
-    public Resolver.Resolution ensureResolved() throws IOException {
+    public Result<Resolver.Resolution> ensureResolved() throws IOException {
         if (resolution == null) {
-            KwenzaLock existing = KwenzaLock.load(project.lockFile());
-            resolution = existing.isFreshFor(project.manifest())
-                    ? fromLock(existing)
-                    : fresh(existing);
+            Result<KwenzaLock> existing = KwenzaLock.load(project.lockFile());
+            if (existing instanceof Result.Err<?> err) {
+                return err.castErr();
+            }
+            Result<Resolver.Resolution> resolved = asResult(() -> existing.get().isFreshFor(project.manifest())
+                    ? fromLock(existing.get())
+                    : fresh(existing.get()));
+            if (resolved instanceof Result.Err<?> err) {
+                return err.castErr();
+            }
+            resolution = resolved.get();
         }
-        return resolution;
+        return Result.ok(resolution);
     }
 
     /**
@@ -51,14 +59,38 @@ public final class ResolveContext {
      * every POM/jar it needs is in the local cache, since dependencies is a subset of
      * dependencies + dev-dependencies.
      */
-    public Resolver.Resolution ensureMainResolved() throws IOException {
-        ensureResolved();
+    public Result<Resolver.Resolution> ensureMainResolved() throws IOException {
+        Result<Resolver.Resolution> merged = ensureResolved();
+        if (merged instanceof Result.Err<?> err) {
+            return err.castErr();
+        }
         if (mainResolution == null) {
             Resolver resolver = new Resolver(MavenRepository.central(global.localRepo()));
             // The merged lock was verified moments ago, so its pins cover every jar this needs.
-            mainResolution = resolver.resolve(project.manifest().dependencies.values(), resolution.lock());
+            Result<Resolver.Resolution> main =
+                    asResult(() -> resolver.resolve(project.manifest().dependencies.values(), resolution.lock()));
+            if (main instanceof Result.Err<?> err) {
+                return err.castErr();
+            }
+            mainResolution = main.get();
         }
-        return mainResolution;
+        return Result.ok(mainResolution);
+    }
+
+    private interface Resolving {
+        Resolver.Resolution resolve() throws IOException;
+    }
+
+    /**
+     * Until the resolver itself returns Results (the resolve/compile redesign), its expected
+     * failures still arrive as ResolutionException. This is the one place they become values.
+     */
+    private static Result<Resolver.Resolution> asResult(Resolving resolving) throws IOException {
+        try {
+            return Result.ok(resolving.resolve());
+        } catch (ResolutionException e) {
+            return Result.err(e.getMessage());
+        }
     }
 
     private Resolver.Resolution fromLock(KwenzaLock lock) {

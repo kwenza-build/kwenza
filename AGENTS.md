@@ -102,8 +102,8 @@ specific decision and its specific reasoning; that one is for the pattern.
   "lockfile wins by default" pattern, not Maven's "always re-resolve, hope the range is stable" one.
 
 - **Fail fast on JDK/`java-version` mismatches.** `javac --release N` silently requires the running
-  JDK to be N or newer; kwenza checks this itself (`IncompatibleJdkException` in
-  `JavaCompilation`) and gives a specific, actionable message instead of surfacing a raw javac error.
+  JDK to be N or newer; kwenza checks this itself (a failed `Result` from
+  `JavaCompilation.compile`) and gives a specific, actionable message instead of surfacing a raw javac error.
 
 - **Checksums fail closed.** `MavenRepository.fetchJarAsync` refuses a downloaded jar whose `.sha1`
   is missing, unfetchable or empty, the same as a mismatch, and never writes an unverified jar to
@@ -281,9 +281,34 @@ specific decision and its specific reasoning; that one is for the pattern.
   tiny fixed graph, so building a real one would be complexity with nothing to do yet.
   `help` and `version` are CLI-only (`HelpCli`, `VersionCli`, no `commands` counterpart): they
   don't touch a project, so they don't load one either, and work outside any project.
-  `RunCommand`/`TestCommand` throw a `CommandFailedException` (carrying just an exit code) instead
-  of calling `System.exit` when their subprocess fails, since it has already printed whatever it
-  needed to; `Cli.run` returns that code from one place.
+  `RunCommand`/`TestCommand` return `Failure.child(exitCode)` when their subprocess fails, since
+  it has already printed whatever it needed to; `Cli.run` returns that code from one place.
+
+- **Errors are values; exceptions are for what nobody designed for.** A failure kwenza expects
+  and handles on purpose (a bad manifest, a malformed lock, a checksum mismatch, a failed
+  compile, a missing `main-class`, a run/test child exiting non-zero, a typo'd command) is a
+  `context.Result<T>`: `Ok(value)` or `Err(Failure)`, where `Failure` holds an exit code and one
+  or more problems to print. An exception means kwenza itself has a bug, and `Cli` says so: `error:
+  internal error: ...`, a pointer to the issue tracker, the stack trace under `--verbose`, exit
+  101 (Rust's panic code). The one other thing `Cli` catches is `IOException`, for the environment
+  failing underneath kwenza (a disk error), reported as a normal error. Exit codes are 0, 1 (fix
+  the problem the message names), 2 (bad command line), 101 (bug), or a run/test child's own code,
+  documented in every manual page's EXIT STATUS and checked there by `CliDocsTest`.
+  This is a principle, not a performance measure: exceptions here fire at most once per
+  invocation, and a stackless exception would cost next to nothing anyway. The point is that a
+  signature says what can go wrong, and a bug can never be mistaken for a user error (the old
+  `catch (Exception)` blocks in `Resolver` used to report an NPE as "Failed to resolve ...").
+  Weighed against three exception-based designs (one `KwenzaException`; a categorised one with
+  distinct exit codes, hints and source locations; a hybrid with values only in loops) and
+  "`Result` everywhere, async-first" with combinators and an `Async` wrapper. Kept minimal on
+  purpose: `map`, `flatMap`, `all` (which collects every problem, for reporting every checksum
+  mismatch in one run), no categories yet; a `kind` can be added to `Failure` later without
+  touching a call site. Java has no `?`, so propagating is `if (r instanceof Result.Err<?> err)
+  return err.castErr();`, two lines; accepted as the price.
+  The one allowed exception to the rule: a module may bail out of deep recursion with a private,
+  stackless exception (`Toml`'s `TomlParseException`, `KwenzaManifest.Invalid`,
+  `PomParser.MissingElement`), caught and turned into a `Result` before its public method returns.
+  It never crosses a module's interface.
 
 - **State is split into one context per concern, each living with its concern** (Cargo keeps its
   build context under `compiler/` the same way). `context.GlobalContext` is the environment (working
@@ -595,12 +620,9 @@ Testing & reporting
   shelling out to Open Test Reporting's separate CLI converter (a new runtime dependency).
 
 Performance
-- Prefer return codes over exceptions for any new hot-path logic (a per-test listener callback,
-  resolver loops over many versions). Exceptions cost mostly in `fillInStackTrace()`, which only
-  matters when they fire per iteration; kwenza's current exceptions (`KwenzaException`,
-  `CommandFailedException`, `IncompatibleJdkException`) fire at most once per invocation, so there's
-  nothing to change today. A direction to weigh when scoping hot paths, not a refactor of existing
-  code.
+- Expected failures are values everywhere now (see "Errors are values" above), which covers what
+  this item used to ask of hot paths (a per-test listener callback, resolver loops). What's left
+  for hot paths is not allocating a `Result` per iteration where a plain return code would do.
 - Incremental compilation — a real unknown, and potentially in tension with the current in-process
   `javax.tools.JavaCompiler`-only decision, since that API doesn't give a source-level dependency
   graph for free the way Gradle's own incremental compiler (or Eclipse's ECJ, which IDEs use) does.
@@ -657,8 +679,8 @@ close most of this gap — flagged as a real future optimization, intentionally 
     `CliOption`, `Invocation`.
   - `cli.help`: usage, `--list`, short help, and the manual-page renderer.
   - `commands`: one `XCommand` per command that touches a project, doing the actual work.
-  - `context`: `GlobalContext`, `Reporter`, `Timing`, `KwenzaException` (the user-facing error
-    any layer may throw).
+  - `context`: `GlobalContext`, `Reporter`, `Timing`, `Result` and `Failure` (how any layer
+    reports an expected failure).
   - `workspace`: `Project`.
   - `resolver`, `compiler` (each with its context), `packager`, `manifest`, `toml`.
 
@@ -676,8 +698,7 @@ close most of this gap — flagged as a real future optimization, intentionally 
   Tests inject `Mockito.mock(Reporter.class)` instead - void methods do nothing by default, so
   it's silent without needing to redirect `System.err` (the `QuietConsole` JUnit extension this
   replaced), and any test that cares what got reported can `verify(...)` on it instead of
-  string-matching captured output. `CliException` became `context.KwenzaException` once
-  `CompileContext` (in `compiler`) needed to throw it: it was never CLI-specific.
+  string-matching captured output.
   `Timing` still writes to stderr directly, through static methods, rather than going behind
   `Reporter`. Reconsidered in the code-design pass and kept: it's a no-op unless `KWENZA_TIMING`
   is set, so it never causes test noise, and it has to start before anything else exists

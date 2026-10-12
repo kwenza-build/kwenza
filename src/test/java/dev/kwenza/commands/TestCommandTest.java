@@ -1,6 +1,6 @@
 package dev.kwenza.commands;
 
-import dev.kwenza.context.KwenzaException;
+import dev.kwenza.context.Result;
 import dev.kwenza.testsupport.Fixtures;
 import dev.kwenza.testsupport.Fixtures.Contexts;
 import org.junit.jupiter.api.Tag;
@@ -9,10 +9,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static dev.kwenza.testsupport.Fixtures.contexts;
 import static dev.kwenza.testsupport.Fixtures.writeSource;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -41,7 +42,7 @@ class TestCommandTest {
             """;
 
     @Test
-    void aPassingTestSuiteCompletesWithoutThrowing(@TempDir Path tempDir) throws Exception {
+    void aPassingTestSuiteSucceeds(@TempDir Path tempDir) throws Exception {
         Path projectRoot = tempDir.resolve("project");
         writeSource(projectRoot, "src/test/java/com/example/FixturePassingTest.java", """
                 package com.example;
@@ -55,11 +56,12 @@ class TestCommandTest {
 
         // DISCARD: this really does spawn a ConsoleLauncher subprocess, and its own console
         // report must not bleed into the outer test run's console (see the class Javadoc above).
-        new TestCommand(state.project(), state.compile(), state.reporter()).run(ProcessBuilder.Redirect.DISCARD); // must not throw
+        assertTrue(new TestCommand(state.project(), state.compile(), state.reporter())
+                .run(ProcessBuilder.Redirect.DISCARD).isOk());
     }
 
     @Test
-    void aFailingTestSuitePropagatesAsACommandFailedException(@TempDir Path tempDir) throws Exception {
+    void aFailingTestSuiteIsPassedThroughAsTheLaunchersExitCode(@TempDir Path tempDir) throws Exception {
         Path projectRoot = tempDir.resolve("project");
         // Deliberately named to be unmistakable, even though its output is discarded (see the
         // class Javadoc above) - the name alone should be enough if this ever appears in a report.
@@ -73,8 +75,10 @@ class TestCommandTest {
                 """);
         Contexts state = contexts(projectRoot, Fixtures.defaultLocalRepo(), MANIFEST);
 
-        assertThrows(CommandFailedException.class,
-                () -> new TestCommand(state.project(), state.compile(), state.reporter()).run(ProcessBuilder.Redirect.DISCARD));
+        Result<Void> result = new TestCommand(state.project(), state.compile(), state.reporter())
+                .run(ProcessBuilder.Redirect.DISCARD);
+
+        assertEquals(List.of(), result.failure().problems()); // the launcher already reported the failure
     }
 
     @Test
@@ -92,11 +96,12 @@ class TestCommandTest {
         // Must not throw: with nothing to run, whether a launcher is even resolvable is
         // irrelevant - this is the exact bug examples/hello-world hit (a raw
         // ClassNotFoundException instead of a clean no-op) before the check below existed.
-        new TestCommand(state.project(), state.compile(), state.reporter()).run(ProcessBuilder.Redirect.DISCARD);
+        assertTrue(new TestCommand(state.project(), state.compile(), state.reporter())
+                .run(ProcessBuilder.Redirect.DISCARD).isOk());
     }
 
     @Test
-    void testSourcesWithNoConsoleLauncherDependencyFailsWithAClearKwenzaException(@TempDir Path tempDir)
+    void testSourcesWithNoConsoleLauncherDependencyFailsNamingTheDependencyToAdd(@TempDir Path tempDir)
             throws Exception {
         Path projectRoot = tempDir.resolve("project");
         // Deliberately doesn't reference any JUnit API: this manifest declares no
@@ -112,9 +117,9 @@ class TestCommandTest {
                 version = "0.1.0"
                 """);
 
-        KwenzaException e = assertThrows(KwenzaException.class,
-                () -> new TestCommand(state.project(), state.compile(), state.reporter()).run(ProcessBuilder.Redirect.DISCARD));
+        String problem = new TestCommand(state.project(), state.compile(), state.reporter())
+                .run(ProcessBuilder.Redirect.DISCARD).failure().problems().get(0);
 
-        assertTrue(e.getMessage().contains("junit-platform-console-standalone"), e.getMessage());
+        assertTrue(problem.contains("junit-platform-console-standalone"), problem);
     }
 }

@@ -56,8 +56,15 @@ See xref:./kwenza.adoc#environment[kwenza(1)] for the environment variables kwen
 == EXIT STATUS
 
 * `0`: every test passed, or there were no tests.
-* `1`: kwenza failed before running the tests, for example because compilation failed.
-* Anything else: the launcher's own exit code, after a test failed.
+* `1`: kwenza failed before running the tests, for example because compilation failed; the error
+message says what and how.
+* `2`: the command line was invalid: an unknown command or option.
+* `101`: kwenza hit a bug in itself. Please report it, with the output of `--verbose`.
+* Anything else: the test launcher's own exit code, passed through unchanged.
+
+The JUnit console launcher exits with `1` when a test fails, the same code as kwenza's own errors.
+kwenza tells them apart for you: its own failures print an `error:` line, failing tests print
+`test: failed (exit 1)` after the launcher's report.
 
 == EXAMPLES
 

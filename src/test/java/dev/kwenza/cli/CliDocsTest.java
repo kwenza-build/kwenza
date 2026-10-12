@@ -4,6 +4,7 @@ import dev.kwenza.cli.commands.CliCommand;
 import dev.kwenza.cli.commands.CliOption;
 import dev.kwenza.cli.help.Help;
 import dev.kwenza.cli.help.ManualRenderer;
+import dev.kwenza.context.Failure;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -43,7 +44,7 @@ class CliDocsTest {
     @Test
     void everyCommandHasABundledManualPageIdenticalToItsDocsPage() throws IOException {
         for (CliCommand command : Cli.COMMANDS) {
-            assertEquals(page("kwenza-" + command.name()), Help.manualSource(command),
+            assertEquals(page("kwenza-" + command.name()), Help.manualSource(command).get(),
                     "src/main/resources" + Help.MANUAL_DIR + "kwenza-" + command.name()
                             + ".adoc should be a symlink to " + PAGES + "/kwenza-" + command.name() + ".adoc");
         }
@@ -80,9 +81,25 @@ class CliDocsTest {
     }
 
     @Test
+    void everyPageDocumentsEveryExitCodeKwenzaItselfUses() throws IOException {
+        List<String> pages = new ArrayList<>(List.of("kwenza"));
+        Cli.COMMANDS.forEach(c -> pages.add("kwenza-" + c.name()));
+        for (String name : pages) {
+            String page = page(name);
+            int start = page.indexOf("\n== EXIT STATUS\n");
+            assertTrue(start >= 0, name + ".adoc has no EXIT STATUS section");
+            int end = page.indexOf("\n== ", start + 1);
+            String exitStatus = page.substring(start, end < 0 ? page.length() : end);
+            for (int code : List.of(0, Failure.USER_ERROR, Failure.USAGE_ERROR, Cli.BUG_EXIT_CODE)) {
+                assertTrue(exitStatus.contains("* `" + code + "`:"), name + ".adoc's EXIT STATUS doesn't list " + code);
+            }
+        }
+    }
+
+    @Test
     void everyBundledPageRendersWithNoMarkupLeftOver() {
         for (CliCommand command : Cli.COMMANDS) {
-            String text = new ManualRenderer(Style.PLAIN).render(Help.manualSource(command));
+            String text = new ManualRenderer(Style.PLAIN).render(Help.manualSource(command).get());
             for (String markup : LEFTOVER_MARKUP) {
                 assertFalse(text.contains(markup),
                         "kwenza help " + command.name() + " prints raw '" + markup.strip() + "':\n" + text);

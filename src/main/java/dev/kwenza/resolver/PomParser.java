@@ -1,14 +1,18 @@
 package dev.kwenza.resolver;
 
+import dev.kwenza.context.Result;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,7 +39,8 @@ final class PomParser {
             List<RawDependency> managedDependencies) {
     }
 
-    static ParsedPom parse(String xml) {
+    /** The parts of the POM kwenza needs, or a failure if it isn't a POM kwenza can read. */
+    static Result<ParsedPom> parse(String xml) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(false);
@@ -80,9 +85,13 @@ final class PomParser {
                 managed = parseDependencyList(firstChild(dm, "dependencies"));
             }
 
-            return new ParsedPom(group, artifact, version, packaging, parent, properties, dependencies, managed);
-        } catch (Exception e) {
-            throw new ResolutionException("Failed to parse POM: " + e.getMessage(), e);
+            return Result.ok(new ParsedPom(group, artifact, version, packaging, parent, properties, dependencies, managed));
+        } catch (SAXException | IOException e) {
+            return Result.err("Failed to parse POM: " + e.getMessage());
+        } catch (MissingElement e) {
+            return Result.err(e.getMessage());
+        } catch (ParserConfigurationException e) {
+            throw new IllegalStateException("the JDK's XML parser doesn't support secure processing", e); // a bug
         }
     }
 
@@ -124,8 +133,15 @@ final class PomParser {
     private static String text(Element parent, String tagName) {
         String t = textOrNull(parent, tagName);
         if (t == null) {
-            throw new ResolutionException("Missing required <" + tagName + "> in POM");
+            throw new MissingElement("Missing required <" + tagName + "> in POM");
         }
         return t;
+    }
+
+    /** Bails out of the nested element lookups above; caught in {@link #parse}, never thrown out of it. */
+    private static final class MissingElement extends RuntimeException {
+        MissingElement(String message) {
+            super(message, null, false, false);
+        }
     }
 }

@@ -42,10 +42,6 @@ public final class MavenRepository {
         return new MavenRepository(CENTRAL_BASE_URL, localRepo);
     }
 
-    public Path localRepoRoot() {
-        return localRepo;
-    }
-
     private static String groupPath(String group) {
         return group.replace('.', '/');
     }

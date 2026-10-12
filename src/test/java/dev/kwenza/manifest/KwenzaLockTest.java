@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,22 +27,22 @@ class KwenzaLockTest {
 
     @Test
     void hashDependenciesIsStableForTheSameManifest() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT);
+        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT).get();
 
         assertEquals(KwenzaLock.hashDependencies(manifest), KwenzaLock.hashDependencies(manifest));
     }
 
     @Test
     void hashDependenciesChangesWhenADependencyVersionChanges() {
-        KwenzaManifest original = KwenzaManifest.parse(MANIFEST_TEXT);
-        KwenzaManifest changed = KwenzaManifest.parse(MANIFEST_TEXT.replace("33.2.1-jre", "33.3.0"));
+        KwenzaManifest original = KwenzaManifest.parse(MANIFEST_TEXT).get();
+        KwenzaManifest changed = KwenzaManifest.parse(MANIFEST_TEXT.replace("33.2.1-jre", "33.3.0")).get();
 
         assertFalse(KwenzaLock.hashDependencies(original).equals(KwenzaLock.hashDependencies(changed)));
     }
 
     @Test
     void hashDependenciesIsUnaffectedByDeclarationOrder() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT);
+        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT).get();
         KwenzaManifest reordered = KwenzaManifest.parse("""
                 [package]
                 name = "my-app"
@@ -53,7 +54,7 @@ class KwenzaLockTest {
 
                 [dependencies]
                 guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
-                """);
+                """).get();
         KwenzaManifest sameDeclaredInOrder = KwenzaManifest.parse("""
                 [package]
                 name = "my-app"
@@ -65,7 +66,7 @@ class KwenzaLockTest {
 
                 [dev-dependencies]
                 junit = { module = "org.junit.jupiter:junit-jupiter", version = "6.1.3" }
-                """);
+                """).get();
 
         assertEquals(KwenzaLock.hashDependencies(reordered), KwenzaLock.hashDependencies(sameDeclaredInOrder));
     }
@@ -73,14 +74,14 @@ class KwenzaLockTest {
     @Test
     void aFreshManifestWithNoDependenciesHasAStableHashToo() {
         KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT.replace(
-                "[dependencies]\nguava = { module = \"com.google.guava:guava\", version = \"33.2.1-jre\" }", ""));
+                "[dependencies]\nguava = { module = \"com.google.guava:guava\", version = \"33.2.1-jre\" }", "")).get();
 
         assertEquals(KwenzaLock.hashDependencies(manifest), KwenzaLock.hashDependencies(manifest));
     }
 
     @Test
     void isFreshForIsTrueOnlyWhenTheHashMatchesTheCurrentManifest() {
-        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT);
+        KwenzaManifest manifest = KwenzaManifest.parse(MANIFEST_TEXT).get();
         KwenzaLock fresh = new KwenzaLock(List.of(), KwenzaLock.hashDependencies(manifest));
         KwenzaLock stale = new KwenzaLock(List.of(), "not-the-real-hash");
         KwenzaLock withNoHashAtAll = KwenzaLock.empty();
@@ -100,7 +101,7 @@ class KwenzaLockTest {
         Path lockPath = tempDir.resolve("kwenza.lock");
 
         lock.save(lockPath, "the-manifest-hash");
-        KwenzaLock loaded = KwenzaLock.load(lockPath);
+        KwenzaLock loaded = KwenzaLock.load(lockPath).get();
 
         assertEquals("the-manifest-hash", loaded.manifestHash);
         assertEquals(2, loaded.entries.size());
@@ -113,10 +114,10 @@ class KwenzaLockTest {
 
     @Test
     void loadingAMissingLockFileReturnsAnEmptyLockRatherThanThrowing(@TempDir Path tempDir) throws IOException {
-        KwenzaLock lock = KwenzaLock.load(tempDir.resolve("does-not-exist.lock"));
+        KwenzaLock lock = KwenzaLock.load(tempDir.resolve("does-not-exist.lock")).get();
 
         assertTrue(lock.entries.isEmpty());
-        assertFalse(lock.isFreshFor(KwenzaManifest.parse(MANIFEST_TEXT)));
+        assertFalse(lock.isFreshFor(KwenzaManifest.parse(MANIFEST_TEXT).get()));
     }
 
     @Test
@@ -127,8 +128,27 @@ class KwenzaLockTest {
         Path lockPath = tempDir.resolve("kwenza.lock");
 
         lock.save(lockPath, "hash");
-        KwenzaLock loaded = KwenzaLock.load(lockPath);
+        KwenzaLock loaded = KwenzaLock.load(lockPath).get();
 
         assertEquals("com.example:weird\"name", loaded.entries.get(0).module);
+    }
+
+    @Test
+    void aMalformedLockIsAFailureThatSaysHowToRecover(@TempDir Path tempDir) throws IOException {
+        Path lockPath = tempDir.resolve("kwenza.lock");
+        Files.writeString(lockPath, "[[resolved]]\nmodule = 42\n");
+
+        String problem = KwenzaLock.load(lockPath).failure().problems().get(0);
+
+        assertTrue(problem.contains("kwenza.lock"), problem);
+        assertTrue(problem.contains("Delete it"), problem);
+    }
+
+    @Test
+    void aLockThatIsNotValidTomlIsAFailureToo(@TempDir Path tempDir) throws IOException {
+        Path lockPath = tempDir.resolve("kwenza.lock");
+        Files.writeString(lockPath, "manifest-hash = \"unterminated\n");
+
+        assertFalse(KwenzaLock.load(lockPath).isOk());
     }
 }

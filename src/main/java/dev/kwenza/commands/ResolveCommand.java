@@ -1,5 +1,6 @@
 package dev.kwenza.commands;
 
+import dev.kwenza.context.Result;
 import dev.kwenza.resolver.ResolveContext;
 
 import java.io.IOException;
@@ -15,7 +16,7 @@ public final class ResolveCommand {
         this.resolve = resolve;
     }
 
-    public void run() throws IOException {
-        resolve.ensureResolved();
+    public Result<Void> run() throws IOException {
+        return resolve.ensureResolved().map(resolution -> null);
     }
 }

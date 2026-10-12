@@ -47,7 +47,7 @@ class CompileContextTest {
     void ensureCompiledProducesClassFilesFromSrcMainJava() throws Exception {
         writeMain();
 
-        compileContext(NO_DEPENDENCIES).ensureCompiled();
+        compileContext(NO_DEPENDENCIES).ensureCompiled().get();
 
         assertTrue(Files.exists(projectRoot().resolve("target/classes/com/example/Main.class")));
     }
@@ -56,12 +56,12 @@ class CompileContextTest {
     void ensureCompiledCalledTwiceDoesNotRecompile() throws Exception {
         writeMain();
         CompileContext compile = compileContext(NO_DEPENDENCIES);
-        compile.ensureCompiled();
+        compile.ensureCompiled().get();
         Path classFile = projectRoot().resolve("target/classes/com/example/Main.class");
         assertTrue(Files.exists(classFile));
         Files.delete(classFile); // if the second call recompiles, this file reappears
 
-        compile.ensureCompiled();
+        compile.ensureCompiled().get();
 
         assertFalse(Files.exists(classFile), "ensureCompiled() recompiled even though nothing invalidated it");
     }
@@ -70,12 +70,12 @@ class CompileContextTest {
     void invalidateMakesTheNextEnsureCompiledActuallyRecompile() throws Exception {
         writeMain();
         CompileContext compile = compileContext(NO_DEPENDENCIES);
-        compile.ensureCompiled();
+        compile.ensureCompiled().get();
         Path classFile = projectRoot().resolve("target/classes/com/example/Main.class");
         Files.delete(classFile);
         compile.invalidate();
 
-        compile.ensureCompiled();
+        compile.ensureCompiled().get();
 
         assertTrue(Files.exists(classFile), "invalidate() should have made ensureCompiled() recompile");
     }
@@ -102,7 +102,7 @@ class CompileContextTest {
                 """);
         repo.lock(contexts.project());
 
-        contexts.compile().ensureTestCompiled();
+        contexts.compile().ensureTestCompiled().get();
 
         assertTrue(Files.exists(projectRoot().resolve("target/test-classes/com/example/MainRef.class")));
     }
