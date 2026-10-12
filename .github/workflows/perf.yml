@@ -1,0 +1,49 @@
+name: Performance
+
+# Builds kwenza from the PR's base and from the PR, then times both against the same real project
+# (commons-lang3) on this one runner, interleaved. Two jars measured side by side see the same
+# noise, which a number stored from an earlier run on another machine would not. See
+# benchmarks/README.adoc.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: Build time vs base
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      # Both jars come from the same bootstrap + self-hosted build path, so the only difference
+      # between them is the source.
+      - name: Build head
+        run: ./bootstrap.sh && bin/kwenza package
+
+      - name: Build base
+        run: |
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          cd ../base
+          ./bootstrap.sh
+          bin/kwenza package
+
+      - name: Compare
+        working-directory: benchmarks
+        run: >
+          java Regress.java
+          ../../base/target/kwenza-*.jar
+          ../target/kwenza-*.jar

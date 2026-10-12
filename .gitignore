@@ -16,6 +16,7 @@ benchmarks/*/gradle/bin/
 
 # Isolated, regenerable dependency caches used by benchmarks/Bench.java
 benchmarks/*/.cache/
+benchmarks/regression/*/.cache/
 
 # IDEs
 .idea/

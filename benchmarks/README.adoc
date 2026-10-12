@@ -55,6 +55,53 @@ and Mockito tests, not a throwaway.
 |`package`, `test`
 |===
 
+== Regression check: base vs head
+
+`Regress.java` answers a different question from `Bench.java`: not "how does kwenza compare to
+Maven", but "did this change make kwenza slower". It takes two kwenza jars and runs both against
+a real project, interleaved, then fails if head is meaningfully slower.
+
+[source,bash]
+----
+java Regress.java <base-jar> <head-jar> [runs] [threshold-percent]
+----
+
+The project is https://github.com/apache/commons-lang[commons-lang3] at a pinned tag and commit
+(259 main source files, about 100k lines), fetched into `regression/commons-lang3/.cache/` on
+first use. Its `kwenza.toml` and `kwenza.lock` live here, in `regression/commons-lang3/`. It's
+there because the hello-world scenarios are almost all fixed JVM startup, so a change to the
+compile path barely moves them; here javac is about 85% of a build.
+
+[cols="1,3"]
+|===
+|Operation |What it exercises
+
+|`package (no deps)`
+|Resolve from the lock, javac over the whole tree, jar. No dependencies to download.
+
+|`resolve (warm cache)`
+|Resolve the dev-dependency graph with no lock, POMs and jars already cached: POM parsing and
+version mediation, no network.
+
+|`resolve (download)`
+|The same from an empty cache, so real downloads and checksum verification. The caches are
+isolated, as above. Capped at 5 runs, and the noisiest of the three because it's network-bound.
+|===
+
+Why two jars in one run instead of a stored baseline: absolute times on shared CI runners vary
+between machines and between days, but two jars measured alternately seconds apart share the
+noise. A run fails only when head's median *and* its minimum are both more than the threshold
+(default 15%, and at least 50 ms) slower than base's; the median alone flags a busy machine, the
+minimum alone a lucky run. Two identical jars compared on a laptop showed a median 13.7% apart
+and a minimum 1% apart, which is why both are required.
+
+CI runs it on every pull request (`.github/workflows/perf.yml`), building base from the PR's
+target branch, and writes the table to the job summary. Locally, build the two jars however you
+like, for example `bin/kwenza package` on each branch and copy the jars aside.
+
+Not covered yet: a project with a much larger dependency graph (Cargo's resolver benchmarks use
+captured real-world manifests and locks for this), tests, and trends over time on `main`.
+
 == One copy of the source, not three
 
 Every tool variant's `src/` is a symlink into the corresponding `examples/*` project
