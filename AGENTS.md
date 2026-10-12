@@ -434,7 +434,8 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   main-classpath question under the dev-dependencies decision above, since that's the one path
   that reads POMs from a lock-backed build.
 
-- **Resolver gaps against Maven's POM semantics.** Found reading `Resolver`/`PomParser` against
+- **Resolver gaps against Maven's POM semantics.** (How the formats work:
+  [docs/contributing/maven-repositories-poms-and-boms.adoc](docs/contributing/maven-repositories-poms-and-boms.adoc).) Found reading `Resolver`/`PomParser` against
   Maven's documentation (sourcing in
   [docs/research/maven-versions-poms-and-modules.adoc](docs/research/maven-versions-poms-and-modules.adoc)).
   Versions are opaque strings, so a range or an unresolved `${property}` makes `URI.create`

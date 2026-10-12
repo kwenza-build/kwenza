@@ -5,7 +5,8 @@
 Research for a maintainer, not a decision record. The conclusions are summarized in
 link:../../AGENTS.md[AGENTS.md] ("Resolver gaps against Maven's POM semantics", "Versions, ranges
 and snapshots" and the JPMS item under "Future ideas") and ordered in
-link:../../ROADMAP.adoc[ROADMAP.adoc]; this file holds the sourcing behind them.
+link:../../ROADMAP.adoc[ROADMAP.adoc]; this file holds the sourcing behind them. For how the formats work, start with the
+link:../contributing/maven-repositories-poms-and-boms.adoc[primer].
 
 Sources were read on 2026-10-12. Each claim is tagged:
 

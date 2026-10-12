@@ -1,0 +1,197 @@
+= Maven repositories, POMs and BOMs: a primer
+:toc:
+:toclevels: 2
+
+A contributor's primer on the Maven formats kwenza consumes, and where each one lives in the
+resolver. It explains *how it works*; for what kwenza gets wrong today and what's planned, see
+link:../../AGENTS.md[AGENTS.md] ("Resolver gaps against Maven's POM semantics", "Versions, ranges
+and snapshots"), and for the sourcing behind the claims here, see
+link:../research/maven-versions-poms-and-modules.adoc[the research note]. Where the two
+disagree, the research note is the one that cites sources.
+
+== 1. A repository is a directory tree
+
+A Maven repository (Central, or `~/.m2/repository`) is static files at predictable paths, with no
+server logic:
+
+----
+<groupId, dots to slashes>/<artifactId>/<version>/<artifactId>-<version>[-classifier].<extension>
+----
+
+For `com.fasterxml.jackson.core:jackson-databind:2.17.0`:
+
+----
+com/fasterxml/jackson/core/jackson-databind/
+├── maven-metadata.xml                      list of published versions (artifact level)
+└── 2.17.0/
+    ├── jackson-databind-2.17.0.pom         the descriptor
+    ├── jackson-databind-2.17.0.jar         the binary
+    ├── jackson-databind-2.17.0.jar.sha1    checksum (also .md5; .sha256/.sha512 optional)
+    ├── jackson-databind-2.17.0.pom.sha1
+    ├── jackson-databind-2.17.0-sources.jar a classifier selects a variant
+    └── jackson-databind-2.17.0-javadoc.jar
+----
+
+* *GAV* (`groupId:artifactId:version`) identifies an artifact. A classifier (`sources`,
+  `javadoc`) picks a variant and the extension its type.
+* *The POM sits beside the jar.* A resolver never opens a jar to learn its dependencies: it
+  fetches the small `.pom`.
+* *Checksums sit beside every file.* Central requires `.md5` and `.sha1`.
+* *`maven-metadata.xml`* lists versions. It's needed only for ranges, `LATEST`/`RELEASE`, snapshots
+  and a future `kwenza upgrade`; kwenza reads none of it today.
+* *Released versions are meant to be immutable*, which is what lets `kwenza.lock` pin a hash.
+
+The local cache uses the same layout, with a few extra bookkeeping files. In kwenza: `Gav` is the
+coordinate, `LocalRepository` maps it to a cache path, `MavenRepository` to a URL, and
+`ArtifactStore` decides which to use and what to trust.
+
+== 2. What a POM contains
+
+The POM (`pom.xml`, published as `<artifact>-<version>.pom`) is the project descriptor. These
+parts matter for resolution:
+
+[source,xml]
+----
+<project>
+  <parent>                            <!-- inherit from another POM -->
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.3.0</version>
+  </parent>
+
+  <groupId>com.acme</groupId>         <!-- may be inherited from the parent -->
+  <artifactId>widget</artifactId>
+  <version>1.0</version>
+
+  <properties>
+    <jackson.version>2.17.0</jackson.version>
+  </properties>
+
+  <dependencyManagement>              <!-- version/scope DEFAULTS, not real dependencies -->
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>         <!-- BOM import, section 3 -->
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>                      <!-- the real dependencies -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <!-- no <version>: filled in from dependencyManagement -->
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>2.0.13</version>
+      <scope>runtime</scope>          <!-- compile (default) | runtime | provided | test -->
+      <optional>true</optional>       <!-- not passed on to consumers -->
+      <exclusions>...</exclusions>    <!-- cut a transitive branch -->
+    </dependency>
+  </dependencies>
+</project>
+----
+
+[cols="1,4"]
+|===
+| Mechanism | What it does
+
+| `<parent>`
+| Inherits `properties`, `dependencyManagement`, `dependencies` and the group/version. The parent
+  is fetched from the repository like any artifact, recursively. The result is the *effective
+  POM*. kwenza builds it in `Resolver.fetchEffectivePom`.
+
+| `${property}`
+| Substituted from `<properties>` (own, then inherited), plus built-ins such as
+  `${project.version}`. Versions are very often written this way. kwenza: `applyProperties` and
+  `resolveProps`.
+
+| `dependencyManagement`
+| Supplies a version (and scope, exclusions) for a dependency that omits it. It also overrides the
+  version of *transitive* dependencies. It never adds a dependency by itself. kwenza:
+  `buildManagementMap`.
+
+| `<scope>`
+| `compile` and `runtime` are transitive; `provided`, `test` and `system` aren't. kwenza keeps
+  `TRANSITIVE_SCOPES` and skips `optional` entries.
+
+| `<exclusions>`
+| Remove a transitive artifact on the path through that one dependency. *Not implemented yet.*
+|===
+
+== 3. BOMs
+
+A *BOM* (Bill of Materials) is a POM with `<packaging>pom</packaging>` and a large
+`dependencyManagement` section, and nothing else. It has no code and no jar: it's a table of
+"these artifacts, at these mutually compatible versions". `jackson-bom` pins `jackson-core`,
+`jackson-databind`, `jackson-annotations` and dozens more to one version, so you don't keep a
+dozen version numbers in step by hand.
+
+It can be used two ways:
+
+. *Import*: a `<dependency>` with `<type>pom</type>` and `<scope>import</scope>` inside
+  `dependencyManagement` (the example above). The BOM's managed entries are merged into yours.
+  This works only inside `dependencyManagement`, so it's how a project that already has a
+  different `<parent>` adds a BOM.
+. *Inherit*: make the BOM the `<parent>`. Spring Boot's `spring-boot-starter-parent` does this.
+
+Rules a resolver has to follow (Maven's dependency-mechanism guide):
+
+* The importing POM's own `dependencyManagement` entries win over imported ones; among several
+  imports, the one declared first wins.
+* The imported BOM is processed fully: it can have its own parent, properties and nested imports.
+  Imports are transitive, and a POM can't import its own parent or a module below it.
+* A BOM supplies *versions only*. An artifact it manages isn't on your classpath until you
+  declare it under `<dependencies>`.
+
+Why this matters to kwenza: anything built on a BOM (Jackson, Spring) has POMs with version-less
+dependencies. A resolver that ignored `dependencyManagement`, imports and parents couldn't find
+those versions and would fail on a large share of Central. In kwenza, `buildManagementMap` expands
+`import` entries recursively with `putIfAbsent`, which implements "own entries first, then
+imports in order".
+
+== 4. Versions and mediation, briefly
+
+Maven versions aren't semver. They're dot/hyphen strings with a defined order, and nothing about
+a bump promises compatibility. A plain `<version>1.2</version>` is a *soft* requirement: a
+preference another version can override. `[1.2]` and ranges like `[1.0,2.0)` are *hard*
+requirements.
+
+When the graph reaches one artifact at two versions, Maven takes the one *nearest the project*
+(at equal depth, the first declared), and `dependencyManagement` beats both for transitive
+dependencies. kwenza implements nearest-wins as a breadth-first walk in `Resolver`: each level's
+first version per module wins, and a module already chosen at a shallower depth is kept. Nearest-wins
+never compares two versions, so kwenza needs no version ordering until it reads
+`maven-metadata.xml`. The ordering rules, ranges, `SNAPSHOT` and `LATEST` are in the research
+note and AGENTS.md ("Versions, ranges and snapshots").
+
+== 5. How one resolution runs in kwenza
+
+. Read `group:artifact` and an exact `version` from `kwenza.toml`. (If `kwenza.lock` is fresh,
+  skip the network and go to step 6 with the locked entries.)
+. For each module at the current depth, fetch its `.pom` (cache first, then the repository).
+. Follow `<parent>` recursively and merge properties and management into the effective POM.
+. Expand `import` BOMs into a `module -> version` map.
+. For each declared dependency of that POM: drop `optional` ones and non-transitive scopes, take
+  the explicit version or else the managed one, and queue it for the next depth.
+. Repeat for the next depth. The first version chosen for a module at the shallowest depth wins.
+. For every chosen module, get the jar through `ArtifactStore.jar(gav, expectation)`: `Pinned`
+  from the lock, or `Published` against the repository's `.sha1`. Write each jar's `sha256` into
+  `kwenza.lock`.
+
+The places this can't yet cope with (ranges, snapshots, `LATEST`, exclusions, unresolved
+properties, a version-less dependency) are the subject of the roadmap items in Milestone 1.
+
+== 6. Where to read more
+
+* link:../research/maven-versions-poms-and-modules.adoc[Research note]: sourced facts and open
+  questions on versions, POM semantics, snapshots and Java modules.
+* https://maven.apache.org/pom.html[POM reference] and
+  https://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html[dependency
+  mechanism guide]: Maven's own account of mediation, management and BOM imports.
+* https://maven.apache.org/repositories/layout.html[Repository layout].
