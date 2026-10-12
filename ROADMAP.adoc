@@ -228,8 +228,10 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
 * [ ] *Mediation notices.* When resolution picks a version *lower* than one a dependency asked
   for (nearest-wins, and the usual source of a runtime `NoSuchMethodError`), say so at resolution
   time, with the dependency chain and the fix. Needs the version ordering port built for
-  `kwenza upgrade` (below), so do it after that. Decide whether it's a warning by default or
-  `--verbose` only: noisy warnings get ignored, which defeats the point.
+  `kwenza upgrade` (below), so do it after that. Decided: a warning *by default*, but only when
+  the chosen version is lower than one requested; silent when mediation picks the same or a
+  higher one, since noisy warnings get ignored and that defeats the point. `--verbose` can list
+  every override.
 * [ ] *`kwenza upgrade`*: move dependencies to newer versions by editing `kwenza.toml` itself
   (versions are exact pins, so there's no range for a lock-only `update` to move within). Read
   each direct dependency's `maven-metadata.xml` for its published versions, bump `version` or the

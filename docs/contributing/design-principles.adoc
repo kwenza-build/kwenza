@@ -234,7 +234,9 @@ BOMs or POM inheritance. Three places carry this, in order of how early they cat
   rather than half-handled. Where kwenza has to pick between versions, it should be able to say
   so: when nearest-wins settles on a version lower than one a dependency asked for, that's the
   classic source of a runtime `NoSuchMethodError`, and a notice at resolution time is worth more
-  than any paragraph in a guide. (That comparison needs Maven's version ordering, which kwenza
+  than any paragraph in a guide. Decided: warn by default, and only in that case (a lower version
+  chosen than one requested); an override to the same or a higher version stays silent, because a
+  warning people learn to ignore teaches nothing. (That comparison needs Maven's version ordering, which kwenza
   doesn't implement yet; see the roadmap.)
 * *Messages: say what happened, why, and what to do.* An error about a dependency names the whole
   chain that pulled it in, says which rule kwenza applied, and names the fix: pin the version in
