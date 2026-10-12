@@ -103,6 +103,10 @@ through `KWENZA_REPO`, Maven through `-Dmaven.repo.local` and Gradle through `GR
 timing is the wall-clock time of the whole process, from launch to exit, so it includes JVM
 start-up for every tool that isn't running as a daemon.
 
+Each tool is started through its launcher script: `bin/kwenza`, `./mvnw` and `./gradlew`. kwenza's is
+a few lines of shell that find the jar and run `java -jar` on it, which adds about 25 ms to a
+build.
+
 == Reading the results
 
 * The charts and tables are one machine, one day. Differences of a few percent are noise;
