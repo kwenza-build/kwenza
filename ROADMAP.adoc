@@ -91,6 +91,15 @@ structure everything else builds on.
    them), the docs match, and any resulting changes are added as items below.
 * [ ] *`--project <path>`.* Load `Project` from an explicit root (a global option in `cli.Cli`)
   instead of the working directory. Small and standalone; it tests both review passes above.
+* [ ] *Bug: `kwenza test` can't start the test JVM with Mockito 4.x.* When `org.mockito:mockito-core`
+  resolves, `kwenza test` loads its jar as a `-javaagent` (see AGENTS.md). Only Mockito 5 jars are
+  valid agents (they declare `Premain-Class`); 4.x doesn't, so the JVM dies with "Failed to find
+  Premain-Class manifest attribute" before any test runs. Found with commons-compress 1.28, whose
+  parent pom pins Mockito 4.11, and 4.x is still common. Check the jar's manifest for
+  `Premain-Class` before adding the flag, and say what's happening when it's missing, so a project
+  on Mockito 4 gets a working run (it still self-attaches, with the JDK's warning) rather than a
+  crash. TDD at the `TestCommand`/`JvmLaunch` seam. _Done when:_ `kwenza test` passes on a
+  project that depends on `mockito-core` 4.11.
 * [ ] *JVM arguments for `test` and `run`.* There's no way to give the forked JVM options, so a
   project whose tests reflect into the JDK can't run them. commons-lang3's tests, for example,
   pass with `--add-opens java.base/java.lang=ALL-UNNAMED` and friends, as its pom sets for Surefire,
