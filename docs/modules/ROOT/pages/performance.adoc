@@ -9,36 +9,7 @@ rather than typed in, and the table at the top says when and where they were mea
 
 Read the Gradle numbers with the daemon in mind: see <<daemon>>.
 
-include::partial$benchmark-results.adoc[]
-
-[#daemon]
-== Daemon and no-daemon
-
-kwenza starts a fresh JVM for every command and keeps nothing running between them. Maven does
-the same. Gradle's default is the opposite: the first build starts a background daemon, and every
-later build reuses it, with its classes already loaded and its compiler already optimised by the
-JIT. That is a real advantage on a repeated build, and it is why Gradle's warm figures are
-much lower than its no-daemon ones.
-
-So the charts show Gradle twice:
-
-Gradle (daemon)::
-`./gradlew` as most people run it. The timed builds reuse a daemon that earlier builds in the
-same run already started and warmed. This is the figure to compare against if you build over and
-over in one session.
-
-Gradle (no daemon)::
-`./gradlew --no-daemon`. Every build pays for a fresh JVM, as kwenza and Maven do. This is the
-like-for-like comparison of the build logic itself, and the one that matches a CI job, where a
-build normally starts on a machine with no daemon.
-
-Neither is the "right" one. They answer different questions, and a fair reading uses both.
-
-kwenza may gain an optional daemon later, for the same reason: a warm process is the only way to
-remove JVM start-up and class loading from every build, and that cost matters most on small
-projects and in a tight edit-and-rebuild loop. It isn't built, so none of the figures here
-include one. If it arrives, it will be opt-in and these pages will show it as its own line. See
-xref:design-principles.adoc[] for why kwenza doesn't have one today.
+include::partial$benchmark-environment.adoc[]
 
 == What was measured
 
@@ -83,20 +54,7 @@ Both operations are a *clean* build: the output directory (`target` or `build`) 
 every timed run, so every run compiles from source. Maven's and Gradle's own incremental or build
 caches are not used.
 
-=== Warm and cold
-
-Warm::
-The dependency caches are already populated, so no run touches the network. The harness does one
-untimed run first, then times the stated number of clean rebuilds and reports the median and the
-fastest. kwenza builds from its `kwenza.lock`; Maven and Gradle use their local caches. Gradle's
-daemon, when it is used, is started by the untimed run and stopped after the last timed one.
-
-Cold::
-The tool's dependency cache is deleted first (and `kwenza.lock` for kwenza), so the run resolves
-and downloads everything from Maven Central, and each tool does one timed run. This measures the
-network as much as the tool, so treat it as indicative. The downloaded Maven and Gradle
-_wrapper distributions_ are left in place, since fetching a ~120 MB build tool isn't part of
-building your project.
+=== How each build is run
 
 Every tool uses its own isolated cache directory, never your real `~/.m2` or `~/.gradle`: kwenza
 through `KWENZA_REPO`, Maven through `-Dmaven.repo.local` and Gradle through `GRADLE_USER_HOME`. The
@@ -107,14 +65,96 @@ Each tool is started through its launcher script: `bin/kwenza`, `./mvnw` and `./
 a few lines of shell that find the jar and run `java -jar` on it, which adds about 25 ms to a
 build.
 
-== Reading the results
+[#daemon]
+== Daemon and no-daemon
 
-* The charts and tables are one machine, one day. Differences of a few percent are noise;
-  the harness reports the fastest run next to the median to help you see how noisy a row was.
+kwenza starts a fresh JVM for every command and keeps nothing running between them. Maven does
+the same. Gradle's default is the opposite: the first build starts a background daemon, and every
+later build reuses it, with its classes already loaded and its compiler already optimised by the
+JIT. That is a real advantage on a repeated build, and it is why Gradle's warm figures are
+much lower than its no-daemon ones.
+
+So the charts show Gradle twice:
+
+Gradle (daemon)::
+`./gradlew` as most people run it. The timed builds reuse a daemon that earlier builds in the
+same run already started and warmed. This is the figure to compare against if you build over and
+over in one session.
+
+Gradle (no daemon)::
+`./gradlew --no-daemon`. Every build pays for a fresh JVM, as kwenza and Maven do. This is the
+like-for-like comparison of the build logic itself, and the one that matches a CI job, where a
+build normally starts on a machine with no daemon.
+
+Neither is the "right" one. They answer different questions, and a fair reading uses both.
+
+kwenza may gain an optional daemon later, for the same reason: a warm process is the only way to
+remove JVM start-up and class loading from every build, and that cost matters most on small
+projects and in a tight edit-and-rebuild loop. It isn't built, so none of the figures here
+include one. If it arrives, it will be opt-in and these pages will show it as its own line. See
+xref:design-principles.adoc[] for why kwenza doesn't have one today.
+
+== Warm builds
+
+A warm build is one where the dependency caches are already populated, so no run touches the
+network. The harness does one untimed run first, then times the stated number of clean rebuilds
+and reports the median and the fastest. kwenza builds from its `kwenza.lock`; Maven and Gradle use
+their local caches. Gradle's daemon, when it is used, is started by the untimed run and stopped
+after the last timed one. This is what a build costs once a project is set up, and the figure to
+look at for day-to-day work.
+
+include::partial$benchmark-warm.adoc[]
+
+=== Reading the warm results
+
 * Where the time goes changes with project size. A small project is mostly start-up cost, which
   a fresh JVM per build pays in full and a warm daemon doesn't. A large one is mostly `javac`,
   where a daemon's already-optimised compiler is the advantage. So the order of the tools can
-  differ between scenarios; look at each row rather than expecting one tool to win everywhere.
+  differ between scenarios: look at each row rather than expecting one tool to win everywhere.
+* The two Gradle bars are the same build. The gap between them is what the daemon saves, and
+  the no-daemon bar is the one to compare with kwenza and Maven, which start a fresh JVM too
+  (see <<daemon>>).
+* These are one machine on one day. Differences of a few percent are noise; the tables give the
+  fastest run next to the median, so you can see how noisy a row was.
+
+== Cold builds
+
+A cold build is the first build on a machine with nothing cached, such as a new CI runner. The
+tool's dependency cache is deleted first (and `kwenza.lock` for kwenza), so the run has to
+download everything it needs from Maven Central, and each tool does one timed run. Each tool's
+cache is separate, so one tool's downloads never help another.
+
+What a tool needs differs, and that is most of what this section measures. kwenza downloads
+only what the project declares, because compiling and packaging happen in its own process with
+no plugins. Maven also downloads the plugins that do each step (compiler, jar, resources,
+Surefire) and their dependencies. Gradle rebuilds its own caches: the build tool's libraries and
+the compiled build script. The Maven and Gradle _wrapper distributions_ (the build tools themselves,
+about 120 MB) are left in place, since downloading them isn't part of building your project.
+
+include::partial$benchmark-cold.adoc[]
+
+=== Reading the cold results
+
+* *kwenza's cold time is close to its warm time when the project has few dependencies.* For
+  `commons-lang3`, which has none, kwenza has nothing to download at all, so a cold build is
+  just a build. Maven and Gradle still download or rebuild their tooling. This is a real
+  difference, not a trick of the benchmark: kwenza has no plugin layer to fetch. But it is a
+  difference in what each tool needs on a fresh machine, not in how fast any of them compiles or
+  resolves dependencies; the warm results measure that.
+* `hello-world` and `junit-word-count` have dependencies (Guava, and JUnit and Mockito for the
+  tests) that every tool must download, so they are closer to a like-for-like comparison. Maven
+  and Gradle still download their tooling on top.
+* These are single runs, and a download is as noisy as the network. Gradle's cold times
+  vary the most, because a first build also starts the daemon and compiles the build script:
+  the daemon variant has differed by about a factor of two between identical runs. Treat the cold
+  figures as a rough guide to the order of magnitude, not a precise ranking.
+
+== Exact commands
+
+include::partial$benchmark-commands.adoc[]
+
+== Limits of these results
+
 * Not measured: Maven's own daemon, https://github.com/apache/maven-mvnd[mvnd]; builds that reuse
   earlier output (incremental builds); and test suites other than `junit-word-count`'s.
 * kwenza's own start-up isn't tuned yet. Class Data Sharing and a daemon are both ideas
