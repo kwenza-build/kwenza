@@ -34,18 +34,11 @@ public final class KwenzaManifest {
     }
 
     public static KwenzaManifest load(Path path) throws IOException {
-        Path projectDir = path.toAbsolutePath().getParent();
-        String fallbackName = projectDir != null && projectDir.getFileName() != null
-                ? projectDir.getFileName().toString() : null;
-        return parse(Files.readString(path), fallbackName);
-    }
-
-    public static KwenzaManifest parse(String text) {
-        return parse(text, null);
+        return parse(Files.readString(path));
     }
 
     @SuppressWarnings("unchecked")
-    public static KwenzaManifest parse(String text, String fallbackName) {
+    public static KwenzaManifest parse(String text) {
         Map<String, Object> root = Toml.parse(text);
         Object pkgRaw = root.get("package");
         if (!(pkgRaw instanceof Map)) {
@@ -53,16 +46,12 @@ public final class KwenzaManifest {
         }
         Map<String, Object> pkg = (Map<String, Object>) pkgRaw;
 
-        String name = pkg.containsKey("name") ? requireString(pkg, "name") : fallbackName;
-        if (name == null) {
-            throw new IllegalArgumentException(
-                    "[package] is missing 'name' and no containing directory name is available to default to");
-        }
-        String group = requireString(pkg, "group");
-        String version = requireString(pkg, "version");
-        String javaVersion = pkg.containsKey("java-version") ? requireString(pkg, "java-version") : "21";
-        String mainClass = pkg.containsKey("main-class") ? requireString(pkg, "main-class") : null;
-        String outputDir = pkg.containsKey("output-dir") ? requireString(pkg, "output-dir") : "target";
+        String name = requireString(pkg, "[package]", "name");
+        String group = requireString(pkg, "[package]", "group");
+        String version = requireString(pkg, "[package]", "version");
+        String javaVersion = pkg.containsKey("java-version") ? requireString(pkg, "[package]", "java-version") : "21";
+        String mainClass = pkg.containsKey("main-class") ? requireString(pkg, "[package]", "main-class") : null;
+        String outputDir = pkg.containsKey("output-dir") ? requireString(pkg, "[package]", "output-dir") : "target";
 
         Map<String, String> versions = parseVersions(root);
         Map<String, Dependency> dependencies = parseDependencies(root, "dependencies", versions);
@@ -107,7 +96,7 @@ public final class KwenzaManifest {
                         + "' must be an inline table like { module = \"group:artifact\", version = \"1.0\" }");
             }
             Map<String, Object> entry = (Map<String, Object>) e.getValue();
-            String module = requireString(entry, "module");
+            String module = requireString(entry, "Dependency '" + e.getKey() + "'", "module");
             String depVersion = resolveVersion(e.getKey(), entry, versions);
             int colon = module.indexOf(':');
             if (colon < 0 || module.indexOf(':', colon + 1) >= 0) {
@@ -145,10 +134,13 @@ public final class KwenzaManifest {
                 "Dependency '" + alias + "' needs a 'version' (a string, or { ref = \"...\" } into [versions])");
     }
 
-    private static String requireString(Map<String, Object> table, String key) {
+    private static String requireString(Map<String, Object> table, String where, String key) {
         Object v = table.get(key);
+        if (v == null) {
+            throw new IllegalArgumentException(where + " is missing required field '" + key + "'");
+        }
         if (!(v instanceof String)) {
-            throw new IllegalArgumentException("Expected a string value for '" + key + "'");
+            throw new IllegalArgumentException("'" + key + "' in " + where + " must be a string");
         }
         return (String) v;
     }

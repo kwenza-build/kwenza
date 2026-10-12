@@ -19,6 +19,7 @@ class BuildCommandTest {
                 "package com.example; public final class Main {}");
         BuildState state = newState(projectRoot, tempDir.resolve("repo"), """
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);

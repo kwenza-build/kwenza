@@ -16,7 +16,7 @@ Everything below will ship in kwenza's first release, 0.1.0.
 - `kwenza.toml` is the project manifest, written in TOML. It is pure data, with no scripting or
   plugin DSL.
   - `[package]` takes `name`, `group`, `version`, `java-version` (default `21`), `main-class` and
-    `output-dir` (default `target`).
+    `output-dir` (default `target`). `name`, `group` and `version` are required.
   - `[dependencies]` and `[dev-dependencies]` use the same notation as Gradle version catalogs:
     `module = "group:artifact"` with an exact `version`.
   - `[versions]` holds shared version strings that dependencies refer to with `version.ref`, also

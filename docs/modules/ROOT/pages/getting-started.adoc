@@ -68,6 +68,7 @@ mkdir -p src/main/java/com/example
 ----
 # kwenza.toml
 [package]
+name = "hello"
 group = "com.example"
 version = "0.1.0"
 main-class = "com.example.Main"
@@ -76,8 +77,7 @@ main-class = "com.example.Main"
 guava = { module = "com.google.guava:guava", version = "33.2.1-jre" }
 ----
 
-NOTE: `name` was left out deliberately — it defaults to the containing directory's name (`hello`,
-here). See xref:manifest-reference.adoc[Manifest Reference] for every field and its default.
+See xref:manifest-reference.adoc[Manifest Reference] for every field and its default.
 
 [source,java]
 ----

@@ -24,7 +24,7 @@ final class CommandTestSupport {
     }
 
     static BuildState newState(Path projectRoot, Path localRepo, String manifestText, Reporter reporter) {
-        KwenzaManifest manifest = KwenzaManifest.parse(manifestText, "project");
+        KwenzaManifest manifest = KwenzaManifest.parse(manifestText);
         return new BuildState(manifest, projectRoot, projectRoot.resolve("kwenza.lock"),
                 projectRoot.resolve("target"), localRepo, false, false, reporter);
     }

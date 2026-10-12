@@ -74,7 +74,7 @@ class BuildStateTest {
     }
 
     private BuildState newState(String manifestText) throws IOException {
-        KwenzaManifest manifest = KwenzaManifest.parse(manifestText, "project");
+        KwenzaManifest manifest = KwenzaManifest.parse(manifestText);
         if (!seeded.isEmpty()) {
             new KwenzaLock(seeded, null).save(projectRoot.resolve("kwenza.lock"), KwenzaLock.hashDependencies(manifest));
         }
@@ -89,6 +89,7 @@ class BuildStateTest {
         seed("com.example", "dev-dep", "1.0");
         BuildState state = newState("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
@@ -112,6 +113,7 @@ class BuildStateTest {
         seed("com.example", "dev-dep", "1.0");
         BuildState state = newState("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
@@ -136,6 +138,7 @@ class BuildStateTest {
                 """);
         BuildState state = newState("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
@@ -154,6 +157,7 @@ class BuildStateTest {
                 """);
         BuildState state = newState("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
@@ -177,6 +181,7 @@ class BuildStateTest {
                 """);
         BuildState state = newState("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
                 """);
@@ -209,6 +214,7 @@ class BuildStateTest {
                 """);
         BuildState state = newState("""
                 [package]
+                name = "my-app"
                 group = "com.example"
                 version = "0.1.0"
 
