@@ -26,6 +26,6 @@ public final class TestCli implements CliCommand {
 
     @Override
     public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
-        return new TestCommand(session.project(), session.compile(), session.reporter()).run();
+        return new TestCommand(session.project(), session.buildCommand(), session.reporter()).run();
     }
 }

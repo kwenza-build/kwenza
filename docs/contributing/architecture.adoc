@@ -145,7 +145,7 @@ kwenza/
     workspace/                  # Project: manifest + root + on-disk layout
     manifest/                   # kwenza.toml + kwenza.lock models
     toml/                       # hand-rolled TOML parser
-    resolver/                   # Maven Central resolution, POM parsing, mediation, local cache, ResolveContext
+    resolver/                   # Resolver (mediation), ArtifactStore (the trust rule), MavenRepository (HTTP), LocalRepository (~/.m2), ResolveContext
     compiler/                   # javax.tools.JavaCompiler wrapper, JDK compatibility check, CompileContext
     packager/                   # MANIFEST.MF + thin-jar writer
   examples/

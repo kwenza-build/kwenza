@@ -29,7 +29,7 @@ class RunCommandTest {
                 version = "0.1.0"
                 """);
 
-        Result<Void> result = new RunCommand(state.project(), state.compile(), state.reporter()).run();
+        Result<Void> result = new RunCommand(state.project(), state.build(), state.reporter()).run();
 
         assertTrue(result.failure().problems().get(0).contains("main-class"), result.failure().toString());
     }
@@ -49,7 +49,7 @@ class RunCommandTest {
 
         // DISCARD: this really does spawn a subprocess, and its own output must not bleed into
         // the outer test run's console (see TestCommandTest's class Javadoc for why).
-        assertTrue(new RunCommand(state.project(), state.compile(), state.reporter())
+        assertTrue(new RunCommand(state.project(), state.build(), state.reporter())
                 .run(ProcessBuilder.Redirect.DISCARD).isOk());
     }
 
@@ -66,7 +66,7 @@ class RunCommandTest {
                 main-class = "com.example.Main"
                 """);
 
-        Result<Void> result = new RunCommand(state.project(), state.compile(), state.reporter())
+        Result<Void> result = new RunCommand(state.project(), state.build(), state.reporter())
                 .run(ProcessBuilder.Redirect.DISCARD);
 
         assertEquals(Failure.child(3), result.failure());

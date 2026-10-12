@@ -26,6 +26,6 @@ public final class BuildCli implements CliCommand {
 
     @Override
     public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
-        return new BuildCommand(session.compile()).run();
+        return session.buildCommand().run();
     }
 }

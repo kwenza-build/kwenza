@@ -87,12 +87,12 @@ specific decision and its specific reasoning; that one is for the pattern.
   survives the one command most likely to need it.
 
 - **Multiple commands per invocation** (`kwenza build run`, `kwenza clean build run`) share one
-  `ResolveContext` and one `CompileContext` (created lazily by `cli.Session`), so a chain doesn't
-  redo resolve/compile once per command that happens to need it — `build run` resolves and
-  compiles exactly once, not twice. `clean` calls `CompileContext.invalidate()`, since
-  it deletes the very output that memoization would otherwise assume was still valid.
-  If you add a new command that produces or consumes build output, make sure it goes through
-  `ResolveContext`/`CompileContext` rather than calling `Resolver`/`JavaCompilation.compile`
+  `ResolveContext` and one `CompileContext` (owned by `cli.Session`), so a chain doesn't redo
+  resolve/compile once per command that happens to need it — `build run` resolves and compiles
+  exactly once, not twice. `clean` calls `CompileContext.forget()`, since it deletes the very
+  output that memo would otherwise assume was still valid. If you add a new command that
+  produces or consumes build output, make sure it gets it from `BuildCommand.main()`/`tests()` or
+  `ResolveCommand.resolved()`/`mainResolved()` rather than calling `Resolver`/`JavaCompilation`
   directly, or chaining will silently redo work (or worse, silently reuse stale output after a
   `clean`).
 
@@ -105,22 +105,25 @@ specific decision and its specific reasoning; that one is for the pattern.
   JDK to be N or newer; kwenza checks this itself (a failed `Result` from
   `JavaCompilation.compile`) and gives a specific, actionable message instead of surfacing a raw javac error.
 
-- **Checksums fail closed.** `MavenRepository.fetchJarAsync` refuses a downloaded jar whose `.sha1`
-  is missing, unfetchable or empty, the same as a mismatch, and never writes an unverified jar to
-  the local cache. It used to treat a failed `.sha1` fetch as "no checksum, skip it"
-  (`.exceptionally(ex -> null)`), which let anyone able to block that one URL switch verification
-  off. `Resolver.ensureFromLock` checks every jar against the lock's `sha256` before use, cache
-  hits included, and a lock entry with no `sha256` is an error rather than a pass. A *fresh*
-  resolution (no lock yet, or a changed manifest) never pins a jar nobody has
-  verified either: `Resolver.resolve` takes the lock it's replacing, checks any module resolved
-  at the same version that lock pinned against the old `sha256` (no network), and sends every
-  other jar through `MavenRepository.fetchJarVerifiedAsync`, which checks even a cache hit
-  against the *remote* `.sha1`. Never the `.jar.sha1` cached beside the jar: anyone who can
-  alter the jar can alter that too, so it would only catch accidental corruption. That costs
-  one small request per newly-pinned cached jar, which is fine on a path that's going to the
-  network anyway. `ResolveContext.ensureMainResolved` passes the merged lock it has just verified, so its
-  second resolution still makes no network calls. Expected `.sha1`s always come from the
-  repository, never the local cache, for downloads too. There's
+- **Checksums fail closed, through one trust rule.** Every jar comes from
+  `ArtifactStore.jar(gav, expectation)`, and the expectation is closed: `Pinned(sha256)` (the lock
+  vouches for it: a cached jar is checked locally with no network, a missing one is downloaded,
+  checked against the repository's `.sha1` and then the pin) or `Published` (only the
+  repository's `.sha1` vouches for it, fetched even for a cache hit). There is no "unverified"
+  option, so no caller can pick the wrong path; it used to be two fetch methods on
+  `MavenRepository`, one of which returned a cached jar unchecked, with the caller expected to
+  choose. A missing, unfetchable or empty `.sha1` is refused like a mismatch, and nothing
+  unverified is ever written to the local cache. (It once treated a failed `.sha1` fetch as "no
+  checksum, skip it", which let anyone able to block that one URL switch verification off.)
+  From a fresh lock, every entry is `Pinned`, and an entry with no `sha256` is an error. A
+  *fresh* resolution (no lock yet, or a changed manifest) pins a module from the lock it's
+  replacing when the version is unchanged, and `Published` otherwise. Never the `.jar.sha1`
+  cached beside the jar: anyone who can alter the jar can alter that too, so it would only catch
+  accidental corruption. That costs one small request per newly-pinned cached jar, which is fine
+  on a path that's going to the network anyway. `Resolver` collects every refusal rather than
+  stopping at the first, so one run lists every bad jar. `MavenRepository` is network-only now,
+  and creates its `HttpClient` on its first fetch, so a from-lock build with every jar cached
+  never creates one (that also closes the AppCDS note's "HttpClient constructed for nothing"). There's
   deliberately no opt-out flag yet: Central publishes `.sha1` for every artifact, and a
   `--insecure`-style escape hatch should wait until a real repository without checksums (a
   private registry, say) actually needs one. The mismatch message tells the user to delete the
@@ -224,10 +227,15 @@ specific decision and its specific reasoning; that one is for the pattern.
   teaching `Resolver.java`'s `Node`/`ResolvedArtifact` about which root set (`dependencies` vs.
   `devDependencies`) each artifact is reachable from. `ensureMainResolved` sidesteps that by
   re-running `Resolver.resolve` with just the main deps — cheap in practice because
-  `MavenRepository` already caches every POM/jar it fetches to `~/.m2`, so the second pass never
-  touches the network on its own, but it is real duplicated in-memory graph mediation work per
-  invocation. Worth revisiting with proper scope-tagging if that ever shows up in profiling, or if
-  `[workspace]` multi-module support (also deferred) ends up needing the same distinction anyway.
+  every POM/jar it fetches is cached in `~/.m2`, but it is real duplicated in-memory graph
+  mediation work per invocation. **Known gap, found in the codebase-design review:** the second
+  pass reads POMs, which a from-lock build never fetched, so with a cold POM cache (jars cached,
+  POMs not) a supposedly lock-only build reaches the network after all, and it can even settle
+  on a version the merged pass never chose, which no lock entry pins. Replacing it with a pure
+  projection over the merged graph (follow `requested-by` from `[dependencies]`) would fix both,
+  but changes behaviour: a dev-dependency could then raise a shared version on the main
+  classpath, as in Maven and Cargo, where today's per-scope behaviour matches Gradle. Deferred
+  to its own investigation (see ROADMAP.adoc), alongside a per-scope lock as a third option.
 
 - **`benchmarks/*/{kwenza,maven,gradle}/src` are symlinks into the matching `examples/*/src`, never
   copies.** Found the hard way: `examples/hello-world` and its benchmark copy had already silently
@@ -321,9 +329,15 @@ specific decision and its specific reasoning; that one is for the pattern.
   build context under `compiler/` the same way). `context.GlobalContext` is the environment (working
   directory, local repository, `Reporter`); `workspace.Project` is one project's manifest, root and
   on-disk layout (every `target/classes`-style path lives there and nowhere else, and owning the
-  root is what `--project` needs); `resolver.ResolveContext` memoizes resolution and owns the lock
-  freshness decision; `compiler.CompileContext` memoizes main/test compilation. `cli.Session` is
-  the only place they're wired together, lazily, so `help` never loads a manifest. Contexts
+  root is what `--project` needs); `resolver.ResolveContext` and `compiler.CompileContext` hold
+  what's been resolved and compiled so far, as `context.Memo`s, and nothing else. The work is
+  the commands': `ResolveCommand` resolves (lock freshness, writing the lock, reporting) through
+  `Resolver`, and `BuildCommand` compiles through `JavaCompilation`; `run`/`test`/`package` take a
+  `BuildCommand` and ask it for `main()`/`tests()`, so commands compose the way Cargo's `ops` do.
+  This replaced contexts that both remembered *and* did the work, which left `BuildCommand` and
+  `ResolveCommand` as one-line pass-throughs. `cli.Session` is the only place it's wired
+  together, lazily, so `help` never loads a manifest; commands are cheap and made fresh per use,
+  the state is what persists across a chain. Contexts
   depend downwards only (`compiler` → `resolver` → `workspace`/`context`), and `context` depends on
   nothing. All in a top-level `context/` package was the alternative; rejected for now because
   `context` would then depend on every concern, but it's an easy move if that ever reads better.
@@ -410,6 +424,16 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
 
 ## Also on the radar (surfaced later, not yet triaged against the above)
 
+- **POMs are not verified.** Jars go through the one trust rule (see "Checksums fail closed"),
+  but POMs, which decide *which* jars get resolved, are taken from the local cache or the
+  repository with no checksum at all (`ArtifactStore.pom`). Someone able to alter a cached POM
+  could add a dependency on a different, real artifact, which would then pass its own `.sha1`
+  check. Found in the codebase-design review. The likely fix mirrors jars: check a fetched POM
+  against its published `.pom.sha1`, and consider pinning POM hashes in `kwenza.lock` so a
+  lock-backed resolution can verify cached POMs locally. That second part ties in with the
+  main-classpath question under the dev-dependencies decision above, since that's the one path
+  that reads POMs from a lock-backed build.
+
 - **CI-compatible test reports via `--reports-dir`.** `kwenza test` forks `ConsoleLauncher` already;
   adding `--reports-dir=<dir>` to that invocation makes `ConsoleTestExecutor` register a
   `LegacyXmlReportGeneratingListener`, which writes one `TEST-<class>.xml` per test class in the
@@ -430,10 +454,10 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   -version` loads 383 classes (all covered by the JDK's default CDS archive); a `kwenza package`
   on `examples/hello-world` loads 4029, of which 2751 aren't covered by that default archive —
   1164 alone are `com.sun.tools` (javac internals). A second, previously-unconfirmed hypothesis
-  also checked out: resolution constructs `MavenRepository.central(...)` (and with it a
-  `java.net.http.HttpClient`) unconditionally, even on the from-lock path where nothing gets
-  fetched — that pulls in ~250 `sun.security.ssl`/`javax.net.ssl`/`javax.crypto` classes every
-  invocation for no reason. Small, separate, still-open fix; not done as part of this.
+  also checked out: resolution constructed a `java.net.http.HttpClient` unconditionally, even on
+  the from-lock path where nothing gets fetched — that pulled in ~250
+  `sun.security.ssl`/`javax.net.ssl`/`javax.crypto` classes every invocation for no reason.
+  Fixed since: `MavenRepository` creates its client on the first fetch.
 
   Mechanism: `-XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=<path>` (available since JDK 19,
   so covered by kwenza's own JDK 21 floor — `bootstrap.sh` compiles kwenza itself with `--release
@@ -754,7 +778,7 @@ close most of this gap — flagged as a real future optimization, intentionally 
 
 kwenza tests itself: `bin/kwenza test` runs a real JUnit 5 suite under `src/test/java`, mirroring
 the main package layout one test class per module (`toml/TomlTest`, `resolver/ResolverTest`,
-`compiler/CompileContextTest`, `cli/CliTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
+`resolver/ArtifactStoreTest`, `commands/BuildCommandTest`, `cli/CliTest`, and so on). Run it the same way after any change: `bin/kwenza package` (to
 pick up new/changed test sources into the self-hosted jar) then `bin/kwenza test`. CI
 (`.github/workflows/ci.yml`) runs that suite plus the three example checks below
 (`.github/scripts/smoke-examples.sh`) from a clean bootstrap on every push and PR. If you add or

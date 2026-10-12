@@ -1,6 +1,5 @@
 package dev.kwenza.commands;
 
-import dev.kwenza.compiler.CompileContext;
 import dev.kwenza.context.Reporter;
 import dev.kwenza.context.Result;
 import dev.kwenza.context.Timing;
@@ -15,18 +14,18 @@ import java.nio.file.Path;
 /** {@code kwenza package}: builds, then writes a thin jar with a Class-Path manifest entry. */
 public final class PackageCommand {
     private final Project project;
-    private final CompileContext compile;
+    private final BuildCommand build;
     private final Reporter reporter;
 
-    public PackageCommand(Project project, CompileContext compile, Reporter reporter) {
+    public PackageCommand(Project project, BuildCommand build, Reporter reporter) {
         this.project = project;
-        this.compile = compile;
+        this.build = build;
         this.reporter = reporter;
     }
 
     /** @return the jar it wrote */
     public Result<Path> run() throws IOException {
-        Result<Resolver.Resolution> compiled = compile.ensureCompiled();
+        Result<Resolver.Resolution> compiled = build.main();
         if (compiled instanceof Result.Err<?> err) {
             return err.castErr();
         }

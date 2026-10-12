@@ -1,6 +1,5 @@
 package dev.kwenza.commands;
 
-import dev.kwenza.compiler.CompileContext;
 import dev.kwenza.context.Reporter;
 import dev.kwenza.context.Result;
 import dev.kwenza.resolver.Resolver;
@@ -12,12 +11,12 @@ import java.util.List;
 /** {@code kwenza run}: builds, then executes [package].main-class in a fresh java subprocess. */
 public final class RunCommand {
     private final Project project;
-    private final CompileContext compile;
+    private final BuildCommand build;
     private final Reporter reporter;
 
-    public RunCommand(Project project, CompileContext compile, Reporter reporter) {
+    public RunCommand(Project project, BuildCommand build, Reporter reporter) {
         this.project = project;
-        this.compile = compile;
+        this.build = build;
         this.reporter = reporter;
     }
 
@@ -31,7 +30,7 @@ public final class RunCommand {
         if (mainClass == null) {
             return Result.err("kwenza.toml has no [package] main-class set - required for `kwenza run`");
         }
-        Result<Resolver.Resolution> compiled = compile.ensureCompiled();
+        Result<Resolver.Resolution> compiled = build.main();
         if (compiled instanceof Result.Err<?> err) {
             return err.castErr();
         }

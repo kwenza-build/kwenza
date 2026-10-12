@@ -1,132 +1,30 @@
 package dev.kwenza.compiler;
 
-import dev.kwenza.context.Reporter;
-import dev.kwenza.context.Result;
-import dev.kwenza.context.Timing;
-import dev.kwenza.resolver.ResolveContext;
+import dev.kwenza.context.Memo;
 import dev.kwenza.resolver.Resolver;
-import dev.kwenza.workspace.Project;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Stream;
 
 /**
- * A single invocation's compilation state, memoized so a command chain (e.g.
- * {@code kwenza build run}) compiles exactly once, not once per command that needs it. Resolves
- * through the {@link ResolveContext} it's given, so callers never have to resolve first. One
- * instance per invocation, shared across every command in its chain.
+ * What an invocation has compiled so far, shared by every command in its chain so
+ * {@code kwenza build run} compiles once. State only: {@code BuildCommand} does the compiling.
+ * Each memo holds the resolution the classes were compiled against.
  */
 public final class CompileContext {
+    private final Memo<Resolver.Resolution> main = new Memo<>();
+    private final Memo<Resolver.Resolution> tests = new Memo<>();
 
-    private final Project project;
-    private final ResolveContext resolve;
-    private final Reporter reporter;
-
-    private boolean compiled;
-    private boolean testCompiled;
-
-    public CompileContext(Project project, ResolveContext resolve, Reporter reporter) {
-        this.project = project;
-        this.resolve = resolve;
-        this.reporter = reporter;
+    /** {@code src/main/java}, compiled against {@code [dependencies]} only. */
+    public Memo<Resolver.Resolution> main() {
+        return main;
     }
 
-    /**
-     * Whatever was compiled before this point is gone now (a {@code clean} deleted it) - the next
-     * ensureCompiled/ensureTestCompiled call in the chain must redo it, not reuse it.
-     */
-    public void invalidate() {
-        compiled = false;
-        testCompiled = false;
+    /** {@code src/test/java}, compiled against both scopes. */
+    public Memo<Resolver.Resolution> tests() {
+        return tests;
     }
 
-    /**
-     * Compiles {@code src/main/java} against the dependencies-only classpath, at most once per
-     * invocation. Returns that dependencies-only resolution, which is what anything shipped
-     * (package, run) puts on its classpath.
-     */
-    public Result<Resolver.Resolution> ensureCompiled() throws IOException {
-        Result<Resolver.Resolution> mainOnly = resolve.ensureMainResolved();
-        if (compiled || !mainOnly.isOk()) {
-            return mainOnly;
-        }
-        Path mainClasses = project.classesDir();
-        Result<Void> compiledOk = compile(project.mainSources(), mainClasses, mainOnly.get().classpath(),
-                "Compilation failed");
-        Timing.mark("compiled");
-        if (compiledOk instanceof Result.Err<?> err) {
-            return err.castErr();
-        }
-        copyResources(project.mainResources(), mainClasses);
-        reporter.info("compile: " + project.relativize(mainClasses));
-        compiled = true;
-        return mainOnly;
-    }
-
-    /**
-     * Compiles {@code src/test/java} at most once per invocation, compiling main first. Needs both
-     * scopes on the classpath (main code and test code alike may reference either), so it returns
-     * the merged resolution, not the dependencies-only one.
-     */
-    public Result<Resolver.Resolution> ensureTestCompiled() throws IOException {
-        Result<Resolver.Resolution> main = ensureCompiled();
-        if (main instanceof Result.Err<?> err) {
-            return err.castErr();
-        }
-        Result<Resolver.Resolution> merged = resolve.ensureResolved();
-        if (testCompiled || !merged.isOk()) {
-            return merged;
-        }
-        Path testClasses = project.testClassesDir();
-        List<Path> testClasspath = new ArrayList<>();
-        testClasspath.add(project.classesDir());
-        testClasspath.addAll(merged.get().classpath());
-        Result<Void> compiledOk = compile(project.testSources(), testClasses, testClasspath, "Test compilation failed");
-        Timing.mark("test-compiled");
-        if (compiledOk instanceof Result.Err<?> err) {
-            return err.castErr();
-        }
-        Files.createDirectories(testClasses);
-        copyResources(project.testResources(), testClasses);
-        reporter.info("compile: " + project.relativize(testClasses));
-        testCompiled = true;
-        return merged;
-    }
-
-    /** javac's diagnostics go out either way (warnings too); a failed compile becomes {@code failureMessage}. */
-    private Result<Void> compile(Path sources, Path output, List<Path> classpath, String failureMessage)
-            throws IOException {
-        Result<JavaCompilation.Output> result =
-                JavaCompilation.compile(sources, output, classpath, project.manifest().javaVersion);
-        if (result instanceof Result.Err<?> err) {
-            return err.castErr();
-        }
-        printDiagnostics(result.get().diagnostics());
-        return result.get().success() ? Result.ok() : Result.err(failureMessage);
-    }
-
-    private static void copyResources(Path resourcesDir, Path outputDir) throws IOException {
-        if (!Files.isDirectory(resourcesDir)) {
-            return;
-        }
-        try (Stream<Path> walk = Files.walk(resourcesDir)) {
-            List<Path> files = walk.filter(Files::isRegularFile).toList();
-            for (Path file : files) {
-                Path dest = outputDir.resolve(resourcesDir.relativize(file));
-                Files.createDirectories(dest.getParent());
-                Files.copy(file, dest, StandardCopyOption.REPLACE_EXISTING);
-            }
-        }
-    }
-
-    private static void printDiagnostics(List<String> diagnostics) {
-        for (String d : diagnostics) {
-            System.err.println(d);
-        }
+    /** Whatever was compiled is gone ({@code clean} deleted it): the next build must compile again. */
+    public void forget() {
+        main.forget();
+        tests.forget();
     }
 }

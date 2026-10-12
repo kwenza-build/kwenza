@@ -26,6 +26,6 @@ public final class CleanCli implements CliCommand {
 
     @Override
     public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
-        return new CleanCommand(session.project(), session.compile(), session.reporter()).run();
+        return new CleanCommand(session.project(), session.compileState(), session.reporter()).run();
     }
 }

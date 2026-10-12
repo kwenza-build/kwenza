@@ -67,6 +67,13 @@ structure everything else builds on.
   handling (`kwenza --version`, `--help` / `kwenza help <command>`, and documented, stable exit
   codes already landed with the code-design passes). Audit error messages
   against "fail fast, with a specific and actionable message".
+* [ ] *Main classpath: second resolution, projection, or per-scope lock.* Today `build`/`run`/
+  `package` re-resolve `[dependencies]` alone, which reads POMs (so a lock-backed build can reach
+  the network on a cold POM cache) and can pick a version the lock doesn't pin. Investigate the
+  three options and what Maven, Gradle and Cargo each do before deciding: it's a behaviour
+  change either way, so it belongs before 0.1. See AGENTS.md, the dev-dependencies decision.
+* [ ] *Verify POMs.* Check fetched POMs against their published `.pom.sha1`, and decide whether
+  kwenza.lock pins POM hashes too. See AGENTS.md, "POMs are not verified".
 * [ ] *Portable thin jars.* `kwenza package` writes absolute `file:` URIs into `~/.m2` in the
   jar's `Class-Path`, so the jar only runs on the machine (and account) that built it. Copy the
   dependency jars into `<output-dir>/lib/` and write relative `lib/...` entries instead, so

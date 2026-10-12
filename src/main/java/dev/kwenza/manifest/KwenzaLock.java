@@ -122,7 +122,8 @@ public final class KwenzaLock {
         return new KwenzaLock(entries, (String) root.get("manifest-hash"));
     }
 
-    public void save(Path path, String manifestHash) throws IOException {
+    /** Writes this lock, manifest hash included, to {@code path}. */
+    public void save(Path path) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("manifest-hash = ").append(quote(manifestHash)).append("\n\n");
         for (Entry e : entries) {

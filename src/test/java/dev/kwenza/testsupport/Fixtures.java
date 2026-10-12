@@ -1,12 +1,17 @@
 package dev.kwenza.testsupport;
 
+import dev.kwenza.commands.BuildCommand;
+import dev.kwenza.commands.ResolveCommand;
 import dev.kwenza.compiler.CompileContext;
-import dev.kwenza.context.GlobalContext;
 import dev.kwenza.context.Reporter;
 import dev.kwenza.manifest.KwenzaLock;
 import dev.kwenza.manifest.KwenzaManifest;
+import dev.kwenza.resolver.ArtifactStore;
+import dev.kwenza.resolver.Gav;
+import dev.kwenza.resolver.LocalRepository;
 import dev.kwenza.resolver.MavenRepository;
 import dev.kwenza.resolver.ResolveContext;
+import dev.kwenza.resolver.Resolver;
 import dev.kwenza.workspace.Project;
 
 import java.io.IOException;
@@ -31,22 +36,33 @@ public final class Fixtures {
     private Fixtures() {
     }
 
-    /** One project with every context wired the way the CLI's {@code Session} wires them. */
-    public record Contexts(Project project, GlobalContext global, ResolveContext resolve, CompileContext compile) {
-        public Reporter reporter() {
-            return global.reporter();
+    /**
+     * One project, its shared state, and the commands that work on it, wired the way the CLI's
+     * {@code Session} wires them. Commands are made fresh on each call, as they are there; the
+     * state persists, which is what chained commands share.
+     */
+    public record Contexts(Project project, Reporter reporter, ResolveContext resolveState,
+                           CompileContext compileState, Resolver resolver) {
+
+        public ResolveCommand resolve() {
+            return new ResolveCommand(project, resolveState, resolver, reporter);
+        }
+
+        public BuildCommand build() {
+            return new BuildCommand(project, compileState, resolve(), reporter);
         }
     }
 
     public static Contexts contexts(Path projectRoot, Path localRepo, String manifestText) {
-        return contexts(projectRoot, localRepo, manifestText, mock(Reporter.class));
+        return contexts(projectRoot, localRepo, manifestText, mock(Reporter.class), MavenRepository.central());
     }
 
-    public static Contexts contexts(Path projectRoot, Path localRepo, String manifestText, Reporter reporter) {
+    /** With a given reporter and remote repository, for tests that check what was reported or fetched. */
+    public static Contexts contexts(Path projectRoot, Path localRepo, String manifestText, Reporter reporter,
+                                    MavenRepository remote) {
         Project project = new Project(projectRoot, KwenzaManifest.parse(manifestText).get());
-        GlobalContext global = new GlobalContext(projectRoot, localRepo, reporter);
-        ResolveContext resolve = new ResolveContext(project, global);
-        return new Contexts(project, global, resolve, new CompileContext(project, resolve, reporter));
+        Resolver resolver = new Resolver(new ArtifactStore(new LocalRepository(localRepo), remote));
+        return new Contexts(project, reporter, new ResolveContext(), new CompileContext(), resolver);
     }
 
     public static void writeSource(Path root, String relativePath, String content) throws IOException {
@@ -82,8 +98,9 @@ public final class Fixtures {
         }
 
         public void seed(String group, String artifact, String version) throws Exception {
-            MavenRepository repo = MavenRepository.central(localRepo);
-            Path pomPath = repo.artifactPath(group, artifact, version, "pom");
+            LocalRepository repo = new LocalRepository(localRepo);
+            Gav gav = new Gav(group, artifact, version);
+            Path pomPath = repo.path(gav, "pom");
             Files.createDirectories(pomPath.getParent());
             Files.writeString(pomPath, """
                     <project>
@@ -94,7 +111,7 @@ public final class Fixtures {
                     """.formatted(group, artifact, version));
             // A real, valid (if empty) jar - javac opens every classpath entry as a zip while
             // compiling, even ones the source under test doesn't actually reference.
-            Path jarPath = repo.artifactPath(group, artifact, version, "jar");
+            Path jarPath = repo.path(gav, "jar");
             Files.createDirectories(jarPath.getParent());
             try (var jarOut = new JarOutputStream(Files.newOutputStream(jarPath))) {
                 // no entries needed - an empty jar is still a valid one
@@ -107,7 +124,7 @@ public final class Fixtures {
         /** Writes a kwenza.lock pinning everything seeded so far, fresh for {@code project}'s manifest. */
         public void lock(Project project) throws IOException {
             if (!seeded.isEmpty()) {
-                new KwenzaLock(seeded, null).save(project.lockFile(), KwenzaLock.hashDependencies(project.manifest()));
+                new KwenzaLock(seeded, KwenzaLock.hashDependencies(project.manifest())).save(project.lockFile());
             }
         }
     }

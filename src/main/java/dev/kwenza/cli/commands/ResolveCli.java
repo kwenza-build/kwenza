@@ -21,6 +21,6 @@ public final class ResolveCli implements CliCommand {
 
     @Override
     public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
-        return new ResolveCommand(session.resolve()).run();
+        return session.resolveCommand().run();
     }
 }

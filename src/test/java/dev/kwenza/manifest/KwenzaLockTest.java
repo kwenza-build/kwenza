@@ -100,7 +100,7 @@ class KwenzaLockTest {
         KwenzaLock lock = new KwenzaLock(entries, "the-manifest-hash");
         Path lockPath = tempDir.resolve("kwenza.lock");
 
-        lock.save(lockPath, "the-manifest-hash");
+        lock.save(lockPath);
         KwenzaLock loaded = KwenzaLock.load(lockPath).get();
 
         assertEquals("the-manifest-hash", loaded.manifestHash);
@@ -127,7 +127,7 @@ class KwenzaLockTest {
         KwenzaLock lock = new KwenzaLock(entries, "hash");
         Path lockPath = tempDir.resolve("kwenza.lock");
 
-        lock.save(lockPath, "hash");
+        lock.save(lockPath);
         KwenzaLock loaded = KwenzaLock.load(lockPath).get();
 
         assertEquals("com.example:weird\"name", loaded.entries.get(0).module);

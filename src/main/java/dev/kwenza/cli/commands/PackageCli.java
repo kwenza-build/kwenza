@@ -26,6 +26,6 @@ public final class PackageCli implements CliCommand {
 
     @Override
     public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
-        return new PackageCommand(session.project(), session.compile(), session.reporter()).run().map(jar -> null);
+        return new PackageCommand(session.project(), session.buildCommand(), session.reporter()).run().map(jar -> null);
     }
 }

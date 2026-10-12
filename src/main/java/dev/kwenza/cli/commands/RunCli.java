@@ -26,6 +26,6 @@ public final class RunCli implements CliCommand {
 
     @Override
     public Result<Void> exec(Session session, Invocation invocation) throws IOException, InterruptedException {
-        return new RunCommand(session.project(), session.compile(), session.reporter()).run();
+        return new RunCommand(session.project(), session.buildCommand(), session.reporter()).run();
     }
 }

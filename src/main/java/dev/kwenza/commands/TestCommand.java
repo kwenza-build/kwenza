@@ -1,6 +1,5 @@
 package dev.kwenza.commands;
 
-import dev.kwenza.compiler.CompileContext;
 import dev.kwenza.context.Reporter;
 import dev.kwenza.context.Result;
 import dev.kwenza.resolver.Resolver;
@@ -16,12 +15,12 @@ import java.util.stream.Stream;
 /** {@code kwenza test}: builds, compiles src/test/java, and runs it via the JUnit Platform Console Launcher. */
 public final class TestCommand {
     private final Project project;
-    private final CompileContext compile;
+    private final BuildCommand build;
     private final Reporter reporter;
 
-    public TestCommand(Project project, CompileContext compile, Reporter reporter) {
+    public TestCommand(Project project, BuildCommand build, Reporter reporter) {
         this.project = project;
-        this.compile = compile;
+        this.build = build;
         this.reporter = reporter;
     }
 
@@ -31,7 +30,7 @@ public final class TestCommand {
 
     /** @param outputRedirect INHERIT for real CLI use; tests pass DISCARD so a real nested ConsoleLauncher's own console report never bleeds into the outer test run. */
     public Result<Void> run(ProcessBuilder.Redirect outputRedirect) throws IOException, InterruptedException {
-        Result<Resolver.Resolution> compiled = compile.ensureTestCompiled();
+        Result<Resolver.Resolution> compiled = build.tests();
         if (compiled instanceof Result.Err<?> err) {
             return err.castErr();
         }

@@ -1,16 +1,18 @@
 package dev.kwenza.resolver;
 
+import dev.kwenza.context.Failure;
 import dev.kwenza.context.Result;
 import dev.kwenza.manifest.Dependency;
 import dev.kwenza.manifest.KwenzaLock;
+import dev.kwenza.manifest.KwenzaManifest;
+import dev.kwenza.resolver.ArtifactStore.Expectation;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -18,30 +20,39 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Resolves a project's dependencies transitively against Maven Central: fetches POMs
- * concurrently, applies Maven-compatible nearest-wins mediation (honoring dependencyManagement
- * / BOM imports and parent POM inheritance), then downloads and verifies the winning jars.
+ * Resolves a project's dependencies against a Maven repository: from kwenza.lock when it still
+ * matches the manifest, otherwise transitively, with Maven-compatible nearest-wins mediation
+ * (honoring dependencyManagement / BOM imports and parent POM inheritance), fetching each level's
+ * POMs concurrently and then the winning jars. Every jar comes through {@link ArtifactStore}, so
+ * every one is verified. Expected failures are collected, not just the first: one run reports
+ * every jar that doesn't match.
  */
 public final class Resolver {
 
     private static final Set<String> TRANSITIVE_SCOPES = Set.of("compile", "runtime");
     private static final Pattern PROPERTY_REF = Pattern.compile("\\$\\{([^}]+)}");
 
-    private final MavenRepository repo;
+    private final ArtifactStore store;
 
-    public Resolver(MavenRepository repo) {
-        this.repo = repo;
+    public Resolver(ArtifactStore store) {
+        this.store = store;
     }
 
     public record ResolvedArtifact(String moduleId, String group, String artifact, String version,
                                     Path jarPath, Set<String> requestedBy) {
     }
 
-    public record Resolution(List<ResolvedArtifact> artifacts, KwenzaLock lock) {
+    /**
+     * @param artifacts every resolved artifact, each one's jar verified
+     * @param lock      the complete lock describing them, manifest hash included
+     * @param fromLock  whether this came from an existing kwenza.lock (nothing to write back)
+     */
+    public record Resolution(List<ResolvedArtifact> artifacts, KwenzaLock lock, boolean fromLock) {
         public List<Path> classpath() {
             List<Path> paths = new ArrayList<>();
             for (ResolvedArtifact a : artifacts) paths.add(a.jarPath());
@@ -59,23 +70,61 @@ public final class Resolver {
         String moduleId() {
             return group + ":" + artifact;
         }
-    }
 
-    /** Full transitive resolution against Maven Central. Writes a fresh lockfile's worth of entries. */
-    public Resolution resolve(Collection<Dependency> rootDeps) {
-        return resolve(rootDeps, KwenzaLock.empty());
+        Gav gav() {
+            return new Gav(group, artifact, version);
+        }
     }
 
     /**
-     * Full resolution. {@code previous} is the lock being replaced (or any lock whose pins are
-     * already trusted): a module resolved at the same version it pins is checked against that
-     * sha256 with no network call, and everything else is checked against the repository's
-     * published .sha1 even when it's already in the local cache - so a fresh resolve never pins a
-     * jar nobody has verified.
+     * Both scopes, {@code [dependencies]} and {@code [dev-dependencies]}: from {@code lock} when it
+     * still matches the manifest (no POMs, no network if every jar is cached), otherwise a fresh
+     * resolution that carries the old lock's pins forward for unchanged versions.
      */
-    public Resolution resolve(Collection<Dependency> rootDeps, KwenzaLock previous) {
+    public Result<Resolution> resolve(KwenzaManifest manifest, KwenzaLock lock) {
+        if (lock.isFreshFor(manifest)) {
+            return fromLock(lock);
+        }
+        List<Dependency> all = new ArrayList<>(manifest.dependencies.values());
+        all.addAll(manifest.devDependencies.values());
+        return resolve(all, lock, KwenzaLock.hashDependencies(manifest));
+    }
+
+    /**
+     * {@code [dependencies]} only, for everything that ends up on a shipped artifact's classpath,
+     * so dev-dependencies never leak into it. Resolved separately (see AGENTS.md on the second
+     * resolution), with the merged lock's pins, so any version the merged resolution chose is
+     * verified locally.
+     */
+    public Result<Resolution> resolveMain(KwenzaManifest manifest, KwenzaLock merged) {
+        return resolve(manifest.dependencies.values(), merged, merged.manifestHash);
+    }
+
+    /** Every locked jar, each checked against its pin. A lock entry with no pin is refused. */
+    Result<Resolution> fromLock(KwenzaLock lock) {
+        List<CompletableFuture<Result<ResolvedArtifact>>> futures = new ArrayList<>();
+        for (KwenzaLock.Entry entry : lock.entries) {
+            Gav gav = gav(entry.module, entry.version);
+            if (entry.sha256 == null || entry.sha256.isBlank()) {
+                futures.add(CompletableFuture.completedFuture(Result.err("kwenza.lock has no sha256 for " + gav
+                        + ", so its jar can't be verified. Delete kwenza.lock so the next build regenerates it.")));
+                continue;
+            }
+            futures.add(store.jar(gav, Expectation.pinned(entry.sha256)).thenApply(jar -> jar.map(path ->
+                    new ResolvedArtifact(entry.module, gav.group(), gav.artifact(), gav.version(), path,
+                            new LinkedHashSet<>(entry.requestedBy)))));
+        }
+        return Result.all(await(futures)).map(artifacts -> new Resolution(artifacts, lock, true));
+    }
+
+    /**
+     * Full resolution of {@code rootDeps}. {@code previous} is the lock being replaced (or any
+     * lock whose pins are already trusted): a module resolved at the same version it pins is
+     * checked against that sha256, and everything else against the repository's published .sha1.
+     */
+    Result<Resolution> resolve(Collection<Dependency> rootDeps, KwenzaLock previous, String manifestHash) {
         Map<String, Node> chosen = new LinkedHashMap<>();
-        Map<String, PomParser.ParsedPom> pomCache = new HashMap<>();
+        Map<String, PomParser.ParsedPom> pomCache = new ConcurrentHashMap<>();
 
         List<Node> currentLevel = new ArrayList<>();
         for (Dependency d : rootDeps) {
@@ -104,27 +153,31 @@ public final class Resolver {
                 levelWinners.put(n.moduleId(), n);
             }
 
-            Map<String, CompletableFuture<PomParser.ParsedPom>> futures = new LinkedHashMap<>();
+            List<CompletableFuture<Result<PomParser.ParsedPom>>> futures = new ArrayList<>();
             for (Node n : levelWinners.values()) {
-                futures.put(n.moduleId(), fetchEffectivePom(n.group, n.artifact, n.version, pomCache));
+                futures.add(fetchEffectivePom(n.gav(), pomCache)
+                        .thenApply(pom -> prefixed(pom, "Failed to resolve " + n.gav() + ": ")));
+            }
+            Result<List<PomParser.ParsedPom>> poms = Result.all(await(futures));
+            if (poms instanceof Result.Err<?> err) {
+                return err.castErr();
             }
 
             List<Node> nextLevel = new ArrayList<>();
-            for (Map.Entry<String, CompletableFuture<PomParser.ParsedPom>> e : futures.entrySet()) {
-                Node n = levelWinners.get(e.getKey());
-                chosen.put(e.getKey(), n);
-                PomParser.ParsedPom pom;
-                try {
-                    pom = e.getValue().join();
-                } catch (Exception ex) {
-                    throw new ResolutionException("Failed to resolve " + e.getKey() + ":" + n.version + ": " + causeMessage(ex), ex);
+            List<Node> winners = new ArrayList<>(levelWinners.values());
+            for (int i = 0; i < winners.size(); i++) {
+                Node n = winners.get(i);
+                chosen.put(n.moduleId(), n);
+                PomParser.ParsedPom pom = poms.get().get(i);
+                Result<Map<String, String>> management = buildManagementMap(pom, pomCache);
+                if (management instanceof Result.Err<?> err) {
+                    return err.castErr();
                 }
-                Map<String, String> management = buildManagementMap(pom, pomCache);
                 for (PomParser.RawDependency rd : pom.dependencies()) {
                     if (rd.optional()) continue;
                     if (!TRANSITIVE_SCOPES.contains(rd.scope())) continue;
                     String childModuleId = rd.group() + ":" + rd.artifact();
-                    String childVersion = rd.version() != null ? rd.version() : management.get(childModuleId);
+                    String childVersion = rd.version() != null ? rd.version() : management.get().get(childModuleId);
                     if (childVersion == null) continue;
                     Node child = new Node();
                     child.group = rd.group();
@@ -138,129 +191,63 @@ public final class Resolver {
             currentLevel = nextLevel;
         }
 
-        return download(chosen, previous);
+        return download(chosen, previous, manifestHash);
     }
 
-    /**
-     * Fast path: reuse an existing lock, only downloading jars missing from the local cache. Every
-     * jar - cache hit or fresh download - must still match the lock's recorded sha256 before it's
-     * trusted, so a jar altered in ~/.m2 after the lock was written is caught, not used.
-     */
-    public Resolution ensureFromLock(KwenzaLock lock) {
-        List<ResolvedArtifact> artifacts = new ArrayList<>();
-        Map<String, CompletableFuture<Path>> futures = new LinkedHashMap<>();
-        for (KwenzaLock.Entry entry : lock.entries) {
-            String[] parts = splitModule(entry.module);
-            futures.put(entry.module, repo.fetchJarAsync(parts[0], parts[1], entry.version));
-        }
-        for (KwenzaLock.Entry entry : lock.entries) {
-            String[] parts = splitModule(entry.module);
-            Path jarPath;
-            try {
-                jarPath = futures.get(entry.module).join();
-            } catch (Exception ex) {
-                throw new ResolutionException("Failed to fetch locked dependency " + entry.module + ": " + causeMessage(ex), ex);
-            }
-            verifyAgainstLock(entry, jarPath);
-            artifacts.add(new ResolvedArtifact(entry.module, parts[0], parts[1], entry.version, jarPath,
-                    new LinkedHashSet<>(entry.requestedBy)));
-        }
-        return new Resolution(artifacts, lock);
-    }
-
-    /** The underlying failure's own message, unwrapped from the CompletionException join() adds. */
-    private static String causeMessage(Throwable ex) {
-        Throwable cause = ex instanceof CompletionException && ex.getCause() != null ? ex.getCause() : ex;
-        return cause.getMessage() != null ? cause.getMessage() : cause.toString();
-    }
-
-    private static void verifyAgainstLock(KwenzaLock.Entry entry, Path jarPath) {
-        String gav = entry.module + ":" + entry.version;
-        if (entry.sha256 == null || entry.sha256.isBlank()) {
-            throw new ResolutionException("kwenza.lock has no sha256 for " + gav
-                    + ", so its jar can't be verified. Delete kwenza.lock so the next build regenerates it.");
-        }
-        String actual = sha256Hex(jarPath);
-        if (!actual.equalsIgnoreCase(entry.sha256)) {
-            throw new ResolutionException("Checksum mismatch for " + gav + ": kwenza.lock expects sha256 "
-                    + entry.sha256 + " but " + jarPath + " has " + actual
-                    + ". The cached jar has changed since the lock was written; delete it so kwenza"
-                    + " re-downloads and re-verifies it.");
-        }
-    }
-
-    private static String[] splitModule(String moduleId) {
-        int colon = moduleId.indexOf(':');
-        return new String[]{moduleId.substring(0, colon), moduleId.substring(colon + 1)};
-    }
-
-    private Resolution download(Map<String, Node> chosen, KwenzaLock previous) {
+    private Result<Resolution> download(Map<String, Node> chosen, KwenzaLock previous, String manifestHash) {
         Map<String, KwenzaLock.Entry> pinned = new LinkedHashMap<>();
         for (KwenzaLock.Entry entry : previous.entries) {
             if (entry.sha256 != null && !entry.sha256.isBlank()) {
                 pinned.put(entry.module + ":" + entry.version, entry);
             }
         }
-        Map<String, CompletableFuture<Path>> jarFutures = new LinkedHashMap<>();
-        for (Map.Entry<String, Node> e : chosen.entrySet()) {
-            Node n = e.getValue();
-            jarFutures.put(e.getKey(), pinned.containsKey(e.getKey() + ":" + n.version)
-                    ? repo.fetchJarAsync(n.group, n.artifact, n.version)
-                    : repo.fetchJarVerifiedAsync(n.group, n.artifact, n.version));
+        List<CompletableFuture<Result<ResolvedArtifact>>> futures = new ArrayList<>();
+        for (Node n : chosen.values()) {
+            KwenzaLock.Entry pin = pinned.get(n.moduleId() + ":" + n.version);
+            Expectation expected = pin != null ? Expectation.pinned(pin.sha256) : Expectation.PUBLISHED;
+            futures.add(store.jar(n.gav(), expected).thenApply(jar -> jar.map(path ->
+                    new ResolvedArtifact(n.moduleId(), n.group, n.artifact, n.version, path, n.requestedBy))));
         }
-
-        List<ResolvedArtifact> artifacts = new ArrayList<>();
-        List<KwenzaLock.Entry> lockEntries = new ArrayList<>();
-        for (Map.Entry<String, Node> e : chosen.entrySet()) {
-            Node n = e.getValue();
-            Path jarPath;
-            try {
-                jarPath = jarFutures.get(e.getKey()).join();
-            } catch (Exception ex) {
-                throw new ResolutionException("Failed to download " + e.getKey() + ":" + n.version + ": " + causeMessage(ex), ex);
+        return Result.all(await(futures)).map(artifacts -> {
+            List<KwenzaLock.Entry> entries = new ArrayList<>();
+            for (ResolvedArtifact a : artifacts) {
+                entries.add(new KwenzaLock.Entry(a.moduleId(), a.version(), sha256Hex(a.jarPath()),
+                        new ArrayList<>(a.requestedBy())));
             }
-            KwenzaLock.Entry pin = pinned.get(e.getKey() + ":" + n.version);
-            if (pin != null) {
-                verifyAgainstLock(pin, jarPath);
-            }
-            artifacts.add(new ResolvedArtifact(e.getKey(), n.group, n.artifact, n.version, jarPath, n.requestedBy));
-            lockEntries.add(new KwenzaLock.Entry(e.getKey(), n.version, sha256Hex(jarPath), new ArrayList<>(n.requestedBy)));
-        }
-        return new Resolution(artifacts, new KwenzaLock(lockEntries, null));
+            return new Resolution(artifacts, new KwenzaLock(entries, manifestHash), false);
+        });
     }
 
-    private CompletableFuture<PomParser.ParsedPom> fetchEffectivePom(String group, String artifact, String version,
-                                                                       Map<String, PomParser.ParsedPom> cache) {
-        String key = group + ":" + artifact + ":" + version;
-        PomParser.ParsedPom cached = cache.get(key);
+    private CompletableFuture<Result<PomParser.ParsedPom>> fetchEffectivePom(Gav gav,
+                                                                             Map<String, PomParser.ParsedPom> cache) {
+        PomParser.ParsedPom cached = cache.get(gav.toString());
         if (cached != null) {
-            return CompletableFuture.completedFuture(cached);
+            return CompletableFuture.completedFuture(Result.ok(cached));
         }
-        return repo.fetchTextAsync(group, artifact, version, "pom").thenCompose(xml -> {
-            Result<PomParser.ParsedPom> parsed = PomParser.parse(xml);
-            if (parsed instanceof Result.Err<?> err) {
-                // Still an exception inside the resolver until its redesign; ResolveContext turns it back into a value.
-                throw new ResolutionException(err.failure().problems().get(0));
+        return store.pom(gav).thenCompose(text -> {
+            Result<PomParser.ParsedPom> parsed = text.flatMap(PomParser::parse);
+            if (!parsed.isOk()) {
+                return CompletableFuture.completedFuture(parsed);
             }
             PomParser.ParsedPom raw = parsed.get();
             if (raw.parent() == null) {
                 PomParser.ParsedPom resolved = applyProperties(raw, raw.properties());
-                cache.put(key, resolved);
-                return CompletableFuture.completedFuture(resolved);
+                cache.put(gav.toString(), resolved);
+                return CompletableFuture.completedFuture(Result.ok(resolved));
             }
-            return fetchEffectivePom(raw.parent().group(), raw.parent().artifact(), raw.parent().version(), cache)
-                    .thenApply(parentPom -> {
-                        Map<String, String> merged = new LinkedHashMap<>(parentPom.properties());
-                        merged.putAll(raw.properties());
-                        PomParser.ParsedPom resolved = applyProperties(raw, merged);
-                        List<PomParser.RawDependency> combinedManaged = new ArrayList<>(resolved.managedDependencies());
-                        combinedManaged.addAll(parentPom.managedDependencies());
-                        PomParser.ParsedPom withInheritance = new PomParser.ParsedPom(
-                                resolved.group(), resolved.artifact(), resolved.version(), resolved.packaging(),
-                                resolved.parent(), merged, resolved.dependencies(), combinedManaged);
-                        cache.put(key, withInheritance);
-                        return withInheritance;
-                    });
+            Gav parent = new Gav(raw.parent().group(), raw.parent().artifact(), raw.parent().version());
+            return fetchEffectivePom(parent, cache).thenApply(parentResult -> parentResult.map(parentPom -> {
+                Map<String, String> merged = new LinkedHashMap<>(parentPom.properties());
+                merged.putAll(raw.properties());
+                PomParser.ParsedPom resolved = applyProperties(raw, merged);
+                List<PomParser.RawDependency> combinedManaged = new ArrayList<>(resolved.managedDependencies());
+                combinedManaged.addAll(parentPom.managedDependencies());
+                PomParser.ParsedPom withInheritance = new PomParser.ParsedPom(
+                        resolved.group(), resolved.artifact(), resolved.version(), resolved.packaging(),
+                        resolved.parent(), merged, resolved.dependencies(), combinedManaged);
+                cache.put(gav.toString(), withInheritance);
+                return withInheritance;
+            }));
         });
     }
 
@@ -315,30 +302,77 @@ public final class Resolver {
         return result;
     }
 
-    /** Builds moduleId->version map from a POM's dependencyManagement, expanding any BOM imports. */
-    private Map<String, String> buildManagementMap(PomParser.ParsedPom pom, Map<String, PomParser.ParsedPom> pomCache) {
+    /** Builds a moduleId->version map from a POM's dependencyManagement, expanding any BOM imports. */
+    private Result<Map<String, String>> buildManagementMap(PomParser.ParsedPom pom,
+                                                           Map<String, PomParser.ParsedPom> pomCache) {
         Map<String, String> map = new LinkedHashMap<>();
         for (PomParser.RawDependency d : pom.managedDependencies()) {
             if ("import".equals(d.scope())) {
-                PomParser.ParsedPom bom = fetchEffectivePom(d.group(), d.artifact(), d.version(), pomCache).join();
-                Map<String, String> bomManagement = buildManagementMap(bom, pomCache);
-                for (Map.Entry<String, String> e : bomManagement.entrySet()) {
+                Gav bomGav = new Gav(d.group(), d.artifact(), d.version());
+                Result<PomParser.ParsedPom> bom = prefixed(join(fetchEffectivePom(bomGav, pomCache)),
+                        "Failed to resolve BOM " + bomGav + ": ");
+                if (bom instanceof Result.Err<?> err) {
+                    return err.castErr();
+                }
+                Result<Map<String, String>> bomManagement = buildManagementMap(bom.get(), pomCache);
+                if (bomManagement instanceof Result.Err<?> err) {
+                    return err.castErr();
+                }
+                for (Map.Entry<String, String> e : bomManagement.get().entrySet()) {
                     map.putIfAbsent(e.getKey(), e.getValue());
                 }
             } else {
                 map.putIfAbsent(d.group() + ":" + d.artifact(), d.version());
             }
         }
-        return map;
+        return Result.ok(map);
+    }
+
+    private static <T> Result<T> prefixed(Result<T> result, String prefix) {
+        if (result instanceof Result.Err<T> err) {
+            List<String> problems = new ArrayList<>();
+            err.failure().problems().forEach(p -> problems.add(prefix + p));
+            return Result.err(new Failure(err.failure().exitCode(), problems));
+        }
+        return result;
+    }
+
+    private static Gav gav(String moduleId, String version) {
+        int colon = moduleId.indexOf(':');
+        return new Gav(moduleId.substring(0, colon), moduleId.substring(colon + 1), version);
+    }
+
+    private static <T> List<T> await(List<CompletableFuture<T>> futures) {
+        List<T> results = new ArrayList<>();
+        for (CompletableFuture<T> future : futures) {
+            results.add(join(future));
+        }
+        return results;
+    }
+
+    /**
+     * Expected failures arrive as values, so a future that completed exceptionally is a bug or the
+     * file system failing: rethrow the real cause rather than the CompletionException around it.
+     */
+    private static <T> T join(CompletableFuture<T> future) {
+        try {
+            return future.join();
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof RuntimeException cause) {
+                throw cause;
+            }
+            if (e.getCause() instanceof Error cause) {
+                throw cause;
+            }
+            throw e;
+        }
     }
 
     private static String sha256Hex(Path path) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = Files.readAllBytes(path);
-            return HexFormat.of().formatHex(digest.digest(bytes));
-        } catch (Exception e) {
-            throw new ResolutionException("Failed to hash " + path, e);
+            return ArtifactStore.hex("SHA-256", Files.readAllBytes(path));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 }

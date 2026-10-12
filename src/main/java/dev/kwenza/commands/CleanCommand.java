@@ -26,7 +26,7 @@ public final class CleanCommand {
     public Result<Void> run() throws IOException {
         // Whatever was compiled before this point in the chain is gone now - a later
         // build/package/run in the same chain must recompile, not reuse stale state.
-        compile.invalidate();
+        compile.forget();
         Path outputDir = project.outputDir();
         if (!Files.exists(outputDir)) {
             reporter.info("clean: nothing to remove");

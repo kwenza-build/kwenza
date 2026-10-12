@@ -100,6 +100,7 @@ Everything below will ship in kwenza's first release, 0.1.0.
     or empty checksum is rejected, the same as a mismatch.
   - A jar that is already in the local cache must match its `sha256` in `kwenza.lock`.
   - A lock entry with no `sha256` is an error.
+  - Every jar that fails verification is reported in the same run, not just the first.
 - Annotation processors are never discovered from the classpath, on any JDK. javac's own default
   differs by version (JDK 21 runs any processor a dependency ships, JDK 23 and newer don't), and
   kwenza compiles in-process, so a processor in any transitive dependency would otherwise run

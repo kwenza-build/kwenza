@@ -56,7 +56,7 @@ class TestCommandTest {
 
         // DISCARD: this really does spawn a ConsoleLauncher subprocess, and its own console
         // report must not bleed into the outer test run's console (see the class Javadoc above).
-        assertTrue(new TestCommand(state.project(), state.compile(), state.reporter())
+        assertTrue(new TestCommand(state.project(), state.build(), state.reporter())
                 .run(ProcessBuilder.Redirect.DISCARD).isOk());
     }
 
@@ -75,7 +75,7 @@ class TestCommandTest {
                 """);
         Contexts state = contexts(projectRoot, Fixtures.defaultLocalRepo(), MANIFEST);
 
-        Result<Void> result = new TestCommand(state.project(), state.compile(), state.reporter())
+        Result<Void> result = new TestCommand(state.project(), state.build(), state.reporter())
                 .run(ProcessBuilder.Redirect.DISCARD);
 
         assertEquals(List.of(), result.failure().problems()); // the launcher already reported the failure
@@ -96,7 +96,7 @@ class TestCommandTest {
         // Must not throw: with nothing to run, whether a launcher is even resolvable is
         // irrelevant - this is the exact bug examples/hello-world hit (a raw
         // ClassNotFoundException instead of a clean no-op) before the check below existed.
-        assertTrue(new TestCommand(state.project(), state.compile(), state.reporter())
+        assertTrue(new TestCommand(state.project(), state.build(), state.reporter())
                 .run(ProcessBuilder.Redirect.DISCARD).isOk());
     }
 
@@ -117,7 +117,7 @@ class TestCommandTest {
                 version = "0.1.0"
                 """);
 
-        String problem = new TestCommand(state.project(), state.compile(), state.reporter())
+        String problem = new TestCommand(state.project(), state.build(), state.reporter())
                 .run(ProcessBuilder.Redirect.DISCARD).failure().problems().get(0);
 
         assertTrue(problem.contains("junit-platform-console-standalone"), problem);
