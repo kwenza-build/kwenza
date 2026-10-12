@@ -96,8 +96,8 @@ structure everything else builds on.
   codes already landed with the code-design passes). Audit error messages
   against "fail fast, with a specific and actionable message".
 * [ ] *Portable thin jars: dependency jars co-located in `lib/`.* `kwenza package` writes
-  absolute `file:` URIs into `~/.m2` in the jar's `Class-Path`, so the jar only runs on the machine (and account) that built it. Copy the
-  dependency jars into `<output-dir>/lib/` and write relative `lib/...` entries instead, so
+  absolute `file:` URIs into `~/.m2` in the jar's `Class-Path`, so the jar only runs on the
+  machine (and account) that built it. Copy the dependency jars into `<output-dir>/lib/` and write relative `lib/...` entries instead, so
   `target/` is a self-contained folder that can be zipped or copied into a container. See
   AGENTS.md, "Also on the radar". _Done when:_ a packaged jar runs with `java -jar` from a copy
   of its output directory on another path, with no `~/.m2` involved.
