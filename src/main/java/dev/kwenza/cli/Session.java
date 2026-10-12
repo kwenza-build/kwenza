@@ -53,8 +53,10 @@ public final class Session {
      */
     public Result<Void> loadProject() throws IOException {
         if (project == null) {
-            Result<Project> loaded = Project.load(global.workingDir());
-            Timing.mark("manifest-loaded");
+            Result<Project> loaded;
+            try (var timing = Timing.phase("load manifest")) {
+                loaded = Project.load(global.workingDir());
+            }
             if (loaded instanceof Result.Err<?> err) {
                 return err.castErr();
             }

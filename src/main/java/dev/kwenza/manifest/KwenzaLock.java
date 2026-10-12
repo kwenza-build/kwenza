@@ -11,7 +11,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
@@ -68,14 +67,6 @@ public final class KwenzaLock {
 
     public boolean isFreshFor(KwenzaManifest manifest) {
         return manifestHash != null && manifestHash.equals(hashDependencies(manifest));
-    }
-
-    public Map<String, Entry> byModule() {
-        Map<String, Entry> map = new LinkedHashMap<>();
-        for (Entry e : entries) {
-            map.put(e.module, e);
-        }
-        return map;
     }
 
     /**

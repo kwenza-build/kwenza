@@ -69,7 +69,8 @@ Everything below will ship in kwenza's first release, 0.1.0.
   `test`. It can go anywhere on the command line.
 - kwenza's own status lines go to stderr, so `kwenza run`'s stdout is only the program's output.
   They are coloured in a terminal and plain when piped, or when `NO_COLOR` is set.
-- `KWENZA_TIMING` prints a phase-by-phase timing breakdown to stderr.
+- `KWENZA_TIMING` prints a phase-by-phase timing breakdown to stderr: how long each phase that
+  ran took, nested where one phase runs inside another.
 - kwenza fails fast with a specific message when `java-version` needs a newer JDK than the one
   running kwenza, or when it's running on a JRE with no compiler.
 - Exit codes are documented and stable: `0` success, `1` a problem you can fix (the `error:`

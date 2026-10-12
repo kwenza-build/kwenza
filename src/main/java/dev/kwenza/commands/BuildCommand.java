@@ -50,9 +50,10 @@ public final class BuildCommand {
                 return err.castErr();
             }
             Path classes = project.classesDir();
-            Result<Void> compiled = compile(project.mainSources(), classes, mainOnly.get().classpath(),
-                    "Compilation failed");
-            Timing.mark("compiled");
+            Result<Void> compiled;
+            try (var timing = Timing.phase("compile")) {
+                compiled = compile(project.mainSources(), classes, mainOnly.get().classpath(), "Compilation failed");
+            }
             if (compiled instanceof Result.Err<?> err) {
                 return err.castErr();
             }
@@ -80,8 +81,10 @@ public final class BuildCommand {
             List<Path> classpath = new ArrayList<>();
             classpath.add(project.classesDir());
             classpath.addAll(merged.get().classpath());
-            Result<Void> compiled = compile(project.testSources(), testClasses, classpath, "Test compilation failed");
-            Timing.mark("test-compiled");
+            Result<Void> compiled;
+            try (var timing = Timing.phase("compile tests")) {
+                compiled = compile(project.testSources(), testClasses, classpath, "Test compilation failed");
+            }
             if (compiled instanceof Result.Err<?> err) {
                 return err.castErr();
             }
@@ -100,9 +103,7 @@ public final class BuildCommand {
         if (result instanceof Result.Err<?> err) {
             return err.castErr();
         }
-        for (String diagnostic : result.get().diagnostics()) {
-            System.err.println(diagnostic);
-        }
+        result.get().diagnostics().forEach(reporter::diagnostic);
         return result.get().success() ? Result.ok() : Result.err(failureMessage);
     }
 

@@ -105,11 +105,11 @@ class KwenzaLockTest {
 
         assertEquals("the-manifest-hash", loaded.manifestHash);
         assertEquals(2, loaded.entries.size());
-        KwenzaLock.Entry guava = loaded.byModule().get("com.google.guava:guava");
+        KwenzaLock.Entry guava = loaded.entries.get(0);
         assertEquals("33.2.1-jre", guava.version);
         assertEquals("abc123", guava.sha256);
         assertEquals(List.of("direct"), guava.requestedBy);
-        assertEquals(List.of("com.google.guava:guava"), loaded.byModule().get("com.google.guava:failureaccess").requestedBy);
+        assertEquals(List.of("com.google.guava:guava"), loaded.entries.get(1).requestedBy);
     }
 
     @Test

@@ -734,7 +734,11 @@ close most of this gap — flagged as a real future optimization, intentionally 
   `Reporter`. Reconsidered in the code-design pass and kept: it's a no-op unless `KWENZA_TIMING`
   is set, so it never causes test noise, and it has to start before anything else exists
   (`Timing.init()` is `main`'s first statement, to capture the true entry time). Revisit if it
-  ever needs a second output.
+  ever needs a second output. Phases are scopes, `try (var t = Timing.phase("compile")) {...}`,
+  rather than the `Timing.mark(label)` checkpoints they replaced: each phase has an explicit start
+  and end, nests, and a phase a memoized command skips doesn't appear, where a checkpoint gap used
+  to absorb whatever ran in between (the main-classpath resolution, for one, was invisible inside
+  "compile"). Disabled, `phase()` hands out one shared no-op, so it costs nothing.
 - Rebuild via self-hosting: `cd kwenza && bin/kwenza package`. Only reach for `bootstrap.sh` if
   `target/` has no working jar at all.
 - `KWENZA_REPO` (dependency cache override) and `KWENZA_TIMING` (phase-timing diagnostics to

@@ -44,8 +44,10 @@ public final class ResolveCommand {
             reporter.info(fresh
                     ? "resolve: using locked dependencies (kwenza.lock)"
                     : "resolve: fetching dependencies from Maven Central...");
-            Result<Resolver.Resolution> resolution = resolver.resolve(project.manifest(), lock.get());
-            Timing.mark(fresh ? "resolved (from lock)" : "resolved (network)");
+            Result<Resolver.Resolution> resolution;
+            try (var timing = Timing.phase(fresh ? "resolve (from lock)" : "resolve (network)")) {
+                resolution = resolver.resolve(project.manifest(), lock.get());
+            }
             if (resolution instanceof Result.Ok<Resolver.Resolution> ok && !ok.value().fromLock()) {
                 ok.value().lock().save(project.lockFile());
                 report(ok.value());
@@ -60,7 +62,11 @@ public final class ResolveCommand {
         if (merged instanceof Result.Err<?> err) {
             return err.castErr();
         }
-        return state.main().get(() -> resolver.resolveMain(project.manifest(), merged.get().lock()));
+        return state.main().get(() -> {
+            try (var timing = Timing.phase("resolve main classpath")) {
+                return resolver.resolveMain(project.manifest(), merged.get().lock());
+            }
+        });
     }
 
     private void report(Resolver.Resolution resolution) {

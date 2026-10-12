@@ -32,10 +32,11 @@ public final class PackageCommand {
         Resolver.Resolution resolution = compiled.get();
         Path outputJar = project.jarFile();
         KwenzaManifest manifest = project.manifest();
-        JarPackager.packageThinJar(project.classesDir(), outputJar,
-                new JarPackager.JarIdentity(manifest.name, manifest.version, manifest.mainClass),
-                resolution.classpath());
-        Timing.mark("packaged");
+        try (var timing = Timing.phase("package")) {
+            JarPackager.packageThinJar(project.classesDir(), outputJar,
+                    new JarPackager.JarIdentity(manifest.name, manifest.version, manifest.mainClass),
+                    resolution.classpath());
+        }
         reporter.info("package: " + project.relativize(outputJar));
         return Result.ok(outputJar);
     }
