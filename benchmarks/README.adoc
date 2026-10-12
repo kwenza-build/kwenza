@@ -77,13 +77,15 @@ into that checkout (dangling until then). The main sources only are built, never
 `--write-docs` (only valid with `all both`) writes everything the performance page takes from a
 run, so none of it is typed by hand:
 
-* `docs/modules/ROOT/partials/benchmark-results.adoc`: the environment table (CPU, OS, JDK, Maven and
-  Gradle versions, kwenza commit, date), the tables, and the exact command run for every tool and
-  operation, generated from the same `command(...)` the harness executes
+* `docs/modules/ROOT/partials/benchmark-*.adoc`: four pieces the page includes where its prose wants
+  them. `-environment` is the table of CPU, OS, JDK, Maven and Gradle versions, kwenza version and
+  commit, and date; `-warm` and `-cold` are each a chart and a table; `-commands` is the exact
+  command run for every tool and operation, generated from the same `command(...)` the harness
+  executes
 * `docs/modules/ROOT/images/benchmark-warm.svg` and `benchmark-cold.svg`: the charts
 
 The prose on the page (`docs/modules/ROOT/pages/performance.adoc`) is written by hand and
-describes methodology and how to read the results, without quoting numbers. If you change what a
+describes methodology and how to read each set of results, below its table, without quoting numbers. If you change what a
 scenario or operation does, or add a tool, update that prose too: the generated commands table
 will already be right, the explanation of them won't.
 

@@ -41,12 +41,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           mkdir "$RUNNER_TEMP/figures"
-          cp docs/modules/ROOT/partials/benchmark-results.adoc docs/modules/ROOT/images/benchmark-*.svg "$RUNNER_TEMP/figures/"
+          cp docs/modules/ROOT/partials/benchmark-*.adoc docs/modules/ROOT/images/benchmark-*.svg "$RUNNER_TEMP/figures/"
           git fetch origin "${{ github.event.repository.default_branch }}"
           git checkout -b "$branch" "origin/${{ github.event.repository.default_branch }}"
-          cp "$RUNNER_TEMP/figures/benchmark-results.adoc" docs/modules/ROOT/partials/
+          cp "$RUNNER_TEMP/figures"/benchmark-*.adoc docs/modules/ROOT/partials/
           cp "$RUNNER_TEMP/figures"/benchmark-*.svg docs/modules/ROOT/images/
-          git add docs/modules/ROOT/partials/benchmark-results.adoc docs/modules/ROOT/images
+          git add docs/modules/ROOT/partials docs/modules/ROOT/images
           git commit -m "docs(benchmarks): refresh figures"
           git push origin "$branch"
           gh pr create --title "docs(benchmarks): refresh figures" \
