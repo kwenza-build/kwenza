@@ -81,8 +81,10 @@ structure everything else builds on.
   `RELEASE` and `-SNAPSHOT` become a bare Central 404 with no hint why. A dependency with no
   version and none in `dependencyManagement` is skipped silently (`Resolver`'s
   `if (childVersion == null) continue;`), where Maven errors. Fix: recognise these before any
-  fetch and return a `Result` error naming the dependency, the chain that requested it and the
-  reason; make the version-less case an error too (check `examples/` first in case something
+  fetch and return a `Result` error naming the dependency, the chain that requested it, the
+  reason and what to do about it (pin an exact version in `[dependencies]`, or that it's a
+  kwenza limitation and where it's tracked), per "Teach versioning and resolution as you go" in
+  docs/contributing/design-principles.adoc; make the version-less case an error too (check `examples/` first in case something
   relies on the skip). TDD at `ResolverTest`, one case per kind. Supporting ranges and
   snapshots is separate, later work (Milestone 4); this is only about failing honestly. See
   AGENTS.md, "Resolver gaps against Maven's POM semantics".
@@ -192,6 +194,14 @@ SDKMAN! is deferred to after 0.1 (see Milestone 4), because it needs vendor appr
 * [x] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
   install commands, linking into the docs. Start with the Antora UI or one static page, not a
   separate site framework.
+* [ ] *Dependencies and versions guide.* One short, user-facing page on kwenza.dev for the
+  question new users hit first: what a version string means, how kwenza picks between two
+  (nearest wins, and why not "newest wins"), what `kwenza.lock` guarantees, and what to do when
+  a build breaks after adding a library (read the error's dependency chain, pin a version,
+  `--verbose`). Written for someone who has never read a POM; the contributor detail stays in
+  `docs/contributing/maven-repositories-poms-and-boms.adoc`. Keep it to one question per
+  section, per "Transparent" in the design principles. _Done when:_ a new user can fix a version
+  conflict using only the guide and kwenza's own output.
 * [ ] *Release 0.1.0.* Rename `CHANGELOG.md`'s `[Unreleased]` section to `[0.1.0]` with the
   date, tag `v0.1.0`, check that every install route in Milestone 2 works from a clean machine,
   and announce it.
@@ -210,7 +220,16 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
   required in the manifest, so the default lives in the scaffold, not in the parser.
 * [ ] *`--offline`*: the lockfile plus a warm `~/.m2` already make this mostly possible; make it
   an explicit, enforced mode.
-* [ ] *`kwenza tree`*: dependency tree display.
+* [ ] *`kwenza tree`*: dependency tree display. Make it answer "why is this here, and why this
+  version": show who requested each module (`kwenza.lock` already records `requested-by`) and,
+  where nearest-wins overrode a different requested version, both versions. Consider a
+  `kwenza tree --why <module>` shape, decided with the CLI review. This is the main way users
+  learn how resolution behaved, so treat it as teaching, not just display.
+* [ ] *Mediation notices.* When resolution picks a version *lower* than one a dependency asked
+  for (nearest-wins, and the usual source of a runtime `NoSuchMethodError`), say so at resolution
+  time, with the dependency chain and the fix. Needs the version ordering port built for
+  `kwenza upgrade` (below), so do it after that. Decide whether it's a warning by default or
+  `--verbose` only: noisy warnings get ignored, which defeats the point.
 * [ ] *`kwenza upgrade`*: move dependencies to newer versions by editing `kwenza.toml` itself
   (versions are exact pins, so there's no range for a lock-only `update` to move within). Read
   each direct dependency's `maven-metadata.xml` for its published versions, bump `version` or the

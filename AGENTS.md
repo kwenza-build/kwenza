@@ -454,7 +454,10 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   `alpha < beta < milestone < rc < snapshot < release < sp`, case-insensitive, unknown
   qualifiers last), and nearest-wins mediation never compares them, so kwenza needs the
   ordering only once it reads `maven-metadata.xml`: ranges, `kwenza upgrade` and snapshots.
-  Build one dependency-free port and one metadata parser, shared by all three. A plain POM
+  Build one dependency-free port and one metadata parser, shared by all three. The same ordering
+  powers "mediation notices" (warn when nearest-wins picks a lower version than one asked for),
+  part of teaching versioning as you go; see "Teach versioning and resolution as you go" in
+  docs/contributing/design-principles.adoc. A plain POM
   version is a soft requirement (already what nearest-wins does); hard versions and ranges are
   rare on Central. `LATEST`/`RELEASE` stay unsupported on purpose: deprecated, and a
   non-reproducible build against "lockfile wins". Snapshots are a different size of problem:

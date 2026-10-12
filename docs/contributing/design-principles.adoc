@@ -221,6 +221,35 @@ included, the eventual website, IDE-setup guides — should stay small and separ
 question, not grow into one sprawling reference that technically covers everything and helps you
 find nothing.
 
+== Teach versioning and resolution as you go
+
+Dependency versions are where Java builds hurt most, and where Maven and Gradle explain least:
+why this version and not that one, why the build broke after adding a library, what the lockfile
+is promising. kwenza's answer to "pit of success" here is not a longer manual, it's that the tool
+and the docs lead people to the correct result without first needing to understand mediation,
+BOMs or POM inheritance. Three places carry this, in order of how early they catch a mistake:
+
+* *Behaviour: the default is the safe one.* Exact versions only, the lock wins, checksums fail
+  closed, and a version kwenza can't honour (a range, `LATEST`, a snapshot) is refused up front
+  rather than half-handled. Where kwenza has to pick between versions, it should be able to say
+  so: when nearest-wins settles on a version lower than one a dependency asked for, that's the
+  classic source of a runtime `NoSuchMethodError`, and a notice at resolution time is worth more
+  than any paragraph in a guide. (That comparison needs Maven's version ordering, which kwenza
+  doesn't implement yet; see the roadmap.)
+* *Messages: say what happened, why, and what to do.* An error about a dependency names the whole
+  chain that pulled it in, says which rule kwenza applied, and names the fix: pin the version in
+  `[dependencies]`, or that it's a kwenza limitation and where it's tracked. This is "fail fast,
+  with a specific and actionable message", applied to resolution.
+* *Docs: one short page per question.* A user-facing guide to dependencies and versions that
+  answers, in order: what a version string means, how kwenza chooses between two, what
+  `kwenza.lock` guarantees, and what to do when something goes wrong. It links to the manual
+  pages for the commands that show the answer (`--verbose` today, `kwenza tree` later). The
+  contributor-side detail stays in
+  link:maven-repositories-poms-and-boms.adoc[the Maven primer].
+
+The test of this principle is a new user who has never read a POM: they should be able to add a
+dependency, hit a conflict, and fix it using only what kwenza printed and one short page.
+
 == kwenza must be able to make itself, from nothing but a JDK
 
 Zero runtime dependencies for kwenza's own build isn't a style preference, it's a bootstrapping
