@@ -87,11 +87,17 @@ describes methodology and how to read the results, without quoting numbers. If y
 scenario or operation does, or add a tool, update that prose too: the generated commands table
 will already be right, the explanation of them won't.
 
-Refreshing is a manual workflow, `.github/workflows/benchmarks.yml` (Actions > Refresh benchmark
-figures > Run workflow), which reruns everything and opens a PR with the regenerated files. It's
-not triggered by merges: a full run takes a quarter of an hour, shared runners give different
-numbers from a laptop (the environment table says which you're looking at), and the figures only
-need refreshing when something changes enough to matter, such as a release.
+Refreshing is the workflow `.github/workflows/benchmarks.yml`. It runs when a release is
+published, and can be started by hand (Actions > Refresh benchmark figures > Run workflow). It
+reruns everything and opens a PR with the regenerated files, cut from the default branch so it
+carries only those three files. The environment table includes kwenza's version (from the root
+`kwenza.toml`) and commit, so the page says which release the figures are for.
+
+It deliberately doesn't run on merges: a full run takes a quarter of an hour, shared runners give
+different numbers from a laptop (the environment table says which you're looking at), and the
+figures only need to be right for a released version. Between releases the page can describe an
+older kwenza than `main`; the stamp is how a reader can tell. There's no release yet, so until the
+first one the figures are from the last manual run.
 
 == Regression check: base vs head
 
@@ -101,7 +107,7 @@ a real project, interleaved, then fails if head is meaningfully slower.
 
 [source,bash]
 ----
-java Regress.java <base-jar> <head-jar> [runs] [threshold-percent]
+java Regress.java <base-jar> <head-jar> [runs] [--reference <jar>]
 ----
 
 The project is the `commons-lang3` scenario above, sharing its checkout. It uses
@@ -126,16 +132,36 @@ version mediation, no network.
 isolated, as above. Capped at 5 runs, and the noisiest of the three because it's network-bound.
 |===
 
-Why two jars in one run instead of a stored baseline: absolute times on shared CI runners vary
-between machines and between days, but two jars measured alternately seconds apart share the
-noise. A run fails only when head's median *and* its minimum are both more than the threshold
-(default 15%, and at least 50 ms) slower than base's; the median alone flags a busy machine, the
-minimum alone a lucky run. Two identical jars compared on a laptop showed a median 13.7% apart
-and a minimum 1% apart, which is why both are required.
+Why jars in one run instead of a stored baseline: absolute times on shared CI runners vary
+between machines and between days, but jars measured alternately seconds apart share the noise.
+
+There are two comparisons, because they catch different things:
+
+* *Head against base* (the PR's target branch): did this change make kwenza slower? Each
+  operation has its own limit, in the `Operation` enum of `Regress.java`: 8% for `package`, 10%
+  for the warm resolve, 25% for the download (network-bound, so noisy).
+* *Head against a pinned reference* (the commit in `REFERENCE`): has kwenza as a whole got slower?
+  A PR is only ever compared with its parent, so ten changes that each cost 4% would all pass the
+  first check and compound to nearly 50%. The budget is cumulative: 12%, 15% and 35%, however
+  many PRs it takes. Moving `REFERENCE` is a deliberate act that accepts the slowdown so far, so
+  do it when cutting a release (point it at the release's commit, or tag), not to make a red PR go
+  green.
+
+A limit is exceeded only when head's median *and* its fastest run are both over it, and by more
+than 50 ms: the median alone flags a busy machine, the fastest run alone a lucky one. Two
+identical jars compared on a laptop showed medians up to 14% apart but fastest runs 1% apart,
+which is why both are required.
+
+*All the limits are provisional.* They come from one laptop's noise, not from CI runners. To set
+them properly, run the check on a few unchanged PRs (or with the same jar as base and head) and
+set each limit at about three times the spread you see on the fastest run. A real step can
+also sit near a limit: the pre-#17 jar was 7.7% slower than #17 on the fastest `package` run,
+just under the 8% limit.
 
 CI runs it on every pull request (`.github/workflows/perf.yml`), building base from the PR's
-target branch, and writes the table to the job summary. Locally, build the two jars however you
-like, for example `bin/kwenza package` on each branch and copy the jars aside.
+target branch and the reference from `REFERENCE`, and writes the table to the job summary.
+Locally, build the jars however you like (for example `bin/kwenza package` on each branch, copied
+aside) and pass the reference with `--reference <jar>`.
 
 Not covered yet: a project with a much larger dependency graph (Cargo's resolver benchmarks use
 captured real-world manifests and locks for this), tests, and trends over time on `main`.

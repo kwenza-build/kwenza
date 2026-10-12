@@ -291,7 +291,7 @@ public final class Bench {
                 .append(" cores, ").append(System.getProperty("os.name")).append(' ')
                 .append(System.getProperty("os.version")).append('\n');
         a.append("|Date |").append(java.time.LocalDate.now()).append('\n');
-        a.append("|kwenza |commit `").append(gitHead()).append("`\n");
+        a.append("|kwenza |").append(kwenzaVersion()).append(", commit `").append(gitHead()).append("`\n");
         a.append("|JDK |").append(System.getProperty("java.vm.vendor")).append(' ')
                 .append(System.getProperty("java.runtime.version")).append(", the `java` on `PATH`, used by every tool\n");
         a.append("|Maven |").append(wrapperVersion("hello-world/maven/.mvn/wrapper/maven-wrapper.properties",
@@ -393,6 +393,13 @@ public final class Bench {
             }
         }
         return System.getProperty("os.arch");
+    }
+
+    /** The version in kwenza's own manifest, the one place a release changes it. */
+    private static String kwenzaVersion() throws IOException {
+        var m = java.util.regex.Pattern.compile("(?m)^version\\s*=\\s*\"([^\"]+)\"")
+                .matcher(Files.readString(HERE.getParent().resolve("kwenza.toml")));
+        return m.find() ? m.group(1) : "unknown";
     }
 
     private static String gitHead() throws IOException, InterruptedException {
