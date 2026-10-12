@@ -283,6 +283,13 @@ specific decision and its specific reasoning; that one is for the pattern.
   don't touch a project, so they don't load one either, and work outside any project.
   `RunCommand`/`TestCommand` return `Failure.child(exitCode)` when their subprocess fails, since
   it has already printed whatever it needed to; `Cli.run` returns that code from one place.
+  Both fork through `commands.Jvm`, which runs a `JvmLaunch` (a record: label, main class, dirs,
+  jars, JVM args, program args) and owns the status line, the `--verbose` detail, the output
+  redirect and the exit code, so any future command that forks a JVM gets them right for free.
+  `JvmLaunch.statusLine`/`command` are pure, so the status line CI diffs is unit-tested. There's
+  deliberately no process-launcher interface (one adapter, `ProcessBuilder`: a hypothetical seam)
+  and no non-blocking `start()`/output capture yet: those arrive with test sharding or a
+  kwenza-owned test report, additively.
 
 - **Errors are values; exceptions are for what nobody designed for.** A failure kwenza expects
   and handles on purpose (a bad manifest, a malformed lock, a checksum mismatch, a failed
