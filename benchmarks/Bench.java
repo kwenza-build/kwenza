@@ -317,7 +317,7 @@ public final class Bench {
         commands.append("Run from each tool's project directory, with the environment variables shown. `<cache>` is that "
                 + "scenario's isolated cache directory. `kwenza` is the launcher script, `bin/kwenza` in a checkout "
                 + "(installed, it's the same script on `PATH`); like `./mvnw` and `./gradlew`, it starts the JVM for "
-                + "you.\n\n[cols=\"2,1,4\"]\n|===\n|Operation |Tool |Command\n");
+                + "you.\n\n[cols=\"2,2,6\"]\n|===\n|Operation |Tool |Command\n");
         for (ScenarioSpec sc : SCENARIOS) {
             Path cache = HERE.resolve(sc.name()).resolve(".cache");
             for (String op : sc.operations()) {

@@ -2,7 +2,7 @@
 
 Run from each tool's project directory, with the environment variables shown. `<cache>` is that scenario's isolated cache directory. `kwenza` is the launcher script, `bin/kwenza` in a checkout (installed, it's the same script on `PATH`); like `./mvnw` and `./gradlew`, it starts the JVM for you.
 
-[cols="2,1,4"]
+[cols="2,2,6"]
 |===
 |Operation |Tool |Command
 .4+.^|hello-world / package|kwenza|`KWENZA_REPO=<cache>/kwenza-m2 kwenza package`
