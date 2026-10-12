@@ -153,7 +153,10 @@ public final class Bench {
     private static List<String> command(String tool, String operation, Path cacheDir) {
         Path mavenRepo = cacheDir.resolve("maven-m2");
         return switch (tool) {
-            case "kwenza" -> List.of("java", "-jar", kwenzaJar().toString(), operation);
+            case "kwenza" -> {
+                kwenzaJar(); // fail early if kwenza hasn't been built; the launcher would silently fall back
+                yield List.of(HERE.getParent().resolve("bin/kwenza").toString(), operation);
+            }
             case "maven" -> operation.equals("package")
                     ? List.of("./mvnw", "-q", "-Dmaven.repo.local=" + mavenRepo, "-Dmaven.test.skip=true", "package")
                     : List.of("./mvnw", "-q", "-Dmaven.repo.local=" + mavenRepo, "test");
@@ -312,8 +315,9 @@ public final class Bench {
             Path cache = HERE.resolve(sc.name()).resolve(".cache");
             for (String op : sc.operations()) {
                 for (String tool : TOOLS) {
-                    String cmd = String.join(" ", command(tool, op, cache))
-                            .replace(kwenzaJar().toString(), "kwenza.jar").replace(cache.toString(), "<cache>");
+                    String cmd = (envPrefix(tool, cache) + String.join(" ", command(tool, op, cache)))
+                            .replace(HERE.getParent().resolve("bin/kwenza").toString(), "kwenza")
+                            .replace(cache.toString(), "<cache>");
                     a.append('|').append(sc.name()).append(" / ").append(op).append('|').append(DISPLAY.get(tool))
                             .append("|`").append(cmd).append("`\n");
                 }
@@ -376,6 +380,13 @@ public final class Bench {
             y += groupH + groupGap;
         }
         return svg.append("</svg>\n").toString();
+    }
+
+    /** The environment the tool runs with, as a shell prefix: it's part of the command, not just the harness. */
+    private static String envPrefix(String tool, Path cache) {
+        StringBuilder sb = new StringBuilder();
+        for (var e : env(tool, cache).entrySet()) sb.append(e.getKey()).append('=').append(e.getValue()).append(' ');
+        return sb.toString();
     }
 
     private static String cpuModel() throws IOException, InterruptedException {
