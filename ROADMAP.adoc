@@ -74,6 +74,31 @@ structure everything else builds on.
   POMs can be checked locally, the same `Pinned`/`Published` rule as jars. Pinning changes the
   lockfile shape, so do it with or right after the main-classpath decision above and before the
   lockfile review. See AGENTS.md, "POMs are not verified".
+* [ ] *Bug: unsupported versions crash, 404 or vanish instead of saying why.* The resolver treats
+  versions as opaque strings, so a dependency (usually a transitive one) with a version it can't
+  handle fails badly. A range (`[1.0,2.0)`) or an unresolved `${property}` makes `URI.create`
+  throw, reported as "internal error" (exit 101) for a perfectly legitimate POM. `LATEST`,
+  `RELEASE` and `-SNAPSHOT` become a bare Central 404 with no hint why. A dependency with no
+  version and none in `dependencyManagement` is skipped silently (`Resolver`'s
+  `if (childVersion == null) continue;`), where Maven errors. Fix: recognise these before any
+  fetch and return a `Result` error naming the dependency, the chain that requested it, the
+  reason and what to do about it (pin an exact version in `[dependencies]`, or that it's a
+  kwenza limitation and where it's tracked), per "Teach versioning and resolution as you go" in
+  docs/contributing/design-principles.adoc; make the version-less case an error too (check `examples/` first in case something
+  relies on the skip). TDD at `ResolverTest`, one case per kind. Supporting ranges and
+  snapshots is separate, later work (Milestone 4); this is only about failing honestly. See
+  AGENTS.md, "Resolver gaps against Maven's POM semantics".
+* [ ] *Honour the POM semantics real artifacts rely on.* `PomParser` ignores `<exclusions>`, so
+  a jar its author excluded (a logging bridge, a duplicate `javax`/`jakarta` API) still lands on
+  the classpath, which can break a build or change runtime behaviour silently. Also: a
+  `dependencyManagement` entry's `<scope>` is ignored (only versions are used), and property
+  substitution knows only `project.version`, `project.groupId`, `project.artifactId` and
+  `pom.version`, so references like `${project.parent.version}` stay unresolved. Implement
+  exclusions first (nothing else is as likely to put a wrong jar on the classpath), then managed
+  scope and the missing built-in properties. TDD at `ResolverTest`/`PomParserTest`; verify
+  against `examples/` and a few real BOM-heavy artifacts (Jackson, a Spring starter). Whether
+  the *manifest* gets its own `exclude` key is a manifest-shape question for the CLI and
+  manifest review below. See AGENTS.md, "Resolver gaps against Maven's POM semantics".
 * [ ] *Review the CLI and manifest design.* The code-design pass covers the internals; this
   covers the *user-facing contract*, which is much harder to change after 0.1. Check it's
   sensible today and has room for what AGENTS.md already plans, without breaking changes.
@@ -84,9 +109,12 @@ structure everything else builds on.
 ** _Manifest:_ table and key names (`[package]`, `java-version`, `output-dir`, ...); where
    `[workspace]`, `[scripts]`, test configuration and future packaging targets (fat jar, OCI)
    would go; how unknown keys are handled (a clear error or warning, never silently ignored);
-   whether the manifest needs an edition or schema version field.
+   whether the manifest needs an edition or schema version field; whether a dependency can
+   declare `exclude`s; and how a project would import a BOM of its own (a Gradle-style
+   `platform`), since much of Central assumes it.
 ** _Lockfile:_ add a format version (`kwenza.lock` has none today), and check the entry shape
-   will hold up for workspaces and checksum verification.
+   will hold up for workspaces, checksum verification, and later custom repositories and
+   snapshots (a per-entry repository, a timestamped snapshot version).
 ** _Done when:_ the decisions are recorded in AGENTS.md (or ADRs, if this produces enough of
    them), the docs match, and any resulting changes are added as items below.
 * [ ] *`--project <path>`.* Load `Project` from an explicit root (a global option in `cli.Cli`)
@@ -193,6 +221,14 @@ SDKMAN! is deferred to after 0.1 (see Milestone 4), because it needs vendor appr
 * [x] *Home page.* A simple landing page at `kwenza.dev`: the pitch, a 30-second example, and
   install commands, linking into the docs. Start with the Antora UI or one static page, not a
   separate site framework.
+* [ ] *Dependencies and versions guide.* One short, user-facing page on kwenza.dev for the
+  question new users hit first: what a version string means, how kwenza picks between two
+  (nearest wins, and why not "newest wins"), what `kwenza.lock` guarantees, and what to do when
+  a build breaks after adding a library (read the error's dependency chain, pin a version,
+  `--verbose`). Written for someone who has never read a POM; the contributor detail stays in
+  `docs/contributing/maven-repositories-poms-and-boms.adoc`. Keep it to one question per
+  section, per "Transparent" in the design principles. _Done when:_ a new user can fix a version
+  conflict using only the guide and kwenza's own output.
 * [ ] *Release 0.1.0.* Rename `CHANGELOG.md`'s `[Unreleased]` section to `[0.1.0]` with the
   date, tag `v0.1.0`, check that every install route in Milestone 2 works from a clean machine,
   and announce it.
@@ -211,7 +247,18 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
   required in the manifest, so the default lives in the scaffold, not in the parser.
 * [ ] *`--offline`*: the lockfile plus a warm `~/.m2` already make this mostly possible; make it
   an explicit, enforced mode.
-* [ ] *`kwenza tree`*: dependency tree display.
+* [ ] *`kwenza tree`*: dependency tree display. Make it answer "why is this here, and why this
+  version": show who requested each module (`kwenza.lock` already records `requested-by`) and,
+  where nearest-wins overrode a different requested version, both versions. Consider a
+  `kwenza tree --why <module>` shape, decided with the CLI review. This is the main way users
+  learn how resolution behaved, so treat it as teaching, not just display.
+* [ ] *Mediation notices.* When resolution picks a version *lower* than one a dependency asked
+  for (nearest-wins, and the usual source of a runtime `NoSuchMethodError`), say so at resolution
+  time, with the dependency chain and the fix. Needs the version ordering port built for
+  `kwenza upgrade` (below), so do it after that. Decided: a warning *by default*, but only when
+  the chosen version is lower than one requested; silent when mediation picks the same or a
+  higher one, since noisy warnings get ignored and that defeats the point. `--verbose` can list
+  every override.
 * [ ] *`kwenza upgrade`*: move dependencies to newer versions by editing `kwenza.toml` itself
   (versions are exact pins, so there's no range for a lock-only `update` to move within). Read
   each direct dependency's `maven-metadata.xml` for its published versions, bump `version` or the
@@ -220,6 +267,18 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
   comments or layout, and a read-only `kwenza outdated` (or `upgrade --dry-run`) report. The same
   job as cargo-edit's `cargo upgrade`, Gradle's versions plugin and Maven's
   `versions:use-latest-releases`. See AGENTS.md, "No `--update` flag and no `update` command".
+  This needs Maven's version ordering (not semver: `1.0` equals `1.0.0`, and `alpha < beta <
+  rc < release < sp`), a dependency-free port of `ComparableVersion` plus a
+  `maven-metadata.xml` parser. Build both here, and keep them reusable for ranges (below).
+* [ ] *Version ranges.* Soft requirements are already handled by nearest-wins; this adds hard
+  versions (`[1.2]`) and ranges (`[1.0,2.0)`) found in some Central POMs. Reuses the version
+  ordering and metadata parser from `kwenza upgrade`, intersects ranges across the graph, and
+  records the chosen concrete version in kwenza.lock so resolution stays deterministic.
+  `LATEST` and `RELEASE` stay unsupported on purpose (deprecated, non-reproducible). See
+  AGENTS.md, "Versions, ranges and snapshots".
+* [ ] *BOMs in the manifest.* Let a project import a BOM for its own dependencies (version-less
+  `[dependencies]` entries, Gradle-`platform` style), resolved, locked and verified like any
+  other artifact. Shape decided in the CLI and manifest review above.
 * [ ] *`[annotation-processors]`*: explicitly declared annotation processors (Lombok, MapStruct,
   Dagger, ...), resolved and verified like dependencies and passed to javac on their own processor
   path. Classpath discovery stays off. Reserve the section name in the CLI and manifest review
@@ -230,6 +289,15 @@ Ordered by expected payoff. Re-order freely once real users start asking for thi
   the biggest Phase 2 item, and it gates aeron.
 * [ ] *Validation ladder, steps 2 and 3: SBE, then aeron.* aeron doubles as the acceptance test
   for `[workspace]`.
+* [ ] *Custom repositories, then snapshots.* A big item, deliberately late: Central, the only
+  repository today, publishes no snapshots, so nothing here matters until kwenza consumes
+  from a private Nexus/Artifactory. Design first. Repositories in the manifest, with credentials
+  that never reach the manifest or lockfile; per-repository trust (a `.sha1` from a private
+  repository vouches for less than Central's); then snapshots: version-level
+  `maven-metadata.xml`, fetching the timestamped file, kwenza.lock pinning the timestamped
+  version and its `sha256`, and an explicit refresh command (snapshots are the first thing that
+  would give an `update` command something to do). A path dependency may serve the common
+  local `mvn install` case without any of this. See AGENTS.md, "Versions, ranges and snapshots".
 * [ ] *`--fat` uber-jar packaging.*
 * [ ] *AppCDS for kwenza's own cold start* (see "Known, deliberate trade-off: no daemon").
 

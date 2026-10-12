@@ -1,0 +1,223 @@
+= Maven versions, POM semantics, snapshots and Java modules: research
+:toc:
+:toclevels: 2
+
+Research for a maintainer, not a decision record. The conclusions are summarized in
+link:../../AGENTS.md[AGENTS.md] ("Resolver gaps against Maven's POM semantics", "Versions, ranges
+and snapshots" and the JPMS item under "Future ideas") and ordered in
+link:../../ROADMAP.adoc[ROADMAP.adoc]; this file holds the sourcing behind them. For how the formats work, start with the
+link:../contributing/maven-repositories-poms-and-boms.adoc[primer].
+
+Sources were read on 2026-10-12. Each claim is tagged:
+
+* *[doc]*: taken from the cited page.
+* *[code]*: observed in kwenza's own source at the same date.
+* *[unverified]*: from general knowledge, not yet checked against a primary source. Check before
+  building on it.
+
+== Summary
+
+* Maven versions are *not* semver: arbitrary dot/hyphen strings with a defined ordering
+  (`ComparableVersion`). kwenza only needs that ordering once it reads `maven-metadata.xml`
+  (ranges, `kwenza upgrade`, snapshots); nearest-wins mediation never compares versions.
+* A POM's plain `<version>` is a *soft* requirement; ranges and `[1.0]` are *hard*. Central has
+  both, rarely.
+* Central refuses `-SNAPSHOT` releases, so snapshots only matter once kwenza can use a
+  repository other than Central.
+* kwenza's resolver treats versions as opaque strings, ignores `<exclusions>`, ignores a managed
+  entry's scope, and has two spurious failure modes for versions it can't handle (section 5).
+* JPMS leaves the POM graph alone but changes what is handed to `javac` and `java`
+  (classpath vs module path), tests, thin jars and annotation processors (section 6).
+
+== 1. Repository layout
+
+*[doc]* (https://maven.apache.org/repositories/layout.html[Maven repository layout]): a file's
+path is `groupId` (dots to slashes) `/ artifactId / baseVersion / artifactId-version[-classifier].extension`.
+`baseVersion` is the `-SNAPSHOT` form; a remote repository stores snapshots under a timestamped
+`version`, a local installation under `baseVersion`. Files that don't follow the layout aren't
+addressable by coordinates.
+
+*[doc]* (https://central.sonatype.org/publish/requirements/[Central requirements]): `.md5` and
+`.sha1` are required for every deployed file; `.sha256`/`.sha512` are supported, not mandatory.
+Released versions "cannot end in `-SNAPSHOT`", which is reserved for in-development versions.
+
+*[unverified]* `maven-metadata.xml` exists at two levels: per artifact (the list of published
+versions, plus `latest`/`release` pointers) and, for snapshots, per version (the current
+timestamp and build number). Central policy on mutating a published release (immutability) wasn't
+visible in the fetched text; confirm before citing it as a Central guarantee. AGENTS.md already
+relies on it ("released artifacts on Central are immutable").
+
+== 2. Version ordering
+
+*[doc]* (https://maven.apache.org/ref/3-LATEST/maven-artifact/apidocs/org/apache/maven/artifact/versioning/ComparableVersion.html[ComparableVersion]):
+
+* `.` and `-` separate components, and so does a digit/letter transition (`1.0alpha1` is
+  `1, 0, alpha, 1`).
+* Components are unlimited; numbers compare numerically.
+* Known qualifiers, case-insensitive, in order: `alpha` (`a`), `beta` (`b`), `milestone` (`m`),
+  `rc` (`cr`), `snapshot`, empty/`ga`/`final`, `sp`. Unknown qualifiers sort after all of them,
+  lexically.
+* A hyphen before a qualifier makes it rank below digits: `1.0.RC2 < 1.0-RC3 < 1.0.1`, and in
+  general `1.0.X2 < 1.0-X3 < 1.0.1`.
+
+So `1.0-SNAPSHOT` sorts before `1.0`, and `1.0-sp1` after it. *[unverified]* `1.0` equals `1.0.0`
+(trailing zero components are dropped); check against the javadoc's own examples when porting.
+Real artifacts add shapes semver can't express: Guava's `33.2.1-jre`/`-android`, date versions.
+
+*[doc]* (https://maven.apache.org/pom.html[POM reference]): the page says snapshots are not
+treated differently from any other qualifier for ordering.
+
+== 3. Version requirements, mediation and management
+
+*[doc]* (https://maven.apache.org/pom.html[POM reference]):
+
+* `1.0` is a *soft* requirement: used unless another version appears earlier. `[1.0]` is a
+  *hard* requirement; ranges are `[1.2,1.3]`, `[1.0,2.0)`, `[1.5,)`, `(,1.0]`, unions such as
+  `(,1.0],[1.2,)`, and exclusion of one version `(,1.1),(1.1,)`. The build fails if no version
+  satisfies every hard requirement.
+* Exclusions remove only the path through *that one dependency*; the same artifact can still
+  arrive by another route. `<groupId>*</groupId>` style wildcards exclude everything transitive.
+* Scopes: `compile` and `runtime` are transitive; `provided`, `test` and `system` aren't.
+  `optional` dependencies aren't inherited by dependents.
+
+*[doc]* (https://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html[Dependency mechanism]):
+
+* *Nearest definition wins*: the version closest to the project in the tree; at equal depth the
+  first one declared. Declaring the dependency directly in the project forces that version.
+* `dependencyManagement` *takes precedence over mediation* for transitive dependencies, and
+  applies to project dependencies only, not to plugins' dependencies.
+* Precedence, highest first: the current POM's `dependencyManagement`; imported POMs'
+  `dependencyManagement` in declaration order; then mediation.
+* `import` scope is allowed only on `type` `pom` inside `dependencyManagement`. Imports are
+  transitive (a BOM that imports another BOM brings its entries). A POM can't import its own
+  parent or a module below it.
+
+*Caveat:* the first fetch of the POM reference summarized mediation as "highest version". That's
+wrong for soft requirements (the dependency-mechanism guide above is explicit), and presumably
+describes only how a range picks among the versions satisfying it. Don't cite the POM-reference
+summary for mediation.
+
+== 4. Snapshots and `LATEST`/`RELEASE`
+
+*[doc]* Central refuses `-SNAPSHOT` (section 1), so a Central-only build can't see one, directly
+or transitively.
+
+*[doc]* (https://docs.gradle.org/current/userguide/dependency_caching.html[Gradle dependency caching]):
+Gradle treats dynamic versions (`1.+`) and changing modules (snapshots) alike, caching them for
+24 hours by default, tunable with `cacheDynamicVersionsFor`/`cacheChangingModulesFor`.
+`--refresh-dependencies` ignores the cache, but checks checksums first and doesn't re-download
+identical artifacts. Gradle fetches a checksum (`.sha512`, `.sha256`, `.sha1`, `.md5`) before
+downloading and skips the download if a matching artifact is already cached.
+
+*[doc]* Maven's `updatePolicy` controls how often it re-checks a remote repository (`always`,
+`daily`, `interval:X`, `never`).
+
+*[unverified]* Snapshots are deployed as timestamped files
+(`lib-1.0-20240612.101530-7.jar`) with a version-level `maven-metadata.xml` naming the newest;
+`LATEST` and `RELEASE` are resolved through the artifact-level metadata and are deprecated in
+dependency declarations. Check the exact current status in Maven 3 and 4 before writing the
+"unsupported on purpose" text into user docs.
+
+*Not researched:* how widely snapshots are relied on. The reasoning in AGENTS.md (common behind
+an internal Nexus/Artifactory and in local `mvn install` workflows, absent for Central consumers)
+is an informed guess, not a measurement. If it ever drives prioritisation, look for real data
+(a survey, or the manifests of the validation-ladder projects).
+
+== 5. What kwenza does today
+
+*[code]* (`Resolver.java`, `PomParser.java`, `MavenRepository.java`, `KwenzaManifest.java`,
+checked 2026-10-12; no test mentions SNAPSHOT or LATEST):
+
+[cols="2,3"]
+|===
+| Input | Behaviour
+
+| Version `LATEST`, `RELEASE` or `-SNAPSHOT`
+| Treated as an ordinary version: a Central 404 surfaces as
+  `Failed to resolve g:a:V: Failed to fetch <url> (HTTP 404)`. Correct outcome, no explanation.
+
+| A range such as `[1.0,2.0)`
+| `URI.create` in `MavenRepository.fetch` throws `IllegalArgumentException`. Confirmed with a
+  standalone check (`[`, `)`, `,` and `${` are illegal in a URI path; `LATEST` and
+  `1.0-SNAPSHOT` are fine). Nothing catches it, so `Cli` reports an "internal error" (exit 101).
+
+| An unresolved `${property}` in a version
+| Same exception, same wrong report. Substitution runs at most 5 passes and knows only
+  `project.version`, `project.groupId`, `project.artifactId` and `pom.version`, so
+  `${project.parent.version}` and similar stay unresolved.
+
+| No version in the POM and none in `dependencyManagement`
+| `if (childVersion == null) continue;`: the dependency is dropped silently. Maven errors.
+
+| `<exclusions>`
+| Not parsed by `PomParser`; ignored.
+
+| A managed entry's `<scope>`
+| Ignored: `buildManagementMap` keeps only a version per `group:artifact`.
+
+| `import` BOMs, `<parent>`, `optional`, non-transitive scopes
+| Handled. An explicit version in a POM beats a managed one for that POM's own children;
+  imported entries lose to the importing POM's own (`putIfAbsent`).
+|===
+
+Open question *[code]*: kwenza applies each *dependency's own* effective-POM management to that
+dependency's children. Maven's guide says management takes precedence over mediation in the
+project's effective POM. kwenza's manifest has no `dependencyManagement`, so today the only
+management in play is per-POM. Whether this differs observably from Maven for real artifacts
+needs a test against a few BOM-heavy ones (Jackson, a Spring starter) before declaring parity.
+
+== 6. Java modules (JPMS)
+
+*[doc]* (https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/module/ModuleFinder.html[`ModuleFinder`]):
+
+* An *explicit* module has `module-info.class` at the top of the jar, or in a versioned entry of a
+  multi-release jar.
+* Without one, a jar is an *automatic* module named by the `Automatic-Module-Name` manifest
+  attribute if present, else derived from the file name: strip `.jar`, strip a trailing
+  `-<version>`, replace non-alphanumerics with dots, collapse and trim dots
+  (`foo-bar-1.2.3-SNAPSHOT.jar` becomes `foo.bar`, version `1.2.3-SNAPSHOT`).
+* `ModuleFinder` returns the first module for a name and ignores later ones; two modules with one
+  name in a single directory is an error.
+
+Consequences for kwenza, mostly *[unverified]* design reasoning rather than sourced fact:
+
+* *Identity is separate.* A Maven coordinate (`com.fasterxml.jackson.core:jackson-databind`) and
+  a module name (`com.fasterxml.jackson.databind`) are unrelated. kwenza should read the name
+  from the jar with `ModuleFinder`/`ModuleDescriptor` (in the JDK, so no dependency), never keep a
+  mapping table.
+* *Version mediation fits.* The module system can't hold two modules of one name, and
+  `requires` carries no version, so kwenza's one-version-per-module output is what JPMS wants.
+* *Classpath vs module path.* A named module can't read the classpath without
+  `--add-reads ALL-UNNAMED`, so a modular project (one with `module-info.java`) realistically puts
+  its dependencies on the module path, and a non-modular one keeps today's classpath. An explicit
+  manifest override avoids a purely implicit switch ("Transparent: no magic").
+* *Runtime-only modules* (a JDBC driver found by `ServiceLoader`, a logging backend) aren't
+  resolved unless something `requires` them or `--add-modules` names them. Maven and Gradle
+  compute paths from `requires`; kwenza could use `--add-modules ALL-MODULE-PATH`. *Verify it
+  works for both `javac` and `java` before relying on it.*
+* *Split packages* (the same package in two jars) are illegal on the module path; detect and
+  name both jars rather than surface javac's message.
+* *Tests.* Either patch the test classes into the main module (`--patch-module`, `--add-reads`,
+  `--add-opens` for JUnit's reflection) or run them on the classpath as a black box. The
+  classpath is much simpler; patching can come later. It changes how `TestCommand` forks
+  `ConsoleLauncher`.
+* *Thin jars.* `Class-Path` in a manifest is ignored on the module path, so the portable
+  `lib/` item (ROADMAP, Milestone 1) should be designed with a `java -p lib -m module/Main`
+  launcher in mind. A fat jar discards `module-info`. `jlink`/`jpackage` are the natural modular
+  delivery targets.
+* *Annotation processors.* javac has `--processor-module-path` beside `--processor-path`; keep
+  it open in the `[annotation-processors]` design.
+* *Workspaces.* `--module-source-path` compiles several modules together, which is why
+  `[workspace]` and JPMS compose rather than substitute.
+* The Java floor is not a constraint here: kwenza itself requires 21, and JPMS is 9+. It would
+  matter only if kwenza compiled projects that *target* Java 8.
+
+== 7. Open questions
+
+* Does a version-less, unmanaged dependency ever legitimately appear on a real Central POM that
+  Maven tolerates? Decides whether the silent skip becomes an error outright.
+* Exact Maven 3/4 status of `LATEST`/`RELEASE` in dependency versions.
+* How do other tools verify a `.sha1` from a *private* repository, and what should that vouch for?
+  Needed before custom repositories.
+* Real-world snapshot usage (section 4).
+* Is `--add-modules ALL-MODULE-PATH` accepted by both `javac` and `java` for this purpose?

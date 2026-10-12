@@ -38,6 +38,11 @@ resolved, and `KWENZA_TIMING` shows where the time went. Mistakes like a mismatc
 `version.ref` with no matching version, or an unknown command are caught before anything runs,
 with a message that says what to change.
 
+Versioning is where this matters most. kwenza refuses a version it can't honour rather than
+half-handling it, names the dependency chain in an error, and aims to tell you when it chose
+between two versions, so you can get from a conflict to a fix without first learning how Maven
+resolves dependencies.
+
 == Secure
 
 Every jar is verified before it's used: downloads against the repository's checksums, cached jars
