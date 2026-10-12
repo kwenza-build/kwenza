@@ -256,7 +256,8 @@ Hello from Kwenza: kwenza builds java
 The manifest is `examples/hello-world/kwenza.toml` verbatim. The terminal output is a real
 `kwenza run` of that example, captured on 2026-10-10. When the site is built, both should be
 *included from the repo*, not pasted, so they can't drift: Antora `include::` of the example's own
-file, plus a transcript captured in CI. That's the same reasoning as the
+file (the region between its `tag::home[]`/`end::home[]` comments, not a line range, which broke as
+soon as a line was added above it), plus a transcript captured in CI. That's the same reasoning as the
 `benchmarks/*/src` → `examples/*/src` symlink rule in AGENTS.md. The `run:` line showing the exact
 `java` command is worth keeping on the page, because it's *transparent* demonstrated rather than
 claimed.
