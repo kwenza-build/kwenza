@@ -13,10 +13,10 @@ import java.util.HexFormat;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Every artifact kwenza uses comes through here: POMs from the local cache or the repository, and
- * jars only through {@link #jar}, which applies the one trust rule. There is no way to get a jar
- * without saying what vouches for it, so no caller can pick an unverified path by mistake (see
- * AGENTS.md, "Checksums fail closed").
+ * Every artifact kwenza uses comes through here, jars through {@link #jar} and POMs through
+ * {@link #pom}, both applying the one trust rule. There is no way to get either without saying
+ * what vouches for it, so no caller can pick an unverified path by mistake (see AGENTS.md,
+ * "Checksums fail closed").
  *
  * <ul>
  *   <li>{@link Expectation.Pinned}: kwenza.lock's sha256 vouches for it. A cached jar is checked
@@ -55,50 +55,52 @@ public final class ArtifactStore {
         this.remote = remote;
     }
 
-    /**
-     * The POM's text, from the local cache if it's there, else from the repository (then cached).
-     * POMs aren't checksum-verified yet; see AGENTS.md, "POMs are not verified".
-     */
-    public CompletableFuture<Result<String>> pom(Gav gav) {
-        Path cached = local.path(gav, "pom");
-        if (Files.exists(cached)) {
-            return CompletableFuture.completedFuture(Result.ok(read(cached)));
-        }
-        return remote.fetch(gav, "pom").thenApply(fetched -> fetched.map(bytes -> {
-            write(cached, bytes);
-            return new String(bytes, StandardCharsets.UTF_8);
-        }));
+    /** A POM that {@code expected} vouched for: its text, and the sha256 kwenza.lock should pin. */
+    public record VerifiedPom(String text, String sha256) {
+    }
+
+    /** The POM, once {@code expected} vouches for it (same rule as {@link #jar}), or why it doesn't. */
+    public CompletableFuture<Result<VerifiedPom>> pom(Gav gav, Expectation expected) {
+        return verified(gav, "pom", expected).thenApply(result -> result.map(v ->
+                new VerifiedPom(new String(v.bytes(), StandardCharsets.UTF_8), hex("SHA-256", v.bytes()))));
     }
 
     /** The jar, once {@code expected} vouches for it, or a failure saying why it doesn't. */
     public CompletableFuture<Result<Path>> jar(Gav gav, Expectation expected) {
-        Path cached = local.path(gav, "jar");
+        return verified(gav, "jar", expected).thenApply(result -> result.map(Verified::path));
+    }
+
+    private record Verified(Path path, byte[] bytes) {
+    }
+
+    private CompletableFuture<Result<Verified>> verified(Gav gav, String ext, Expectation expected) {
+        Path cached = local.path(gav, ext);
         if (Files.exists(cached)) {
             byte[] bytes = readBytes(cached);
             return switch (expected) {
                 case Expectation.Pinned pinned ->
-                        CompletableFuture.completedFuture(matchesPin(gav, bytes, pinned, cached.toString(),
-                                "The cached jar has changed since the lock was written; delete it so kwenza"
-                                        + " re-downloads and re-verifies it.").map(ok -> cached));
-                case Expectation.Published published -> publishedSha1(gav).thenApply(sha1 -> sha1.flatMap(expectedSha1 -> {
+                        CompletableFuture.completedFuture(matchesPin(gav, ext, bytes, pinned, cached.toString(),
+                                "The cached " + ext + " has changed since the lock was written; delete it so kwenza"
+                                        + " re-downloads and re-verifies it.").map(ok -> new Verified(cached, bytes)));
+                case Expectation.Published published -> publishedSha1(gav, ext).thenApply(sha1 -> sha1.flatMap(expectedSha1 -> {
                     String actual = hex("SHA-1", bytes);
                     return actual.equalsIgnoreCase(expectedSha1)
-                            ? Result.ok(cached)
+                            ? Result.ok(new Verified(cached, bytes))
                             : Result.err("Checksum mismatch for " + gav + ": " + cached + " has sha1 " + actual
-                                    + " but the repository publishes " + expectedSha1 + ". The cached jar has been"
-                                    + " altered; delete it so kwenza re-downloads and re-verifies it.");
+                                    + " but the repository publishes " + expectedSha1 + ". The cached " + ext
+                                    + " has been altered; delete it so kwenza re-downloads and re-verifies it.");
                 }));
             };
         }
-        return remote.fetch(gav, "jar").thenCombine(publishedSha1(gav), (download, sha1) -> download.flatMap(bytes ->
+        return remote.fetch(gav, ext).thenCombine(publishedSha1(gav, ext), (download, sha1) -> download.flatMap(bytes ->
                 sha1.flatMap(expectedSha1 -> {
                     String actual = hex("SHA-1", bytes);
                     if (!actual.equalsIgnoreCase(expectedSha1)) {
-                        return Result.<Path>err("Checksum mismatch for " + gav
+                        return Result.<Verified>err("Checksum mismatch for " + gav + " " + ext
                                 + " (expected " + expectedSha1 + ", got " + actual + ")");
                     }
                     if (expected instanceof Expectation.Pinned pinned) {
-                        Result<Void> pin = matchesPin(gav, bytes, pinned, "the repository's jar",
+                        Result<Void> pin = matchesPin(gav, ext, bytes, pinned, "the repository's " + ext,
                                 "Released artifacts never change, so check kwenza.lock wasn't edited by hand,"
                                         + " or delete it so the next build resolves again.");
                         if (!pin.isOk()) {
@@ -106,31 +108,32 @@ public final class ArtifactStore {
                         }
                     }
                     write(cached, bytes);
-                    return Result.ok(cached);
+                    return Result.ok(new Verified(cached, bytes));
                 })));
     }
 
-    private static Result<Void> matchesPin(Gav gav, byte[] bytes, Expectation.Pinned pinned, String where,
-                                           String whatToDo) {
+    private static Result<Void> matchesPin(Gav gav, String ext, byte[] bytes, Expectation.Pinned pinned,
+                                           String where, String whatToDo) {
         String actual = hex("SHA-256", bytes);
         if (actual.equalsIgnoreCase(pinned.sha256())) {
             return Result.ok();
         }
-        return Result.err("Checksum mismatch for " + gav + ": kwenza.lock expects sha256 " + pinned.sha256()
-                + " but " + where + " has " + actual + ". " + whatToDo);
+        return Result.err("Checksum mismatch for " + gav + " " + ext + ": kwenza.lock expects sha256 "
+                + pinned.sha256() + " but " + where + " has " + actual + ". " + whatToDo);
     }
 
-    /** The jar's published sha1 hex, failing closed if it's missing, unfetchable or blank. */
-    private CompletableFuture<Result<String>> publishedSha1(Gav gav) {
-        String url = remote.url(gav, "jar.sha1");
-        return remote.fetch(gav, "jar.sha1").thenApply(fetched -> {
+    /** The file's published sha1 hex, failing closed if it's missing, unfetchable or blank. */
+    private CompletableFuture<Result<String>> publishedSha1(Gav gav, String ext) {
+        String url = remote.url(gav, ext + ".sha1");
+        return remote.fetch(gav, ext + ".sha1").thenApply(fetched -> {
             if (fetched instanceof Result.Err<?> err) {
                 return Result.err("Refusing to use " + gav + ": its checksum " + url + " couldn't be fetched ("
-                        + err.failure().problems().get(0) + "), so the jar can't be verified");
+                        + err.failure().problems().get(0) + "), so the " + ext + " can't be verified");
             }
             String text = new String(fetched.get(), StandardCharsets.UTF_8).trim();
             if (text.isEmpty()) {
-                return Result.err("Refusing to use " + gav + ": " + url + " is empty, so the jar can't be verified");
+                return Result.err("Refusing to use " + gav + ": " + url + " is empty, so the " + ext
+                        + " can't be verified");
             }
             return Result.ok(text.split("\\s+")[0]);
         });

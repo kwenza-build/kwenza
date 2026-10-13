@@ -72,3 +72,98 @@ version = "3.3"
 sha256 = "02dfd0b0439a5591e35b708ed2f5474eb0948f53abf74637e959b8e4ef69bfeb"
 requested-by = ["org.mockito:mockito-core"]
 
+[[pom]]
+module = "com.google.code.findbugs:jsr305"
+version = "3.0.2"
+sha256 = "19889dbdf1b254b2601a5ee645b8147a974644882297684c798afe5d63d78dfe"
+
+[[pom]]
+module = "com.google.errorprone:error_prone_annotations"
+version = "2.26.1"
+sha256 = "aea7e991e2dfdcb47f5fbd508587535f7802bcb9e2fc2d4ebb50be41b684da9f"
+
+[[pom]]
+module = "com.google.errorprone:error_prone_parent"
+version = "2.26.1"
+sha256 = "4a6ad00d31b0a5adcd9a4f605065d5b445fae4a04cbf827e5d1ac1077e2f814d"
+
+[[pom]]
+module = "com.google.guava:failureaccess"
+version = "1.0.2"
+sha256 = "19ebc6f4bdb4edbb3d07b6ee994f846b54ef295582a9b5634719ffa9f31d03b2"
+
+[[pom]]
+module = "com.google.guava:guava-parent"
+version = "26.0-android"
+sha256 = "f8698ab46ca996ce889c1afc8ca4f25eb8ac6b034dc898d4583742360016cc04"
+
+[[pom]]
+module = "com.google.guava:guava-parent"
+version = "33.2.1-jre"
+sha256 = "9095f6d8ee3765950207510785830cc2280e781067915fa99cfe1740d4865c14"
+
+[[pom]]
+module = "com.google.guava:guava"
+version = "33.2.1-jre"
+sha256 = "42817bdc1c0c8c737d6b411cfaf4a84769e7d271e879b016fd0850248a06dab5"
+
+[[pom]]
+module = "com.google.guava:listenablefuture"
+version = "9999.0-empty-to-avoid-conflict-with-guava"
+sha256 = "18d4b1db26153d4e55079ce1f76bb1fe05cdb862ef9954a88cbcc4ff38b8679b"
+
+[[pom]]
+module = "com.google.j2objc:j2objc-annotations"
+version = "3.0.0"
+sha256 = "23b3d039e168ad89dd114698e6dd7be383f4a2c577b8877d82c73a6515e74a17"
+
+[[pom]]
+module = "net.bytebuddy:byte-buddy-agent"
+version = "1.17.7"
+sha256 = "814ee42d6b0117f4b8d1eb6b1d62c16db4c0b597d83b3ad8daa5781eb145d7dc"
+
+[[pom]]
+module = "net.bytebuddy:byte-buddy-parent"
+version = "1.17.7"
+sha256 = "8a57e20dcce00da71c33ef3e19d9dd858fe9d2042ca2e2bca27871700d52698c"
+
+[[pom]]
+module = "net.bytebuddy:byte-buddy"
+version = "1.17.7"
+sha256 = "ee7fba8569c3bb5c1e91e5812fd9f4a0f31be27e568d5354e1adfd19119f97b3"
+
+[[pom]]
+module = "org.checkerframework:checker-qual"
+version = "3.42.0"
+sha256 = "bf5fcaab272f54cbcf1bbe77c3bd963c821c9abad2058708bf0bed3c875494ca"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-console-standalone"
+version = "6.1.3"
+sha256 = "a8a5f228ffd13cadc03b5d08c7e51df9bd508dbbf06f783b327f3819246019b4"
+
+[[pom]]
+module = "org.mockito:mockito-core"
+version = "5.23.0"
+sha256 = "c02e2900b9277adbfe12756d7d0b9472e6b9e5972ae1f28d19a41aa6513777e3"
+
+[[pom]]
+module = "org.objenesis:objenesis-parent"
+version = "3.3"
+sha256 = "305c384aa2f1e1c7fe53a96da41c3ec35243b97d428d24a8f779818cc10be4ff"
+
+[[pom]]
+module = "org.objenesis:objenesis"
+version = "3.3"
+sha256 = "ba0c40da2669a048b6e24ef7066a471f0fbcbfcc509e6a3e856ca4ddfa614ad3"
+
+[[pom]]
+module = "org.sonatype.oss:oss-parent"
+version = "7"
+sha256 = "b51f8867c92b6a722499557fc3a1fdea77bdf9ef574722fe90ce436a29559454"
+
+[[pom]]
+module = "org.sonatype.oss:oss-parent"
+version = "9"
+sha256 = "fb40265f982548212ff82e362e59732b2187ec6f0d80182885c14ef1f982827a"
+

@@ -151,6 +151,11 @@ module = "com.google.guava:failureaccess"
 version = "1.0.2"
 sha256 = "8a8f81cf9b359e3f6dfa691a1e776985c061ef2f223c9b2c80753e1b458e8064"
 requested-by = ["com.google.guava:guava"]
+
+[[pom]]
+module = "com.google.guava:guava"
+version = "33.2.1-jre"
+sha256 = "..."
 ----
 
 [cols="1,3"]
@@ -180,4 +185,10 @@ that jar and kwenza re-downloads and re-verifies it.
 |Which module(s) pulled this one in transitively, or `["direct"]` if it's declared directly in
 `kwenza.toml`. Diagnostic only — not consumed by kwenza itself (yet — see the deferred `kwenza
 tree` command in https://github.com/kwenza-build/kwenza/blob/main/AGENTS.md[AGENTS.md]).
+
+|`[[pom]]` (`module`, `version`, `sha256`)
+|One per POM the resolution read, including parent POMs and imported BOMs, which have no
+`[[resolved]]` entry of their own. POMs decide which jars get resolved, so they're pinned the same
+way: a cached POM is checked against this value locally, and a downloaded one against its published
+`.pom.sha1`.
 |===

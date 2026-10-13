@@ -30,3 +30,38 @@ version = "3.3"
 sha256 = "02dfd0b0439a5591e35b708ed2f5474eb0948f53abf74637e959b8e4ef69bfeb"
 requested-by = ["org.mockito:mockito-core"]
 
+[[pom]]
+module = "net.bytebuddy:byte-buddy-agent"
+version = "1.17.7"
+sha256 = "814ee42d6b0117f4b8d1eb6b1d62c16db4c0b597d83b3ad8daa5781eb145d7dc"
+
+[[pom]]
+module = "net.bytebuddy:byte-buddy-parent"
+version = "1.17.7"
+sha256 = "8a57e20dcce00da71c33ef3e19d9dd858fe9d2042ca2e2bca27871700d52698c"
+
+[[pom]]
+module = "net.bytebuddy:byte-buddy"
+version = "1.17.7"
+sha256 = "ee7fba8569c3bb5c1e91e5812fd9f4a0f31be27e568d5354e1adfd19119f97b3"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-console-standalone"
+version = "6.1.3"
+sha256 = "a8a5f228ffd13cadc03b5d08c7e51df9bd508dbbf06f783b327f3819246019b4"
+
+[[pom]]
+module = "org.mockito:mockito-core"
+version = "5.23.0"
+sha256 = "c02e2900b9277adbfe12756d7d0b9472e6b9e5972ae1f28d19a41aa6513777e3"
+
+[[pom]]
+module = "org.objenesis:objenesis-parent"
+version = "3.3"
+sha256 = "305c384aa2f1e1c7fe53a96da41c3ec35243b97d428d24a8f779818cc10be4ff"
+
+[[pom]]
+module = "org.objenesis:objenesis"
+version = "3.3"
+sha256 = "ba0c40da2669a048b6e24ef7066a471f0fbcbfcc509e6a3e856ca4ddfa614ad3"
+

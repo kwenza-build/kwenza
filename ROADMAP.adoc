@@ -67,7 +67,7 @@ structure everything else builds on.
   trade-offs first, then decide: it changes behaviour, and maybe the lockfile shape, so it
   belongs before 0.1 and before the lockfile review below. See AGENTS.md, the dev-dependencies
   decision.
-* [ ] *Verify POMs.* Jars go through the one trust rule; POMs, which decide *which* jars get
+* [x] *Verify POMs.* Jars go through the one trust rule; POMs, which decide *which* jars get
   resolved, aren't checked at all (`ArtifactStore.pom`). A tampered cached POM can point the
   graph at a different, real artifact, whose jar then passes its own `.sha1` check. Check a
   fetched POM against its published `.pom.sha1`, and pin POM hashes in kwenza.lock so cached
