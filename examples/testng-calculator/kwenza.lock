@@ -66,3 +66,73 @@ version = "1.7.2"
 sha256 = "738d0df021a0611fff5d277634e890cc91858fa72227cf0bcf36232a7caf014c"
 requested-by = ["org.junit.platform:junit-platform-engine"]
 
+[[pom]]
+module = "com.beust:jcommander"
+version = "1.82"
+sha256 = "246344170b513b801ccf812234d4e1324a0f6ed2a81e90aa618913b66b9cc173"
+
+[[pom]]
+module = "org.apiguardian:apiguardian-api"
+version = "1.1.0"
+sha256 = "a945b9cb5cd9b77b2c711844e659c43ec070ef59d9f509fa9f4c1861b4862711"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-commons"
+version = "1.7.2"
+sha256 = "dd2d7d8e90550bc6a4927bc7546cab899b92c9a5b934e591275181993e35dbe0"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-console-standalone"
+version = "6.1.3"
+sha256 = "a8a5f228ffd13cadc03b5d08c7e51df9bd508dbbf06f783b327f3819246019b4"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-engine"
+version = "1.7.2"
+sha256 = "66b7295bf3a01beb9821aaa31d99fb1dbe40fb4bf7e53508cfe560d94146ad69"
+
+[[pom]]
+module = "org.junit.support:testng-engine"
+version = "1.1.0"
+sha256 = "b62640ff47e074e4398cdda9c536cd21e22a96ba96b2508502ae4f09df2e4086"
+
+[[pom]]
+module = "org.junit:junit-bom"
+version = "5.7.2"
+sha256 = "cd14aaa869991f82021c585d570d31ff342bcba58bb44233b70193771b96487b"
+
+[[pom]]
+module = "org.opentest4j:opentest4j"
+version = "1.2.0"
+sha256 = "a96e671816c1ff8803bdec74c9241f025bdfb277da5d2b4ee02266405936f994"
+
+[[pom]]
+module = "org.slf4j:slf4j-api"
+version = "1.7.36"
+sha256 = "fb046a9c229437928bb11c2d27c8b5d773eb8a25e60cbd253d985210dedc2684"
+
+[[pom]]
+module = "org.slf4j:slf4j-nop"
+version = "1.7.36"
+sha256 = "20a0f7c060020d75fef4470ae6948661d418ebd5ea4549c68abedf20ee86cb65"
+
+[[pom]]
+module = "org.slf4j:slf4j-parent"
+version = "1.7.36"
+sha256 = "bb388d37fbcdd3cde64c3cede21838693218dc451f04040c5df360a78ed7e812"
+
+[[pom]]
+module = "org.sonatype.oss:oss-parent"
+version = "7"
+sha256 = "b51f8867c92b6a722499557fc3a1fdea77bdf9ef574722fe90ce436a29559454"
+
+[[pom]]
+module = "org.testng:testng"
+version = "7.10.2"
+sha256 = "d6d51d678ad4cd3d5b228066ba0b88677976f10ad03521fe30433f2532461647"
+
+[[pom]]
+module = "org.webjars:jquery"
+version = "3.7.1"
+sha256 = "467c2d7330258c0c6de19aed2a7cbf060a36f4c4f52637fac0b364309a8aa520"
+

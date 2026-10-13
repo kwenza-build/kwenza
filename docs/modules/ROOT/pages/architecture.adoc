@@ -21,7 +21,8 @@ cached in `~/.m2/repository`, in Maven's layout, so kwenza shares one cache with
 [[reproducible]]
 == The lockfile
 
-`kwenza.lock` records every resolved version and its `sha256`. While your declared dependencies
+`kwenza.lock` records every resolved version and its `sha256`, plus the `sha256` of every POM the
+resolution read. While your declared dependencies
 are unchanged, builds use the lock and skip the network, and still check each jar against it.
 Changing `kwenza.toml` resolves again and rewrites the lock.
 

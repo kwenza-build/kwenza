@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -57,6 +58,32 @@ public final class Resolver {
             List<Path> paths = new ArrayList<>();
             for (ResolvedArtifact a : artifacts) paths.add(a.jarPath());
             return paths;
+        }
+    }
+
+    /**
+     * One resolution's POM state: the parsed effective POMs, the sha256 pins carried over from the
+     * lock being replaced, and the sha256 of every POM actually read (what the new lock pins).
+     */
+    private static final class Poms {
+        final Map<String, PomParser.ParsedPom> parsed = new ConcurrentHashMap<>();
+        final Map<String, String> pins = new LinkedHashMap<>();
+        final Map<Gav, String> read = new ConcurrentHashMap<>();
+
+        Poms(KwenzaLock previous) {
+            for (KwenzaLock.PomPin pin : previous.poms) {
+                if (pin.sha256() != null && !pin.sha256().isBlank()) {
+                    pins.put(pin.module() + ":" + pin.version(), pin.sha256());
+                }
+            }
+        }
+
+        List<KwenzaLock.PomPin> pinsRead() {
+            List<KwenzaLock.PomPin> result = new ArrayList<>();
+            read.entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(Gav::toString)))
+                    .forEach(e -> result.add(new KwenzaLock.PomPin(e.getKey().moduleId(), e.getKey().version(),
+                            e.getValue())));
+            return result;
         }
     }
 
@@ -124,7 +151,7 @@ public final class Resolver {
      */
     Result<Resolution> resolve(Collection<Dependency> rootDeps, KwenzaLock previous, String manifestHash) {
         Map<String, Node> chosen = new LinkedHashMap<>();
-        Map<String, PomParser.ParsedPom> pomCache = new ConcurrentHashMap<>();
+        Poms pomCache = new Poms(previous);
 
         List<Node> currentLevel = new ArrayList<>();
         for (Dependency d : rootDeps) {
@@ -191,10 +218,11 @@ public final class Resolver {
             currentLevel = nextLevel;
         }
 
-        return download(chosen, previous, manifestHash);
+        return download(chosen, pomCache.pinsRead(), previous, manifestHash);
     }
 
-    private Result<Resolution> download(Map<String, Node> chosen, KwenzaLock previous, String manifestHash) {
+    private Result<Resolution> download(Map<String, Node> chosen, List<KwenzaLock.PomPin> pomPins,
+                                        KwenzaLock previous, String manifestHash) {
         Map<String, KwenzaLock.Entry> pinned = new LinkedHashMap<>();
         for (KwenzaLock.Entry entry : previous.entries) {
             if (entry.sha256 != null && !entry.sha256.isBlank()) {
@@ -214,29 +242,34 @@ public final class Resolver {
                 entries.add(new KwenzaLock.Entry(a.moduleId(), a.version(), sha256Hex(a.jarPath()),
                         new ArrayList<>(a.requestedBy())));
             }
-            return new Resolution(artifacts, new KwenzaLock(entries, manifestHash), false);
+            return new Resolution(artifacts, new KwenzaLock(entries, pomPins, manifestHash), false);
         });
     }
 
     private CompletableFuture<Result<PomParser.ParsedPom>> fetchEffectivePom(Gav gav,
-                                                                             Map<String, PomParser.ParsedPom> cache) {
-        PomParser.ParsedPom cached = cache.get(gav.toString());
+                                                                             Poms poms) {
+        PomParser.ParsedPom cached = poms.parsed.get(gav.toString());
         if (cached != null) {
             return CompletableFuture.completedFuture(Result.ok(cached));
         }
-        return store.pom(gav).thenCompose(text -> {
-            Result<PomParser.ParsedPom> parsed = text.flatMap(PomParser::parse);
+        String pin = poms.pins.get(gav.toString());
+        Expectation expected = pin != null ? Expectation.pinned(pin) : Expectation.PUBLISHED;
+        return store.pom(gav, expected).thenCompose(verified -> {
+            if (verified instanceof Result.Ok<ArtifactStore.VerifiedPom> ok) {
+                poms.read.put(gav, ok.value().sha256());
+            }
+            Result<PomParser.ParsedPom> parsed = verified.flatMap(v -> PomParser.parse(v.text()));
             if (!parsed.isOk()) {
                 return CompletableFuture.completedFuture(parsed);
             }
             PomParser.ParsedPom raw = parsed.get();
             if (raw.parent() == null) {
                 PomParser.ParsedPom resolved = applyProperties(raw, raw.properties());
-                cache.put(gav.toString(), resolved);
+                poms.parsed.put(gav.toString(), resolved);
                 return CompletableFuture.completedFuture(Result.ok(resolved));
             }
             Gav parent = new Gav(raw.parent().group(), raw.parent().artifact(), raw.parent().version());
-            return fetchEffectivePom(parent, cache).thenApply(parentResult -> parentResult.map(parentPom -> {
+            return fetchEffectivePom(parent, poms).thenApply(parentResult -> parentResult.map(parentPom -> {
                 Map<String, String> merged = new LinkedHashMap<>(parentPom.properties());
                 merged.putAll(raw.properties());
                 PomParser.ParsedPom resolved = applyProperties(raw, merged);
@@ -245,7 +278,7 @@ public final class Resolver {
                 PomParser.ParsedPom withInheritance = new PomParser.ParsedPom(
                         resolved.group(), resolved.artifact(), resolved.version(), resolved.packaging(),
                         resolved.parent(), merged, resolved.dependencies(), combinedManaged);
-                cache.put(gav.toString(), withInheritance);
+                poms.parsed.put(gav.toString(), withInheritance);
                 return withInheritance;
             }));
         });
@@ -304,7 +337,7 @@ public final class Resolver {
 
     /** Builds a moduleId->version map from a POM's dependencyManagement, expanding any BOM imports. */
     private Result<Map<String, String>> buildManagementMap(PomParser.ParsedPom pom,
-                                                           Map<String, PomParser.ParsedPom> pomCache) {
+                                                           Poms pomCache) {
         Map<String, String> map = new LinkedHashMap<>();
         for (PomParser.RawDependency d : pom.managedDependencies()) {
             if ("import".equals(d.scope())) {

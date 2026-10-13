@@ -42,3 +42,63 @@ version = "3.0.0"
 sha256 = "88241573467ddca44ffd4d74aa04c2bbfd11bf7c17e0c342c94c9de7a70a7c64"
 requested-by = ["com.google.guava:guava"]
 
+[[pom]]
+module = "com.google.code.findbugs:jsr305"
+version = "3.0.2"
+sha256 = "19889dbdf1b254b2601a5ee645b8147a974644882297684c798afe5d63d78dfe"
+
+[[pom]]
+module = "com.google.errorprone:error_prone_annotations"
+version = "2.26.1"
+sha256 = "aea7e991e2dfdcb47f5fbd508587535f7802bcb9e2fc2d4ebb50be41b684da9f"
+
+[[pom]]
+module = "com.google.errorprone:error_prone_parent"
+version = "2.26.1"
+sha256 = "4a6ad00d31b0a5adcd9a4f605065d5b445fae4a04cbf827e5d1ac1077e2f814d"
+
+[[pom]]
+module = "com.google.guava:failureaccess"
+version = "1.0.2"
+sha256 = "19ebc6f4bdb4edbb3d07b6ee994f846b54ef295582a9b5634719ffa9f31d03b2"
+
+[[pom]]
+module = "com.google.guava:guava-parent"
+version = "26.0-android"
+sha256 = "f8698ab46ca996ce889c1afc8ca4f25eb8ac6b034dc898d4583742360016cc04"
+
+[[pom]]
+module = "com.google.guava:guava-parent"
+version = "33.2.1-jre"
+sha256 = "9095f6d8ee3765950207510785830cc2280e781067915fa99cfe1740d4865c14"
+
+[[pom]]
+module = "com.google.guava:guava"
+version = "33.2.1-jre"
+sha256 = "42817bdc1c0c8c737d6b411cfaf4a84769e7d271e879b016fd0850248a06dab5"
+
+[[pom]]
+module = "com.google.guava:listenablefuture"
+version = "9999.0-empty-to-avoid-conflict-with-guava"
+sha256 = "18d4b1db26153d4e55079ce1f76bb1fe05cdb862ef9954a88cbcc4ff38b8679b"
+
+[[pom]]
+module = "com.google.j2objc:j2objc-annotations"
+version = "3.0.0"
+sha256 = "23b3d039e168ad89dd114698e6dd7be383f4a2c577b8877d82c73a6515e74a17"
+
+[[pom]]
+module = "org.checkerframework:checker-qual"
+version = "3.42.0"
+sha256 = "bf5fcaab272f54cbcf1bbe77c3bd963c821c9abad2058708bf0bed3c875494ca"
+
+[[pom]]
+module = "org.sonatype.oss:oss-parent"
+version = "7"
+sha256 = "b51f8867c92b6a722499557fc3a1fdea77bdf9ef574722fe90ce436a29559454"
+
+[[pom]]
+module = "org.sonatype.oss:oss-parent"
+version = "9"
+sha256 = "fb40265f982548212ff82e362e59732b2187ec6f0d80182885c14ef1f982827a"
+

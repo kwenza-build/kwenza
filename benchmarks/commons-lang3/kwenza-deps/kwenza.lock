@@ -114,3 +114,163 @@ version = "1.11.2"
 sha256 = "4e625500397631304726da32f7ae599ce3bfc71d4ea11947de69dbbdf0fc4409"
 requested-by = ["org.junit.platform:junit-platform-launcher"]
 
+[[pom]]
+module = "com.google.code.findbugs:jsr305"
+version = "3.0.2"
+sha256 = "19889dbdf1b254b2601a5ee645b8147a974644882297684c798afe5d63d78dfe"
+
+[[pom]]
+module = "net.bytebuddy:byte-buddy-parent"
+version = "1.17.5"
+sha256 = "1e8375827ee7d2f5e4c70cb31c9167ecec60693cf6a5b773a1e66fd4d2675367"
+
+[[pom]]
+module = "net.bytebuddy:byte-buddy"
+version = "1.17.5"
+sha256 = "53cd43dbb35b48e44725cd576d2006e1f71f21687d040f780cc70a0a7efd41c2"
+
+[[pom]]
+module = "net.sf.jopt-simple:jopt-simple"
+version = "5.0.4"
+sha256 = "6a67763b76afcd9c80b95e5c5e24782d18cc1b0e3d9b454ad3f8754c76b76815"
+
+[[pom]]
+module = "org.apache.commons:commons-lang3"
+version = "3.18.0"
+sha256 = "aa254b373b6f6d46bc9dca86331b072a8ab86eb25ea9921fd439618392e98a16"
+
+[[pom]]
+module = "org.apache.commons:commons-math3"
+version = "3.6.1"
+sha256 = "fad72336ea7d7dd06da103144e3740db508fa4b17d9c54d7847737edc24a7e60"
+
+[[pom]]
+module = "org.apache.commons:commons-parent"
+version = "39"
+sha256 = "87cd27e1a02a5c3eb6d85059ce98696bb1b44c2b8b650f0567c86df60fa61da7"
+
+[[pom]]
+module = "org.apache.commons:commons-parent"
+version = "85"
+sha256 = "d189ff2c0027e96bb65d31e6f227ed2af966169b36af1e973dd5ba08926dc7b5"
+
+[[pom]]
+module = "org.apache.commons:commons-text"
+version = "1.14.0"
+sha256 = "5c80e8144f22bb47dacb642f64460418eb253f0b1ba03eb1413c2f36f0a18805"
+
+[[pom]]
+module = "org.apache:apache"
+version = "16"
+sha256 = "9f85ff2fd7d6cb3097aa47fb419ee7f0ebe869109f98aba9f4eca3f49e74a40e"
+
+[[pom]]
+module = "org.apache:apache"
+version = "35"
+sha256 = "ea297dcd114136e8b8e8b630230d52a76c2fc69f6c5db25d672b1857000728b8"
+
+[[pom]]
+module = "org.apiguardian:apiguardian-api"
+version = "1.1.2"
+sha256 = "32355081d109095c3d5d374d5a43b4f4c1b75d549e983ef50723e2772e5302a0"
+
+[[pom]]
+module = "org.easymock:easymock-parent"
+version = "5.6.0"
+sha256 = "a0516a376a69bdcade03d44556e6e1ff7a00d0b9da05c039f86fec4f6b168c09"
+
+[[pom]]
+module = "org.easymock:easymock"
+version = "5.6.0"
+sha256 = "311e9ff90843d4a8727e0855ed7c9f986735a67ecb26b5bce1a76b47ecbc0243"
+
+[[pom]]
+module = "org.junit-pioneer:junit-pioneer"
+version = "2.3.0"
+sha256 = "806eb99beb891670f7468ea92f841729521efbbf16d5b3cc722de451acd888b8"
+
+[[pom]]
+module = "org.junit.jupiter:junit-jupiter-api"
+version = "5.11.2"
+sha256 = "3e4d5d3217fd6e6e1e96ea9caf27ae5480650f9120be9eaa34473199a42d0614"
+
+[[pom]]
+module = "org.junit.jupiter:junit-jupiter-params"
+version = "5.11.2"
+sha256 = "b63a2d92d21004e326153198f7ae4f08f79b21d97a29f74ec804d4ae21a070ae"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-commons"
+version = "1.11.2"
+sha256 = "02c2250965e23e176da8db44b716133cd65c385233c1d31fec317dcf1642a4a0"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-console-standalone"
+version = "6.1.3"
+sha256 = "a8a5f228ffd13cadc03b5d08c7e51df9bd508dbbf06f783b327f3819246019b4"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-engine"
+version = "1.11.2"
+sha256 = "8ccc1575221ac67801f2614bc5c2f0095ba173a7f1d5d361fdb9866ad74f92cd"
+
+[[pom]]
+module = "org.junit.platform:junit-platform-launcher"
+version = "1.11.2"
+sha256 = "bcb7ce167a049fa510bc93f7a22145f824f5fb3e9edd8901c5140a2bb5be12ec"
+
+[[pom]]
+module = "org.junit:junit-bom"
+version = "5.10.2"
+sha256 = "169dd904a4b0f6520cffe658cc62292bfe9f3c14a989fa92120724cde43a9968"
+
+[[pom]]
+module = "org.junit:junit-bom"
+version = "5.11.2"
+sha256 = "f48e88538aac145eb3ae0345a9ebd055b28f329a35dce8d1e9281325ca9b0ea2"
+
+[[pom]]
+module = "org.junit:junit-bom"
+version = "5.13.1"
+sha256 = "fa68451ea830572ed43ffe51d75b6a05f7a5e665a602a51f49d6be02063a65f3"
+
+[[pom]]
+module = "org.objenesis:objenesis-parent"
+version = "3.4"
+sha256 = "cb1f43d298cc854bb55b993d330017db4a94c6609982da810f039373fc6254a6"
+
+[[pom]]
+module = "org.objenesis:objenesis"
+version = "3.4"
+sha256 = "6017ec0c1e81f73d9a12ebfc09c32823cd075e8709593714eb400e2f013d8a58"
+
+[[pom]]
+module = "org.openjdk.jmh:jmh-core"
+version = "1.37"
+sha256 = "04453be006f06f86d7c43f3c492f7b4eb3362680cae4f1ee80ba65db23373f5a"
+
+[[pom]]
+module = "org.openjdk.jmh:jmh-parent"
+version = "1.37"
+sha256 = "0c24f216f3637dde7639114f70273a697f8546f7a4c6d5acd4cc6daee9bef4c9"
+
+[[pom]]
+module = "org.opentest4j:opentest4j"
+version = "1.3.0"
+sha256 = "9bf7cffc410f3e8372c2522578df9ca56d9d43bd937e30948706c232a943b355"
+
+[[pom]]
+module = "org.ow2.asm:asm"
+version = "9.8"
+sha256 = "c1367c3bb383d7619e7f797e38df7513885f2eef04ae7b5908f68222657b5baa"
+
+[[pom]]
+module = "org.ow2:ow2"
+version = "1.5.1"
+sha256 = "321ddbb7ee6fe4f53dea6b4cd6db74154d6bfa42391c1f763b361b9f485acf05"
+
+[[pom]]
+module = "org.sonatype.oss:oss-parent"
+version = "7"
+sha256 = "b51f8867c92b6a722499557fc3a1fdea77bdf9ef574722fe90ce436a29559454"
+

@@ -32,16 +32,29 @@ public final class KwenzaLock {
         }
     }
 
+    /**
+     * The sha256 of one POM resolution read: the POMs decide which jars get resolved, so they're
+     * pinned like jars. Includes parents and imported BOMs, which have no {@link Entry} of their own.
+     */
+    public record PomPin(String module, String version, String sha256) {
+    }
+
     public final List<Entry> entries;
+    public final List<PomPin> poms;
     public final String manifestHash;
 
-    public KwenzaLock(List<Entry> entries, String manifestHash) {
+    public KwenzaLock(List<Entry> entries, List<PomPin> poms, String manifestHash) {
         this.entries = entries;
+        this.poms = poms;
         this.manifestHash = manifestHash;
     }
 
+    public KwenzaLock(List<Entry> entries, String manifestHash) {
+        this(entries, List.of(), manifestHash);
+    }
+
     public static KwenzaLock empty() {
-        return new KwenzaLock(new ArrayList<>(), null);
+        return new KwenzaLock(new ArrayList<>(), List.of(), null);
     }
 
     /** A stable hash over a manifest's declared dependencies, used to detect staleness. */
@@ -110,7 +123,14 @@ public final class KwenzaLock {
                         (String) m.get("sha256"), requestedBy));
             }
         }
-        return new KwenzaLock(entries, (String) root.get("manifest-hash"));
+        List<PomPin> poms = new ArrayList<>();
+        if (root.get("pom") instanceof List) {
+            for (Object o : (List<Object>) root.get("pom")) {
+                Map<String, Object> m = (Map<String, Object>) o;
+                poms.add(new PomPin((String) m.get("module"), (String) m.get("version"), (String) m.get("sha256")));
+            }
+        }
+        return new KwenzaLock(entries, poms, (String) root.get("manifest-hash"));
     }
 
     /** Writes this lock, manifest hash included, to {@code path}. */
@@ -128,6 +148,12 @@ public final class KwenzaLock {
                 sb.append(quote(e.requestedBy.get(i)));
             }
             sb.append("]\n\n");
+        }
+        for (PomPin p : poms) {
+            sb.append("[[pom]]\n");
+            sb.append("module = ").append(quote(p.module())).append('\n');
+            sb.append("version = ").append(quote(p.version())).append('\n');
+            sb.append("sha256 = ").append(quote(p.sha256())).append("\n\n");
         }
         Files.writeString(path, sb.toString());
     }

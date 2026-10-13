@@ -128,7 +128,16 @@ specific decision and its specific reasoning; that one is for the pattern.
   `--insecure`-style escape hatch should wait until a real repository without checksums (a
   private registry, say) actually needs one. The mismatch message tells the user to delete the
   cached jar rather than to regenerate the lock, because a changed jar means the cache is wrong, not the
-  lock (released artifacts on Central are immutable). See "Secure by default" in
+  lock (released artifacts on Central are immutable). **POMs go through the same rule** (`ArtifactStore.pom(gav, expectation)`, `.pom.sha1`), because
+  they decide *which* jars get resolved: an altered cached POM could otherwise point the graph at a
+  different, real artifact whose jar passes its own check. `kwenza.lock` pins every POM a resolution
+  read, parents and imported BOMs included, as `[[pom]]` tables (`module`, `version`, `sha256`),
+  recorded in one place (`Resolver.fetchEffectivePom`). A from-lock build reads no POMs, so it
+  needs none of this; `resolveMain` is the path that does, and it now checks cached POMs against
+  the pins locally. A POM the lock doesn't pin (an old lock without `[[pom]]` tables, or a
+  version only the main-classpath pass chose) falls back to `Published`, one `.pom.sha1` request
+  per POM, so an old lock keeps working and just isn't network-free there until it's regenerated.
+  See "Secure by default" in
   docs/contributing/design-principles.adoc.
 
 - **Annotation processors are opt-in, never discovered.** `JavaCompilation` always passes
@@ -423,16 +432,6 @@ lands). The sections below hold the *reasoning* for those items; the roadmap hol
   together rather than as two separate line items.
 
 ## Also on the radar (surfaced later, not yet triaged against the above)
-
-- **POMs are not verified.** Jars go through the one trust rule (see "Checksums fail closed"),
-  but POMs, which decide *which* jars get resolved, are taken from the local cache or the
-  repository with no checksum at all (`ArtifactStore.pom`). Someone able to alter a cached POM
-  could add a dependency on a different, real artifact, which would then pass its own `.sha1`
-  check. Found in the codebase-design review. The likely fix mirrors jars: check a fetched POM
-  against its published `.pom.sha1`, and consider pinning POM hashes in `kwenza.lock` so a
-  lock-backed resolution can verify cached POMs locally. That second part ties in with the
-  main-classpath question under the dev-dependencies decision above, since that's the one path
-  that reads POMs from a lock-backed build.
 
 - **Resolver gaps against Maven's POM semantics.** (How the formats work:
   [docs/contributing/maven-repositories-poms-and-boms.adoc](docs/contributing/maven-repositories-poms-and-boms.adoc).) Found reading `Resolver`/`PomParser` against

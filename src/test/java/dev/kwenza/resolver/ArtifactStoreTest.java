@@ -201,20 +201,80 @@ class ArtifactStoreTest {
         assertFalse(Files.exists(cachedJar()));
     }
 
-    // POMs come from the cache when they're there.
+    // POMs follow the same rule as jars.
+
+    private static final String POM_PATH = "/com/example/leaf/1.0/leaf-1.0.pom";
+    private static final byte[] POM_BYTES = "<project/>".getBytes(StandardCharsets.UTF_8);
+
+    private void servePomWithItsSha1() {
+        served.put(POM_PATH, POM_BYTES);
+        served.put(POM_PATH + ".sha1", sha1(POM_BYTES).getBytes(StandardCharsets.UTF_8));
+    }
 
     @Test
-    void aPomIsFetchedOnceThenServedFromTheCache() {
-        served.put("/com/example/leaf/1.0/leaf-1.0.pom", "<project/>".getBytes(StandardCharsets.UTF_8));
+    void aPomMatchingItsPublishedSha1IsCachedAndReportsItsSha256() {
+        servePomWithItsSha1();
 
-        assertEquals("<project/>", store.pom(LEAF).join().get());
-        served.clear();
-        assertEquals("<project/>", store.pom(LEAF).join().get());
+        ArtifactStore.VerifiedPom pom = store.pom(LEAF, Expectation.PUBLISHED).join().get();
+
+        assertEquals("<project/>", pom.text());
+        assertEquals(sha256(POM_BYTES), pom.sha256());
+        assertTrue(Files.exists(local.path(LEAF, "pom")));
+    }
+
+    @Test
+    void aPomWithNoPublishedSha1IsRefusedAndNotCached() {
+        served.put(POM_PATH, POM_BYTES);
+
+        String problem = store.pom(LEAF, Expectation.PUBLISHED).join().failure().problems().get(0);
+
+        assertTrue(problem.contains("com.example:leaf:1.0"), problem);
+        assertFalse(Files.exists(local.path(LEAF, "pom")));
+    }
+
+    @Test
+    void aPomNotMatchingItsPublishedSha1IsRefusedAndNotCached() {
+        served.put(POM_PATH, POM_BYTES);
+        served.put(POM_PATH + ".sha1", sha1("other".getBytes(StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
+
+        String problem = store.pom(LEAF, Expectation.PUBLISHED).join().failure().problems().get(0);
+
+        assertTrue(problem.contains("Checksum mismatch"), problem);
+        assertFalse(Files.exists(local.path(LEAF, "pom")));
+    }
+
+    @Test
+    void aCachedPomIsCheckedAgainstTheRemoteSha1() throws IOException {
+        served.put(POM_PATH + ".sha1", sha1(POM_BYTES).getBytes(StandardCharsets.UTF_8));
+        writeCached("pom", "<project>tampered</project>".getBytes(StandardCharsets.UTF_8));
+
+        String problem = store.pom(LEAF, Expectation.PUBLISHED).join().failure().problems().get(0);
+
+        assertTrue(problem.contains(local.path(LEAF, "pom").toString()), problem);
+    }
+
+    @Test
+    void aCachedPomMatchingItsPinIsUsedWithoutAnyNetworkRequest() throws IOException {
+        writeCached("pom", POM_BYTES);
+
+        assertEquals("<project/>", store.pom(LEAF, Expectation.pinned(sha256(POM_BYTES))).join().get().text());
+        assertEquals(List.of(), requested);
+    }
+
+    @Test
+    void aCachedPomThatNoLongerMatchesItsPinIsRefused() throws IOException {
+        String pin = sha256(POM_BYTES);
+        writeCached("pom", "<project>tampered</project>".getBytes(StandardCharsets.UTF_8));
+
+        String problem = store.pom(LEAF, Expectation.pinned(pin)).join().failure().problems().get(0);
+
+        assertTrue(problem.contains(pin), problem);
+        assertTrue(problem.contains("com.example:leaf:1.0"), problem);
     }
 
     @Test
     void aMissingPomIsAFailureNamingTheUrl() {
-        String problem = store.pom(LEAF).join().failure().problems().get(0);
+        String problem = store.pom(LEAF, Expectation.PUBLISHED).join().failure().problems().get(0);
 
         assertTrue(problem.contains("leaf-1.0.pom"), problem);
         assertTrue(problem.contains("404"), problem);

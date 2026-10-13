@@ -62,7 +62,9 @@ class ResolverTest {
     }
 
     private void mockPom(String group, String artifact, String version, String xml) {
-        serve(gav(group, artifact, version), "pom", xml.getBytes(StandardCharsets.UTF_8));
+        byte[] bytes = xml.getBytes(StandardCharsets.UTF_8);
+        serve(gav(group, artifact, version), "pom", bytes);
+        serve(gav(group, artifact, version), "pom.sha1", hex("SHA-1", bytes).getBytes(StandardCharsets.UTF_8));
     }
 
     /** Serves a jar and its matching .sha1, as Central would. */
@@ -325,6 +327,81 @@ class ResolverTest {
         String problem = resolver.resolve(List.of(dep("leaf", "1.0")), previous, "hash").failure().problems().get(0);
 
         assertTrue(problem.contains("com.example:leaf:1.0"), problem);
+    }
+
+    @Test
+    void theLockPinsEveryPomReadIncludingParentsAndBoms() {
+        setUp();
+        String parentXml = pom("com.example", "parent", "1.0", "");
+        mockPom("com.example", "parent", "1.0", parentXml);
+        String childXml = """
+                <project>
+                  <parent>
+                    <groupId>com.example</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>leaf</artifactId>
+                  <version>1.0</version>
+                </project>
+                """;
+        mockPom("com.example", "leaf", "1.0", childXml);
+        mockJar("com.example", "leaf", "1.0");
+
+        List<KwenzaLock.PomPin> pins = resolve(dep("leaf", "1.0")).lock().poms;
+
+        assertEquals(List.of(
+                new KwenzaLock.PomPin("com.example:leaf", "1.0", hex("SHA-256", childXml.getBytes(StandardCharsets.UTF_8))),
+                new KwenzaLock.PomPin("com.example:parent", "1.0", hex("SHA-256", parentXml.getBytes(StandardCharsets.UTF_8)))),
+                pins);
+    }
+
+    @Test
+    void aFreshResolveChecksACachedPomAgainstThePreviousLockWithoutFetchingIt() throws IOException {
+        setUp();
+        String xml = pom("com.example", "leaf", "1.0", "");
+        cachePom("com.example", "leaf", "1.0", xml);
+        mockJar("com.example", "leaf", "1.0");
+        KwenzaLock previous = new KwenzaLock(List.of(), List.of(new KwenzaLock.PomPin("com.example:leaf", "1.0",
+                hex("SHA-256", xml.getBytes(StandardCharsets.UTF_8)))), "old");
+
+        resolve(previous, dep("leaf", "1.0"));
+
+        verify(repo, never()).fetch(any(), eq("pom"));
+        verify(repo, never()).fetch(any(), eq("pom.sha1"));
+    }
+
+    @Test
+    void aFreshResolveRefusesACachedPomThatNoLongerMatchesThePreviousLock() throws IOException {
+        setUp();
+        cachePom("com.example", "leaf", "1.0", pom("com.example", "leaf", "1.0",
+                dependencyXml("com.example", "evil", "1.0", "compile")));
+        KwenzaLock previous = new KwenzaLock(List.of(), List.of(new KwenzaLock.PomPin("com.example:leaf", "1.0",
+                hex("SHA-256", pom("com.example", "leaf", "1.0", "").getBytes(StandardCharsets.UTF_8)))), "old");
+
+        String problem = resolver.resolve(List.of(dep("leaf", "1.0")), previous, "hash").failure().problems().get(0);
+
+        assertTrue(problem.contains("com.example:leaf:1.0"), problem);
+        assertTrue(problem.contains("pom"), problem);
+    }
+
+    @Test
+    void aFreshResolveChecksACachedPomThePreviousLockDoesNotPinAgainstTheRepository() throws IOException {
+        setUp();
+        String xml = pom("com.example", "leaf", "1.0", "");
+        mockPom("com.example", "leaf", "1.0", xml);
+        cachePom("com.example", "leaf", "1.0", xml);
+        mockJar("com.example", "leaf", "1.0");
+
+        resolve(dep("leaf", "1.0"));
+
+        verify(repo).fetch(gav("com.example", "leaf", "1.0"), "pom.sha1");
+    }
+
+    private void cachePom(String group, String artifact, String version, String xml) throws IOException {
+        Path path = local.path(gav(group, artifact, version), "pom");
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, xml);
     }
 
     @Test

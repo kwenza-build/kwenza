@@ -15,6 +15,7 @@ import dev.kwenza.resolver.Resolver;
 import dev.kwenza.workspace.Project;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -88,6 +89,7 @@ public final class Fixtures {
     public static final class SeededRepository {
         private final Path localRepo;
         private final List<KwenzaLock.Entry> seeded = new ArrayList<>();
+        private final List<KwenzaLock.PomPin> seededPoms = new ArrayList<>();
 
         public SeededRepository(Path localRepo) {
             this.localRepo = localRepo;
@@ -102,13 +104,16 @@ public final class Fixtures {
             Gav gav = new Gav(group, artifact, version);
             Path pomPath = repo.path(gav, "pom");
             Files.createDirectories(pomPath.getParent());
-            Files.writeString(pomPath, """
+            String pomXml = """
                     <project>
                       <groupId>%s</groupId>
                       <artifactId>%s</artifactId>
                       <version>%s</version>
                     </project>
-                    """.formatted(group, artifact, version));
+                    """.formatted(group, artifact, version);
+            Files.writeString(pomPath, pomXml);
+            seededPoms.add(new KwenzaLock.PomPin(group + ":" + artifact, version, HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(pomXml.getBytes(StandardCharsets.UTF_8)))));
             // A real, valid (if empty) jar - javac opens every classpath entry as a zip while
             // compiling, even ones the source under test doesn't actually reference.
             Path jarPath = repo.path(gav, "jar");
@@ -124,7 +129,7 @@ public final class Fixtures {
         /** Writes a kwenza.lock pinning everything seeded so far, fresh for {@code project}'s manifest. */
         public void lock(Project project) throws IOException {
             if (!seeded.isEmpty()) {
-                new KwenzaLock(seeded, KwenzaLock.hashDependencies(project.manifest())).save(project.lockFile());
+                new KwenzaLock(seeded, seededPoms, KwenzaLock.hashDependencies(project.manifest())).save(project.lockFile());
             }
         }
     }

@@ -113,6 +113,18 @@ class KwenzaLockTest {
     }
 
     @Test
+    void saveThenLoadRoundTripsPomPins(@TempDir Path tempDir) throws IOException {
+        KwenzaLock lock = new KwenzaLock(List.of(),
+                List.of(new KwenzaLock.PomPin("com.example:parent", "1.0", "abc"),
+                        new KwenzaLock.PomPin("com.example:leaf", "2.0", "def")), "hash");
+        Path lockPath = tempDir.resolve("kwenza.lock");
+
+        lock.save(lockPath);
+
+        assertEquals(lock.poms, KwenzaLock.load(lockPath).get().poms);
+    }
+
+    @Test
     void loadingAMissingLockFileReturnsAnEmptyLockRatherThanThrowing(@TempDir Path tempDir) throws IOException {
         KwenzaLock lock = KwenzaLock.load(tempDir.resolve("does-not-exist.lock")).get();
 

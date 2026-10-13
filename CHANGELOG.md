@@ -101,6 +101,11 @@ Everything below will ship in kwenza's first release, 0.1.0.
     or empty checksum is rejected, the same as a mismatch.
   - A jar that is already in the local cache must match its `sha256` in `kwenza.lock`.
   - A lock entry with no `sha256` is an error.
+  - POMs, which decide which jars get resolved, are verified the same way: a downloaded POM must
+    match its published `.pom.sha1`, and `kwenza.lock` pins the `sha256` of every POM a resolution
+    read (parents and imported BOMs included, in `[[pom]]` tables), so a cached POM that was
+    altered is refused. An existing lock without `[[pom]]` tables still works; delete it to
+    record them.
   - Every jar that fails verification is reported in the same run, not just the first.
 - Annotation processors are never discovered from the classpath, on any JDK. javac's own default
   differs by version (JDK 21 runs any processor a dependency ships, JDK 23 and newer don't), and
