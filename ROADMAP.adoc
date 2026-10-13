@@ -49,7 +49,7 @@ structure everything else builds on.
   A second, full pass with the skill followed (#17): errors as `Result` values with documented
   exit codes, one JVM launcher, contexts reduced to state with `ResolveCommand`/`BuildCommand`
   doing the work, and one trust rule for jars. It surfaced the first three items below.
-* [ ] *Bug: stale build output survives a rebuild.* Neither compile clears `<output-dir>/classes`
+* [x] *Bug: stale build output survives a rebuild.* Neither compile clears `<output-dir>/classes`
   or `test-classes` first, so a deleted or renamed source keeps its `.class` file (and a deleted
   resource its copy) until `kwenza clean`. It still gets loaded, packaged into the jar, and run by
   `kwenza test`: during the code-design review, deleted test classes kept running and passing

@@ -115,4 +115,53 @@ class BuildCommandTest {
 
         assertTrue(Files.exists(projectRoot().resolve("target/test-classes/com/example/MainRef.class")));
     }
+
+    @Test
+    void aRebuildDropsTheClassOfADeletedSource() throws Exception {
+        writeMain();
+        writeSource(projectRoot(), "src/main/java/com/example/Gone.java", """
+                package com.example;
+                public final class Gone {}
+                """);
+        project(NO_DEPENDENCIES).build().main().get();
+        Path gone = projectRoot().resolve("target/classes/com/example/Gone.class");
+        assertTrue(Files.exists(gone));
+        Files.delete(projectRoot().resolve("src/main/java/com/example/Gone.java"));
+
+        project(NO_DEPENDENCIES).build().main().get(); // a fresh chain
+
+        assertFalse(Files.exists(gone), "stale class survived a rebuild");
+        assertTrue(Files.exists(mainClassFile()));
+    }
+
+    @Test
+    void aRebuildDropsTheCopyOfADeletedResource() throws Exception {
+        writeMain();
+        writeSource(projectRoot(), "src/main/resources/app.properties", "a=1\n");
+        project(NO_DEPENDENCIES).build().main().get();
+        Path copy = projectRoot().resolve("target/classes/app.properties");
+        assertTrue(Files.exists(copy));
+        Files.delete(projectRoot().resolve("src/main/resources/app.properties"));
+
+        project(NO_DEPENDENCIES).build().main().get();
+
+        assertFalse(Files.exists(copy), "stale resource survived a rebuild");
+    }
+
+    @Test
+    void aRebuildDropsTheClassOfADeletedTest() throws Exception {
+        writeMain();
+        writeSource(projectRoot(), "src/test/java/com/example/GoneTest.java", """
+                package com.example;
+                public final class GoneTest {}
+                """);
+        project(NO_DEPENDENCIES).build().tests().get();
+        Path gone = projectRoot().resolve("target/test-classes/com/example/GoneTest.class");
+        assertTrue(Files.exists(gone));
+        Files.delete(projectRoot().resolve("src/test/java/com/example/GoneTest.java"));
+
+        project(NO_DEPENDENCIES).build().tests().get();
+
+        assertFalse(Files.exists(gone), "stale test class survived a rebuild");
+    }
 }

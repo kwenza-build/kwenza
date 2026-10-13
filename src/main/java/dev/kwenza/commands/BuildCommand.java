@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -50,6 +51,7 @@ public final class BuildCommand {
                 return err.castErr();
             }
             Path classes = project.classesDir();
+            deleteTree(classes);
             Result<Void> compiled;
             try (var timing = Timing.phase("compile")) {
                 compiled = compile(project.mainSources(), classes, mainOnly.get().classpath(), "Compilation failed");
@@ -78,6 +80,7 @@ public final class BuildCommand {
                 return err.castErr();
             }
             Path testClasses = project.testClassesDir();
+            deleteTree(testClasses);
             List<Path> classpath = new ArrayList<>();
             classpath.add(project.classesDir());
             classpath.addAll(merged.get().classpath());
@@ -105,6 +108,18 @@ public final class BuildCommand {
         }
         result.get().diagnostics().forEach(reporter::diagnostic);
         return result.get().success() ? Result.ok() : Result.err(failureMessage);
+    }
+
+    /** There's no incremental compilation, so output from an earlier build must not outlive its source. */
+    private static void deleteTree(Path dir) throws IOException {
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(dir)) {
+            for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(path);
+            }
+        }
     }
 
     private static void copyResources(Path resourcesDir, Path outputDir) throws IOException {
